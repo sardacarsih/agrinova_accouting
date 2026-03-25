@@ -11,12 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="Npgsql">
-      <HintPath>$(UserProfile)\.nuget\packages\npgsql\8.0.4\lib\net8.0\Npgsql.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Extensions.Logging.Abstractions">
-      <HintPath>$(UserProfile)\.nuget\packages\microsoft.extensions.logging.abstractions\8.0.0\lib\net8.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
-    </Reference>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Npgsql" Version="8.0.4" />
   </ItemGroup>
 
   <ItemGroup>
