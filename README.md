@@ -177,6 +177,16 @@ Period close currently includes:
 - transfer of `REVENUE` and `EXPENSE` balances into retained earnings
 - accounting-equation validation during post/close flow
 
+## Screenshots
+
+Screenshots are not committed yet. If you want to showcase the application on GitHub, add UI captures for:
+
+- login
+- access-context selection
+- General Ledger workspace
+- reports workspace
+- inventory workspace
+
 ## Integration Tests
 
 The integration tests run against a real PostgreSQL database.
@@ -221,7 +231,7 @@ tools/           Integration test harness and support tools
 - Integration tests require a live PostgreSQL database and are not isolated with local containers in this repo
 - Some accounting menus are present as structural placeholders and are not fully implemented yet
 - Local runtime configuration is file-based and expects per-machine setup through `appsettings.json` or environment variables
-- This repo currently does not include CI configuration or release automation
+- CI currently validates build health only and does not run database-backed integration tests in GitHub Actions
 
 ## Contributing
 
@@ -246,6 +256,14 @@ Full contributor guidance is available in [`CONTRIBUTING.md`](D:/VSCODE/wpf/CONT
 ## License
 
 This repository is licensed under the MIT License. See [`LICENSE`](D:/VSCODE/wpf/LICENSE).
+
+## Security
+
+For responsible disclosure guidance, see [`SECURITY.md`](D:/VSCODE/wpf/SECURITY.md).
+
+## Release Process
+
+Use [`RELEASE_CHECKLIST.md`](D:/VSCODE/wpf/RELEASE_CHECKLIST.md) before cutting a release or deployment build.
 
 ## Publish Safety
 
