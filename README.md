@@ -180,7 +180,11 @@ Period close currently includes:
 
 ## Screenshots
 
-Screenshots are not committed yet. If you want to showcase the application on GitHub, add UI captures for:
+### Login
+
+![Login screen](docs/screenshots/login.png)
+
+Additional workspace screenshots can be added later for:
 
 - login
 - access-context selection
