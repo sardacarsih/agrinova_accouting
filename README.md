@@ -184,13 +184,15 @@ Period close currently includes:
 
 ![Login screen](docs/screenshots/login.png)
 
-Additional workspace screenshots can be added later for:
+### Access Selection
 
-- login
-- access-context selection
-- General Ledger workspace
-- reports workspace
-- inventory workspace
+![Access selection](docs/screenshots/access-selection.png)
+
+### Main Shell
+
+![Main shell](docs/screenshots/main-window.png)
+
+Additional workspace screenshots can be added later for reports, journals, and inventory details.
 
 ## Integration Tests
 
