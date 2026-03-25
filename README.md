@@ -5,6 +5,7 @@
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D4)
 ![License](https://img.shields.io/badge/License-MIT-green)
+![CI](https://github.com/sardacarsih/agrinova_accouting/actions/workflows/ci.yml/badge.svg)
 
 Desktop accounting application built with WPF on .NET 8 and PostgreSQL.
 
