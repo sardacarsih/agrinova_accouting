@@ -4,6 +4,7 @@
 ![WPF](https://img.shields.io/badge/UI-WPF-0C54C2)
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D4)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 Desktop accounting application built with WPF on .NET 8 and PostgreSQL.
 
@@ -239,6 +240,12 @@ dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj
 ```
 
 5. Document any required SQL migration or backfill in the `database/` folder and mention it in the PR summary.
+
+Full contributor guidance is available in [`CONTRIBUTING.md`](D:/VSCODE/wpf/CONTRIBUTING.md).
+
+## License
+
+This repository is licensed under the MIT License. See [`LICENSE`](D:/VSCODE/wpf/LICENSE).
 
 ## Publish Safety
 
