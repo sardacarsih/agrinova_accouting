@@ -1,0 +1,54 @@
+<UserControl x:Class="Accounting.Views.Components.JournalListTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
+            <StackPanel>
+                <TextBlock Text="Daftar Jurnal" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                <TextBlock Text="Pantau jurnal yang sudah tersimpan dan buka kembali ke form input."
+                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal">
+            <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
+            <Button Margin="8,0,0,0" Command="{Binding OpenSelectedJournalCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Buka ke Input" />
+            <Button Margin="8,0,0,0"
+                    Command="{Binding ExportSelectedCommand}"
+                    CommandParameter="{Binding ElementName=JournalListGrid, Path=SelectedItems}"
+                    IsEnabled="{Binding CanExportAnyJournal}"
+                    ToolTip="{Binding ExportSelectedTooltip}"
+                    Style="{StaticResource SecondaryPillButtonStyle}"
+                    Content="Export Terpilih" />
+        </StackPanel>
+
+        <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                  x:Name="JournalListGrid"
+                  Grid.Row="2"
+                  Margin="0,8,0,0"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
+                  ItemsSource="{Binding JournalList}"
+                  SelectedItem="{Binding SelectedJournal, Mode=TwoWay}"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="No Jurnal" Binding="{Binding JournalNo}" Width="150" />
+                <DataGridTextColumn Header="Tanggal" Binding="{Binding JournalDate, StringFormat=yyyy-MM-dd}" Width="120" />
+                <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="130" />
+                <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                <DataGridTextColumn Header="Debit" Binding="{Binding TotalDebit, StringFormat=N2}" Width="120" />
+                <DataGridTextColumn Header="Kredit" Binding="{Binding TotalCredit, StringFormat=N2}" Width="120" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

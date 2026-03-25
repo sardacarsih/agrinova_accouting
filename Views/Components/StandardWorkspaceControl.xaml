@@ -1,0 +1,36 @@
+﻿<UserControl x:Class="Accounting.Views.Components.StandardWorkspaceControl" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Grid>
+        <Grid Visibility="{Binding IsDashboardSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel>
+                <Border Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+                    <TextBlock Text="Ringkasan dashboard dan status ruang kerja aktif."
+                               FontSize="14"
+                               Foreground="{DynamicResource Brush.TextSecondary}" />
+                </Border>
+                <WrapPanel Margin="0,12,0,0">
+                    <Border Width="250" Height="100" Margin="0,0,10,10" CornerRadius="10" Background="{DynamicResource Brush.SurfaceMuted}">
+                        <StackPanel Margin="12">
+                            <TextBlock Text="Tugas Terbuka" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" />
+                            <TextBlock Text="128" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Width="250" Height="100" Margin="0,0,10,10" CornerRadius="10" Background="{DynamicResource Brush.SurfaceMuted}">
+                        <StackPanel Margin="12">
+                            <TextBlock Text="Transaksi Posted" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" />
+                            <TextBlock Text="4,362" Margin="0,8,0,0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+            </StackPanel>
+        </Grid>
+        <Grid Visibility="{Binding IsScopePlaceholderSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Border Padding="18" CornerRadius="12" Background="{DynamicResource Brush.SurfaceMuted}" VerticalAlignment="Top">
+                <StackPanel>
+                    <TextBlock Text="{Binding CurrentScopePlaceholderTitle}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+                    <TextBlock Margin="0,12,0,0" Text="{Binding CurrentScopePlaceholderDescription}" FontSize="14" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" />
+                    <TextBlock Margin="0,18,0,0" Text="Workspace ini sudah terproteksi akses dan siap digunakan." FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

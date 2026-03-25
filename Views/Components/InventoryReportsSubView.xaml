@@ -1,0 +1,238 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryReportsSubView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+            <StackPanel>
+                <TextBlock Text="Laporan Inventori" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                <TextBlock Text="Analisis pergerakan, valuasi, stok minimum, dan sinkronisasi."
+                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+            <WrapPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Jenis Laporan" />
+                    <ComboBox Width="220"
+                              Margin="0,6,0,0"
+                              Style="{StaticResource InputComboBoxStyle}"
+                              ItemsSource="{Binding ReportTypes}"
+                              SelectedItem="{Binding SelectedReportType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal Dari" />
+                    <DatePicker Width="170"
+                                Margin="0,6,0,0"
+                                SelectedDate="{Binding ReportDateFrom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                Height="38" />
+                </StackPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal Sampai" />
+                    <DatePicker Width="170"
+                                Margin="0,6,0,0"
+                                SelectedDate="{Binding ReportDateTo, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                Height="38" />
+                </StackPanel>
+                <StackPanel Margin="0,0,10,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="low_stock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Batas Stok Minimum" />
+                    <TextBox Width="170"
+                             Margin="0,6,0,0"
+                             Text="{Binding LowStockThreshold, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource InputTextBoxStyle}" />
+                </StackPanel>
+                <StackPanel VerticalAlignment="Bottom">
+                    <Button Command="{Binding GenerateReportCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Tampilkan" />
+                </StackPanel>
+            </WrapPanel>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Padding="8" Margin="0,8,0,0">
+            <Grid>
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="movement">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding MovementReportRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Kode" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Opening" Binding="{Binding OpeningQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Masuk" Binding="{Binding InQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Keluar" Binding="{Binding OutQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Adjust" Binding="{Binding AdjustmentQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Closing" Binding="{Binding ClosingQty, StringFormat=N2}" Width="100" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="valuation">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding ValuationReportRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Kode" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Avg Cost" Binding="{Binding AvgCost, StringFormat=N2}" Width="120" />
+                            <DataGridTextColumn Header="Nilai" Binding="{Binding TotalValue, StringFormat=N2}" Width="140" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="low_stock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding LowStockAlertRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Kode" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Lokasi" Binding="{Binding LocationName}" Width="140" />
+                            <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N2}" Width="100" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="sync_runs">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding SyncRunRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Run ID" Binding="{Binding Id}" Width="80" />
+                            <DataGridTextColumn Header="Direction" Binding="{Binding Direction}" Width="90" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                            <DataGridTextColumn Header="Started" Binding="{Binding StartedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" Width="160" />
+                            <DataGridTextColumn Header="Ended" Binding="{Binding EndedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" Width="160" />
+                            <DataGridTextColumn Header="Total" Binding="{Binding TotalItems}" Width="80" />
+                            <DataGridTextColumn Header="Success" Binding="{Binding SuccessItems}" Width="80" />
+                            <DataGridTextColumn Header="Failed" Binding="{Binding FailedItems}" Width="80" />
+                            <DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="sync_items">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding SyncItemLogRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Log ID" Binding="{Binding Id}" Width="80" />
+                            <DataGridTextColumn Header="Run ID" Binding="{Binding SyncRunId}" Width="80" />
+                            <DataGridTextColumn Header="Direction" Binding="{Binding Direction}" Width="90" />
+                            <DataGridTextColumn Header="Item Code" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Category" Binding="{Binding CategoryCode}" Width="120" />
+                            <DataGridTextColumn Header="Operation" Binding="{Binding Operation}" Width="100" />
+                            <DataGridTextColumn Header="Result" Binding="{Binding Result}" Width="90" />
+                            <DataGridTextColumn Header="Error" Binding="{Binding ErrorMessage}" Width="220" />
+                            <DataGridTextColumn Header="Logged At" Binding="{Binding LoggedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" Width="160" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="lk_outbound_compare">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding OutboundCompareRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tanggal" Binding="{Binding TxDate, StringFormat=yyyy-MM-dd}" Width="120" />
+                            <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="Kode Gudang" Binding="{Binding WarehouseCode}" Width="120" />
+                            <DataGridTextColumn Header="Gudang Tujuan" Binding="{Binding WarehouseName}" Width="180" />
+                            <DataGridTextColumn Header="Qty LK Oracle" Binding="{Binding QtyLkOracle, StringFormat=N2}" Width="120" />
+                            <DataGridTextColumn Header="Qty Transfer" Binding="{Binding QtyTransferInternal, StringFormat=N2}" Width="120" />
+                            <DataGridTextColumn Header="Selisih" Binding="{Binding QtyDiff, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding MatchStatus}" Width="130" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

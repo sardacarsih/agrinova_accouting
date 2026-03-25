@@ -1,0 +1,5 @@
+﻿<UserControl x:Class="Accounting.Views.Components.AppCard" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Padding="{Binding CardPadding, RelativeSource={RelativeSource AncestorType=UserControl}}" CornerRadius="{Binding CardCornerRadius, RelativeSource={RelativeSource AncestorType=UserControl}}" Background="{Binding CardBackground, RelativeSource={RelativeSource AncestorType=UserControl}}" BorderBrush="{Binding CardBorderBrush, RelativeSource={RelativeSource AncestorType=UserControl}}" BorderThickness="{Binding CardBorderThickness, RelativeSource={RelativeSource AncestorType=UserControl}}">
+        <ContentPresenter Content="{Binding CardContent, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+    </Border>
+</UserControl>

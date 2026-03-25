@@ -1,0 +1,9 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style x:Key="ActionButtonPrimaryStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}" />
+    <Style x:Key="ActionButtonSecondaryStyle" TargetType="Button" BasedOn="{StaticResource SecondaryPillButtonStyle}" />
+    <Style x:Key="ActionButtonDangerStyle" TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}" />
+    <Style x:Key="HeaderUserButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryPillButtonStyle}">
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Padding" Value="12,0" />
+    </Style>
+</ResourceDictionary>

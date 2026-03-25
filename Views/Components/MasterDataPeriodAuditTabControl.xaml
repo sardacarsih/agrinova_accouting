@@ -1,0 +1,76 @@
+<UserControl x:Class="Accounting.Views.Components.MasterDataPeriodAuditTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource SummaryCardStyle}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Audit Periode Akuntansi" />
+                <TextBlock Margin="0,4,0,0"
+                           Style="{StaticResource MetaCaptionTextStyle}"
+                           Text="Menampilkan jejak perubahan buka/tutup periode untuk company dan lokasi aktif." />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource SettingsSectionCardStyle}" Margin="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="Riwayat Aktivitas" />
+                    <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                        <Button Command="{Binding RefreshPeriodAuditCommand}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Muat Ulang Audit" />
+                        <Border Margin="8,0,0,0" Style="{StaticResource SettingsHintCardStyle}">
+                            <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                                       Text="{Binding AccountingPeriodAuditLogs.Count, Mode=OneWay, StringFormat=Total log: {0}}" />
+                        </Border>
+                    </WrapPanel>
+                </StackPanel>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding AccountingPeriodAuditLogs}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Waktu" Binding="{Binding CreatedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" Width="170" />
+                            <DataGridTextColumn Header="Aksi" Binding="{Binding Action}" Width="100" />
+                            <DataGridTextColumn Header="Pengguna" Binding="{Binding ActorUsername}" Width="140" />
+                            <DataGridTextColumn Header="Detail" Binding="{Binding Details}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border IsHitTestVisible="False">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AccountingPeriodAuditLogs.Count, Mode=OneWay}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="Belum ada log audit periode untuk konteks aktif."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Brush.TextMuted}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

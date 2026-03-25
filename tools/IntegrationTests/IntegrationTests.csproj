@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Accounting.csproj" />
+    <Reference Include="Npgsql">
+      <HintPath>$(UserProfile)\.nuget\packages\npgsql\8.0.4\lib\net8.0\Npgsql.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions">
+      <HintPath>$(UserProfile)\.nuget\packages\microsoft.extensions.logging.abstractions\8.0.0\lib\net8.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

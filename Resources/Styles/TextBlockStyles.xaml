@@ -1,0 +1,36 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style x:Key="HeaderTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource TitleTextStyle}" />
+    <Style x:Key="HeaderSectionTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SectionHeaderTextStyle}" />
+    <Style x:Key="FormFieldLabelTextStyle" TargetType="TextBlock" BasedOn="{StaticResource FieldLabelTextStyle}" />
+    <Style x:Key="HeaderScopeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource HeaderSectionTextStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}" />
+        <Setter Property="Margin" Value="16,0,0,0" />
+    </Style>
+    <Style x:Key="EnvironmentBadgeTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="{DynamicResource Font.Caption}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+    </Style>
+    <Style x:Key="FooterMetaLabelTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="{DynamicResource Font.Caption}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
+    </Style>
+    <Style x:Key="FooterMetaValueTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="{DynamicResource Font.Caption}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}" />
+    </Style>
+    <Style x:Key="FooterMetaSuccessValueTextStyle" TargetType="TextBlock" BasedOn="{StaticResource FooterMetaValueTextStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Success}" />
+    </Style>
+    <Style x:Key="FooterPeriodStateTextStyle" TargetType="TextBlock" BasedOn="{StaticResource FooterMetaValueTextStyle}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsCurrentPeriodOpen}" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsCurrentPeriodOpen}" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource Brush.Success}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>

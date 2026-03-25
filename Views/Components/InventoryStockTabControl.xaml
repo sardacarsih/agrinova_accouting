@@ -1,0 +1,35 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryStockTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <DockPanel Margin="10">
+        <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+            <StackPanel>
+                <TextBlock Text="Posisi Stok" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                <TextBlock Text="Pantau posisi stok per item, satuan, dan lokasi."
+                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+            </StackPanel>
+        </Border>
+        <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
+            </StackPanel>
+        </Border>
+        <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                  Margin="0,8,0,0"
+                  ItemsSource="{Binding StockEntries}"
+                  SelectedItem="{Binding SelectedStockEntry, Mode=TwoWay}"
+                  AutoGenerateColumns="False"
+                  MinHeight="220"
+                  IsReadOnly="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                <DataGridTextColumn Header="Lokasi" Binding="{Binding LocationName}" Width="150" />
+                <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N4}" Width="120" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

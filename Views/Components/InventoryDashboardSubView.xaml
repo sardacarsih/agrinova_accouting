@@ -1,0 +1,92 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryDashboardSubView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <DockPanel Margin="10">
+        <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+            <StackPanel>
+                <TextBlock Text="Dashboard Inventori" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                <TextBlock Text="Ringkasan item, nilai stok, dan transaksi inventori terkini."
+                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding RefreshDashboardCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang Dashboard" />
+            </StackPanel>
+        </Border>
+
+        <WrapPanel DockPanel.Dock="Top" Margin="0,12,0,0">
+            <Border Style="{StaticResource SummaryCardStyle}" Width="250" Height="100" Margin="0,0,8,8">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Total Item" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
+                    <TextBlock Text="{Binding TotalItemCount}" FontSize="28" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SummaryCardStyle}" Width="250" Height="100" Margin="0,0,8,8">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Nilai Stock" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
+                    <TextBlock Text="{Binding TotalStockValue, StringFormat=N2}" FontSize="28" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SummaryCardStyle}" Width="250" Height="100" Margin="0,0,8,8">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Stock Rendah" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
+                    <TextBlock Text="{Binding LowStockCount}" FontSize="28" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.Warning}" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SummaryCardStyle}" Width="250" Height="100" Margin="0,0,8,8">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Transaksi Pending" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
+                    <TextBlock Text="{Binding PendingTransactionCount}" FontSize="28" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.Info}" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+        </WrapPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="Transaksi Terbaru" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,8,0,6" />
+                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                          ItemsSource="{Binding DashboardRecentTransactions}"
+                          AutoGenerateColumns="False" IsReadOnly="True" MinHeight="180">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="No. Transaksi" Binding="{Binding TransactionNo}" Width="140" />
+                        <DataGridTextColumn Header="Tipe" Binding="{Binding TransactionType}" Width="100" />
+                        <DataGridTextColumn Header="Tanggal" Binding="{Binding TransactionDate, StringFormat=dd/MM/yyyy}" Width="100" />
+                        <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="120" />
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                        <DataGridTextColumn Header="Total Qty" Binding="{Binding TotalQty, StringFormat=N2}" Width="100" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Text="Stock Rendah" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,8,0,6" />
+                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                          ItemsSource="{Binding DashboardLowStockItems}"
+                          AutoGenerateColumns="False" IsReadOnly="True" MinHeight="180">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                        <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                        <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="70" />
+                        <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N4}" Width="100" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

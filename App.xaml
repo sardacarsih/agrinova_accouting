@@ -1,0 +1,29 @@
+<Application x:Class="Accounting.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:Accounting.Converters"
+             StartupUri="LoginWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+            <conv:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+            <conv:EnumToBooleanConverter x:Key="EnumToBooleanConverter" />
+            <conv:WidthLessThanConverter x:Key="WidthLessThanConverter" />
+
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/DesignTokens.xaml" />
+                <ResourceDictionary Source="Resources/Styles.xaml" />
+                <ResourceDictionary Source="Resources/Styles/ButtonStyles.xaml" />
+                <ResourceDictionary Source="Resources/Styles/ComponentStyles.xaml" />
+                <ResourceDictionary Source="Resources/Styles/TextBoxStyles.xaml" />
+                <ResourceDictionary Source="Resources/Styles/TextBlockStyles.xaml" />
+                <ResourceDictionary Source="Resources/Styles/LayoutStyles.xaml" />
+                <ResourceDictionary Source="Resources/Templates/NavigationTemplates.xaml" />
+                <ResourceDictionary Source="Resources/Templates/DataGridTemplates.xaml" />
+                <ResourceDictionary Source="Resources/Templates/FormTemplates.xaml" />
+                <ResourceDictionary Source="Resources/Themes/DarkTheme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

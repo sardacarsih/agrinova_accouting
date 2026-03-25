@@ -1,0 +1,217 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryItemsTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10" x:Name="ItemResponsiveGrid">
+        <Grid.Resources>
+            <Style x:Key="ItemListPaneStyle" TargetType="DockPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="0" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=ItemResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1120}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="0" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="ItemEditorPaneStyle" TargetType="StackPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="2" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Setter Property="Margin" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=ItemResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1120}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="2" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                        <Setter Property="Margin" Value="0,10,0,0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.2*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Style="{StaticResource ItemListPaneStyle}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Master Item" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                    <TextBlock Text="Kelola item inventori, sinkronisasi, dan impor data master."
+                               Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+                </StackPanel>
+            </Border>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,8,0,0">
+                <Button Command="{Binding NewItemCommand}"
+                        IsEnabled="{Binding CanCreateItem}"
+                        ToolTip="{Binding NewItemTooltip}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Item Baru" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding ImportInventoryMasterDataCommand}"
+                        IsEnabled="{Binding CanImportInventoryMasterData}"
+                        ToolTip="{Binding ImportInventoryMasterDataTooltip}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Impor" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding DownloadInventoryImportTemplateCommand}"
+                        IsEnabled="{Binding CanDownloadInventoryImportTemplate}"
+                        ToolTip="{Binding DownloadInventoryImportTemplateTooltip}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Template" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding SyncFromMasterCommand}"
+                        IsEnabled="{Binding CanSyncFromMaster}"
+                        ToolTip="{Binding SyncActionTooltip}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="{Binding SyncActionLabel}" />
+                <Button Margin="8,0,0,0" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
+            </WrapPanel>
+            <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+                <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Text="{Binding ItemSearchKeyword, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource InputTextBoxStyle}" />
+                <Button Grid.Column="2"
+                        Command="{Binding SearchItemsCommand}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Cari" />
+                <Button Grid.Column="4"
+                        Command="{Binding ResetItemSearchCommand}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Reset" />
+                <TextBlock Grid.Column="6"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource Brush.TextMuted}"
+                           Text="{Binding ItemSearchPageSummary}" />
+                <Button Grid.Column="8"
+                        Command="{Binding PreviousItemPageCommand}"
+                        IsEnabled="{Binding CanGoToPreviousItemPage}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Sebelumnya" />
+                <Button Grid.Column="10"
+                        Command="{Binding NextItemPageCommand}"
+                        IsEnabled="{Binding CanGoToNextItemPage}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Berikutnya" />
+                </Grid>
+            </Border>
+            <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                      Margin="0,8,0,0"
+                      ItemsSource="{Binding ItemSearchResults}"
+                      SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                      AutoGenerateColumns="False"
+                      MinHeight="220"
+                      IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="120" />
+                    <DataGridTextColumn Header="Nama Item" Binding="{Binding Name}" Width="*" />
+                    <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                    <DataGridTextColumn Header="Kategori" Binding="{Binding CategoryName}" Width="220" />
+                    <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+
+        <StackPanel Style="{StaticResource ItemEditorPaneStyle}">
+            <TextBlock Text="Editor Item" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+            <Border Margin="0,8,0,0"
+                    Padding="8"
+                    Background="{DynamicResource Brush.SurfaceAlt}"
+                    BorderBrush="{DynamicResource Brush.BorderSoft}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding ShowInventoryPolicyBanner, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Foreground="{DynamicResource Brush.TextMuted}"
+                           TextWrapping="Wrap"
+                           Text="{Binding InventoryPolicyBannerText}" />
+            </Border>
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode Item" />
+            <TextBox Margin="0,6,0,0"
+                     IsEnabled="{Binding CanSaveItem}"
+                     ToolTip="{Binding SaveItemTooltip}"
+                     Text="{Binding SelectedItem.Code, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource InputTextBoxStyle}" />
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama Item" />
+            <TextBox Margin="0,6,0,0"
+                     IsEnabled="{Binding CanSaveItem}"
+                     ToolTip="{Binding SaveItemTooltip}"
+                     Text="{Binding SelectedItem.Name, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource InputTextBoxStyle}" />
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Satuan (UoM)" />
+            <ComboBox Margin="0,6,0,0"
+                      Style="{StaticResource InputComboBoxStyle}"
+                      IsEnabled="{Binding CanSaveItem}"
+                      ToolTip="{Binding SaveItemTooltip}"
+                      ItemsSource="{Binding UomOptions}"
+                      SelectedItem="{Binding SelectedItem.Uom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kategori" />
+            <ComboBox Margin="0,6,0,0"
+                      Style="{StaticResource InputComboBoxStyle}"
+                      IsEnabled="{Binding CanSaveItem}"
+                      ToolTip="{Binding SaveItemTooltip}"
+                      ItemsSource="{Binding ActiveCategories}"
+                      SelectedValuePath="Id"
+                      SelectedValue="{Binding SelectedItem.CategoryId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                      IsTextSearchEnabled="True"
+                      TextSearch.TextPath="Name">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock>
+                            <Run Text="{Binding Name, Mode=OneWay}" />
+                        </TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <CheckBox Margin="0,8,0,0"
+                      IsEnabled="{Binding CanSaveItem}"
+                      ToolTip="{Binding SaveItemTooltip}"
+                      IsChecked="{Binding SelectedItem.IsActive}"
+                      Style="{StaticResource CompactCheckBoxStyle}"
+                      Content="Aktif" />
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <Button Command="{Binding SaveItemCommand}"
+                        IsEnabled="{Binding CanSaveItem}"
+                        ToolTip="{Binding SaveItemTooltip}"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Content="Simpan Item" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding DeactivateItemCommand}"
+                        IsEnabled="{Binding CanDeactivateItem}"
+                        ToolTip="{Binding DeactivateItemTooltip}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Nonaktifkan" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,186 @@
+<UserControl x:Class="Accounting.Views.Components.UserManagementUsersTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.1*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                <Button Command="{Binding NewUserCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Pengguna Baru" />
+                <Button Margin="8,0,0,0" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
+            </StackPanel>
+            <Grid Grid.Row="1" Margin="0,8,0,0">
+                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                          ItemsSource="{Binding Users}"
+                          SelectedItem="{Binding SelectedUser, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          MinHeight="220">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="150" />
+                        <DataGridTextColumn Header="Nama Lengkap" Binding="{Binding FullName}" Width="*" />
+                        <DataGridTextColumn Header="Role" Binding="{Binding RoleDisplay}" Width="220" />
+                        <DataGridTextColumn Header="Modul" Binding="{Binding ModuleDisplay}" Width="220" />
+                        <DataGridTextColumn Header="Company Default" Binding="{Binding DefaultCompanyDisplay}" Width="180" />
+                        <DataGridTextColumn Header="Lokasi Default" Binding="{Binding DefaultLocationDisplay}" Width="180" />
+                        <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Border IsHitTestVisible="False">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Users.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="Belum ada pengguna."
+                               FontSize="13"
+                               Foreground="{DynamicResource Brush.TextMuted}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+        </Grid>
+
+        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <TextBlock Text="Editor Pengguna" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Username" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedUser.Username, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama Lengkap" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedUser.FullName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Email" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedUser.Email, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Password Baru" />
+                <TextBox Margin="0,6,0,0" Text="{Binding NewUserPassword, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <CheckBox Margin="0,8,0,0" IsChecked="{Binding SelectedUser.IsActive}" Style="{StaticResource CompactCheckBoxStyle}" Content="Aktif" />
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Role" />
+                <ComboBox Margin="0,6,0,0"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding UserRoleOptions}"
+                          SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedUserRoleId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Akses Company" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="Semua"
+                            Command="{Binding SelectAllUserCompaniesCommand}"
+                            Style="{StaticResource SelectAllLinkStyle}" />
+                    <TextBlock Text=" / " FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" VerticalAlignment="Center" />
+                    <Button Content="Kosongkan"
+                            Command="{Binding DeselectAllUserCompaniesCommand}"
+                            Style="{StaticResource SelectAllLinkStyle}" />
+                </StackPanel>
+                <Border Margin="0,6,0,0"
+                        BorderBrush="{DynamicResource Brush.Border}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="8"
+                        Background="{DynamicResource Brush.SurfaceMuted}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="120">
+                        <ItemsControl ItemsSource="{Binding UserCompanyOptions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Margin="0,0,0,4"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              IsChecked="{Binding IsSelected}"
+                                              IsEnabled="{Binding IsEnabled}"
+                                              Content="{Binding Label}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Akses Lokasi" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="Semua"
+                            Command="{Binding SelectAllUserLocationsCommand}"
+                            Style="{StaticResource SelectAllLinkStyle}" />
+                    <TextBlock Text=" / " FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" VerticalAlignment="Center" />
+                    <Button Content="Kosongkan"
+                            Command="{Binding DeselectAllUserLocationsCommand}"
+                            Style="{StaticResource SelectAllLinkStyle}" />
+                </StackPanel>
+                <Border Margin="0,6,0,0"
+                        BorderBrush="{DynamicResource Brush.Border}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="8"
+                        Background="{DynamicResource Brush.SurfaceMuted}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="150">
+                        <ItemsControl ItemsSource="{Binding UserLocationOptions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Margin="0,0,0,4"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              IsChecked="{Binding IsSelected}"
+                                              IsEnabled="{Binding IsEnabled}"
+                                              Content="{Binding Label}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Company Default" />
+                <ComboBox Margin="0,6,0,0"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding UserDefaultCompanyOptions}"
+                          SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedUserDefaultCompanyId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          IsEnabled="{Binding IsSelectedUserSuperRole, Converter={StaticResource InverseBooleanConverter}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Foreground="{DynamicResource Brush.TextPrimary}">
+                                <Run Text="{Binding Code}" />
+                                <Run Text=" - " />
+                                <Run Text="{Binding Name}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Lokasi Default" />
+                <ComboBox Margin="0,6,0,0"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding UserDefaultLocationOptions}"
+                          SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedUserDefaultLocationId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          IsEnabled="{Binding IsSelectedUserSuperRole, Converter={StaticResource InverseBooleanConverter}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Foreground="{DynamicResource Brush.TextPrimary}">
+                                <Run Text="{Binding Code}" />
+                                <Run Text=" - " />
+                                <Run Text="{Binding Name}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Margin="0,8,0,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource Brush.TextMuted}"
+                           Text="SUPER_ADMIN selalu mendapatkan akses semua company/location aktif."
+                           Visibility="{Binding IsSelectedUserSuperRole, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <Button Margin="0,12,0,0" Command="{Binding SaveUserCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Pengguna" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

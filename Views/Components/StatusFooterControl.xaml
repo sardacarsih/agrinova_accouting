@@ -1,0 +1,38 @@
+﻿<UserControl x:Class="Accounting.Views.Components.StatusFooterControl" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Grid>
+        <Border Style="{StaticResource FooterShellCardStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource FooterMetaLabelTextStyle}" Text="Koneksi:" />
+                    <TextBlock Margin="6,0,14,0" Style="{StaticResource FooterMetaSuccessValueTextStyle}" Text="{Binding ConnectionStatusText}" />
+                    <TextBlock Style="{StaticResource FooterMetaLabelTextStyle}" Text="Server:" />
+                    <TextBlock Margin="6,0,14,0" Style="{StaticResource FooterMetaValueTextStyle}" Text="{Binding ServerName}" />
+                    <TextBlock Style="{StaticResource FooterMetaLabelTextStyle}" Text="Pengguna:" />
+                    <TextBlock Margin="6,0,14,0" Style="{StaticResource FooterMetaValueTextStyle}" Text="{Binding CurrentUserDisplayName}" />
+                    <TextBlock Style="{StaticResource FooterMetaLabelTextStyle}" Text="Role:" />
+                    <TextBlock Margin="6,0,14,0" Style="{StaticResource FooterMetaValueTextStyle}" Text="{Binding CurrentRoleDisplayName}" />
+                    <TextBlock Style="{StaticResource FooterMetaLabelTextStyle}" Text="Company:" />
+                    <TextBlock Margin="6,0,14,0" Style="{StaticResource FooterMetaValueTextStyle}" Text="{Binding CurrentCompanyDisplayName}" />
+                    <TextBlock Style="{StaticResource FooterMetaLabelTextStyle}" Text="Lokasi:" />
+                    <TextBlock Margin="6,0,0,0" Style="{StaticResource FooterMetaValueTextStyle}" Text="{Binding CurrentLocationDisplayName}" />
+                    <TextBlock Margin="14,0,0,0" Style="{StaticResource FooterMetaLabelTextStyle}" Text="Periode:" />
+                    <TextBlock Margin="6,0,0,0" Style="{StaticResource FooterPeriodStateTextStyle}" Text="{Binding CurrentPeriodMonthText}" />
+                    <TextBlock Margin="4,0,0,0" Style="{StaticResource FooterPeriodStateTextStyle}" Text="{Binding CurrentPeriodStatusText}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{DynamicResource SecondaryPillButtonStyle}"
+                            Height="28"
+                            Padding="10,0"
+                            FontSize="11"
+                            Command="{Binding OpenLogFolderCommand}"
+                            Content="Buka Folder Log" />
+                    <TextBlock Margin="10,0,0,0" Style="{StaticResource FooterMetaValueTextStyle}" Text="{Binding CurrentTimeText}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

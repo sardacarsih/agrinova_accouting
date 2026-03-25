@@ -1,0 +1,154 @@
+<UserControl x:Class="Accounting.Views.Components.JournalImportTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <TabControl>
+            <TabItem Header="Import File">
+                <Grid Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding ImportFilePath}" Style="{StaticResource InputTextBoxStyle}" />
+                        <Button Grid.Column="2" Command="{Binding BrowseImportFileCommand}" IsEnabled="{Binding CanBrowseImportFile}" ToolTip="{Binding BrowseImportTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Browse" />
+                        <Button Grid.Column="4" Command="{Binding PreviewImportCommand}" IsEnabled="{Binding CanPreviewImportFile}" ToolTip="{Binding PreviewImportTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Preview" />
+                        <Button Grid.Column="6" Command="{Binding CommitImportCommand}" IsEnabled="{Binding CanCommitImportDrafts}" ToolTip="{Binding CommitImportTooltip}" Style="{StaticResource PrimaryButtonStyle}" Content="Import Draft" />
+                    </Grid>
+
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              Grid.Row="1"
+                              Margin="0,8,0,0"
+                              ItemsSource="{Binding ImportPreviewItems}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Row" Binding="{Binding RowNumber}" Width="60" />
+                            <DataGridTextColumn Header="No Jurnal" Binding="{Binding JournalNo}" Width="140" />
+                            <DataGridTextColumn Header="Akun" Binding="{Binding AccountCode}" Width="110" />
+                            <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
+                            <DataGridTextColumn Header="Debit" Binding="{Binding Debit, StringFormat=N2}" Width="110" />
+                            <DataGridTextColumn Header="Kredit" Binding="{Binding Credit, StringFormat=N2}" Width="110" />
+                            <DataGridCheckBoxColumn Header="Valid" Binding="{Binding IsValid}" Width="70" />
+                            <DataGridTextColumn Header="Pesan" Binding="{Binding ValidationMessage}" Width="220" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,8,0,0"
+                               Foreground="{DynamicResource Brush.TextSecondary}"
+                               Text="{Binding ImportMessage}" />
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Dari Inventory">
+                <Grid Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Style="{StaticResource SettingsHintCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="250" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Periode" />
+                                <DatePicker Margin="0,6,0,0"
+                                            SelectedDate="{Binding InventoryPullPeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Height="38" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Lokasi Scope" />
+                                <TextBox Margin="0,6,0,0"
+                                         Text="{Binding InventoryPullLocationLabel, Mode=OneWay}"
+                                         IsReadOnly="True"
+                                         Style="{StaticResource InputTextBoxStyle}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Keterangan" />
+                                <TextBlock Margin="0,10,0,0"
+                                           Foreground="{DynamicResource Brush.TextSecondary}"
+                                           TextWrapping="Wrap"
+                                           Text="Tarik event inventory periode terpilih menjadi draft jurnal accounting (tanpa auto-submit/post)." />
+                            </StackPanel>
+
+                            <Button Grid.Column="6"
+                                    VerticalAlignment="Bottom"
+                                    Command="{Binding PullInventoryJournalsCommand}"
+                                    IsEnabled="{Binding CanPullInventoryJournals}"
+                                    ToolTip="{Binding InventoryPullTooltip}"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Content="Pull Jurnal Inventory" />
+                        </Grid>
+                    </Border>
+
+                    <WrapPanel Grid.Row="1" Margin="0,8,0,0" Style="{StaticResource SettingsActionWrapPanelStyle}">
+                        <Button Command="{Binding LoadPulledDraftsToSearchCommand}"
+                                IsEnabled="{Binding CanPullInventoryJournals}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Muat ke Tab Cari (Draft)" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding OpenPulledDraftJournalCommand}"
+                                CommandParameter=""
+                                IsEnabled="{Binding HasPulledInventoryDrafts}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Buka Draft Pertama" />
+                    </WrapPanel>
+
+                    <DataGrid Grid.Row="2"
+                              Margin="0,8,0,0"
+                              Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding InventoryPullCreatedJournalNos}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No Jurnal Draft" Binding="{Binding}" Width="*" />
+                            <DataGridTemplateColumn Header="Aksi" Width="120">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding DataContext.OpenPulledDraftJournalCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                                Content="Buka Draft" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <TextBlock Grid.Row="3"
+                               Margin="0,8,0,0"
+                               Foreground="{DynamicResource Brush.TextSecondary}"
+                               TextWrapping="Wrap"
+                               Text="{Binding InventoryPullMessage}" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

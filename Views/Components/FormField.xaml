@@ -1,0 +1,12 @@
+﻿<UserControl x:Class="Accounting.Views.Components.FormField" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Style="{StaticResource FieldLabelTextStyle}" Text="{Binding Label, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+        <ContentPresenter Grid.Row="1" Margin="0,6,0,0" Content="{Binding FieldContent, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+        <TextBlock Grid.Row="2" Margin="0,6,0,0" Foreground="{DynamicResource Brush.TextMuted}" FontSize="11" Text="{Binding Hint, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+    </Grid>
+</UserControl>

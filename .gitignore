@@ -1,0 +1,29 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Logs and test results
+*.log
+TestResults/
+
+# NuGet
+*.nupkg
+packages/
+
+# Local configuration and secrets
+appsettings.json
+appsettings.*.json
+!appsettings.example.json
+

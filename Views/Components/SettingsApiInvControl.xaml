@@ -1,0 +1,286 @@
+<UserControl x:Class="Accounting.Views.Components.SettingsApiInvControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="12">
+            <Border Style="{StaticResource SummaryCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Pengaturan API Inventori" />
+                    <TextBlock Margin="0,4,0,0"
+                               Style="{StaticResource MetaCaptionTextStyle}"
+                               Text="Kelola master perusahaan inventori, parameter biaya COGS, dan koneksi sinkronisasi pusat secara berurutan." />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsSectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="Langkah 1" />
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="Master Perusahaan Inventori" />
+                    <TextBlock Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                               Text="Tentukan perusahaan induk inventori sebagai referensi global." />
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <StackPanel>
+                            <TextBlock Foreground="{DynamicResource Brush.TextMuted}" Text="{Binding MasterCompanyPermissionMessage}" />
+                            <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                                <ComboBox Width="360"
+                                          Style="{StaticResource InputComboBoxStyle}"
+                                          ItemsSource="{Binding ActiveCompanyOptions}"
+                                          SelectedValuePath="Id"
+                                          IsEnabled="{Binding CanManageMasterCompanySetting}"
+                                          SelectedValue="{Binding SelectedInventoryMasterCompanyId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock>
+                                                <Run Text="{Binding Code}" />
+                                                <Run Text=" - " />
+                                                <Run Text="{Binding Name}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding SaveInventoryMasterCompanyCommand}"
+                                        IsEnabled="{Binding CanManageMasterCompanySetting}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="Simpan Master Perusahaan" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsSectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="Langkah 2" />
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="Biaya Inventori dan COGS" />
+                    <TextBlock Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                               Text="Pilih ruang lingkup dengan jelas: default perusahaan atau override lokasi. Simpan sebelum hitung ulang." />
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Ruang Lingkup Pengaturan" />
+
+                            <WrapPanel Margin="0,8,0,0">
+                                <StackPanel Width="220" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Perusahaan" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              ItemsSource="{Binding ActiveCompanyOptions}"
+                                              SelectedValuePath="Id"
+                                              SelectedValue="{Binding SelectedInventoryCostingCompanyId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <Run Text="{Binding Code}" />
+                                                    <Run Text=" - " />
+                                                    <Run Text="{Binding Name}" />
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Width="280" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Lokasi (opsional untuk override)" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              ItemsSource="{Binding InventoryCostingLocationOptions}"
+                                              SelectedValuePath="Id"
+                                              SelectedValue="{Binding SelectedInventoryCostingLocationId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <Run Text="{Binding Code}" />
+                                                    <Run Text=" - " />
+                                                    <Run Text="{Binding Name}" />
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Width="320" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Mode Override Lokasi" />
+                                    <CheckBox Margin="0,8,0,0"
+                                              Content="Aktifkan override metode dan akun COGS untuk lokasi terpilih"
+                                              IsEnabled="{Binding CanEditInventoryCostingLocation}"
+                                              IsChecked="{Binding UseInventoryLocationOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </WrapPanel>
+
+                            <Border Margin="0,4,0,0"
+                                    Padding="8,6"
+                                    BorderBrush="{DynamicResource Brush.Border}"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <TextBlock FontWeight="SemiBold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}" />
+                                            <Setter Property="Text" Value="Mode Aktif: Default Perusahaan" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding UseInventoryLocationOverride}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Primary}" />
+                                                    <Setter Property="Text" Value="Mode Aktif: Override Lokasi" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Parameter Biaya" />
+
+                            <WrapPanel Margin="0,8,0,0">
+                                <StackPanel Width="220" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Metode Penilaian" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              ItemsSource="{Binding InventoryValuationMethodOptions}"
+                                              SelectedItem="{Binding InventoryValuationMethod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+
+                                <StackPanel Width="500" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Akun COGS" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              IsEditable="True"
+                                              IsTextSearchEnabled="True"
+                                              TextSearch.TextPath="Code"
+                                              ItemsSource="{Binding InventoryCostingAccountOptions}"
+                                              SelectedValuePath="Code"
+                                              SelectedValue="{Binding InventoryCogsAccountCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <Run Text="{Binding Code}" />
+                                                    <Run Text=" - " />
+                                                    <Run Text="{Binding Name}" />
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Aksi Simpan" />
+                            <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                                <Button Command="{Binding SaveInventoryCostingSettingsCommand}"
+                                        IsEnabled="{Binding CanRecalculateInventoryCostingCompany}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="Simpan Default Perusahaan" />
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding SaveInventoryLocationCostingSettingsCommand}"
+                                        IsEnabled="{Binding CanEditInventoryCostingLocation}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="Simpan Override Lokasi" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,8,0,0"
+                            Padding="10"
+                            Background="{DynamicResource Brush.Surface}"
+                            BorderBrush="{DynamicResource Brush.Warning}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Brush.Warning}"
+                                       Text="Perhatian: Hitung ulang akan menulis ulang histori biaya dan jurnal penyesuaian." />
+                            <TextBlock Margin="0,4,0,0"
+                                       Foreground="{DynamicResource Brush.TextMuted}"
+                                       Text="Gunakan ruang lingkup paling kecil yang dibutuhkan. Jalankan setelah konfigurasi disimpan." />
+                            <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                                <Button Command="{Binding RecalculateInventoryCostingCompanyCommand}"
+                                        IsEnabled="{Binding CanRecalculateInventoryCostingCompany}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Hitung Ulang Perusahaan" />
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding RecalculateInventoryCostingLocationCommand}"
+                                        IsEnabled="{Binding CanRecalculateInventoryCostingLocation}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Hitung Ulang Lokasi" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsSectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="Langkah 3" />
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="API Sinkronisasi Pusat Inventori" />
+                    <TextBlock Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                               Text="Pastikan koneksi, path endpoint, dan timeout sesuai layanan pusat. Untuk compare LK Oracle, field Jalur Unduh dapat diisi SQL SELECT." />
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Koneksi" />
+
+                            <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="URL Dasar Sinkronisasi Pusat" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding CentralSyncBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+
+                            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kunci API Sinkronisasi Pusat" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding CentralSyncApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Endpoint" />
+                            <TextBlock Margin="0,4,0,0"
+                                       Foreground="{DynamicResource Brush.TextMuted}"
+                                       Text="Gunakan path relatif untuk mode API (mis. /api/inventory/sync/upload), atau isi SQL SELECT untuk sumber Oracle LK." />
+
+                            <WrapPanel Margin="0,8,0,0">
+                                <StackPanel Width="360" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Jalur Upload" />
+                                    <TextBox Margin="0,6,0,0"
+                                             Text="{Binding CentralSyncUploadPath, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource InputTextBoxStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Width="360" Margin="0,0,8,8">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Jalur Unduh / SQL Oracle LK" />
+                                    <TextBox Margin="0,6,0,0"
+                                             Text="{Binding CentralSyncDownloadPath, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource InputTextBoxStyle}" />
+                                </StackPanel>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                        <StackPanel Width="200">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Timeout (detik)" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding CentralSyncTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+
+                        <Button Margin="12,24,0,0"
+                                Command="{Binding SaveInventoryCentralSyncSettingsCommand}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="Simpan Pengaturan API Sinkronisasi" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

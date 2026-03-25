@@ -1,0 +1,67 @@
+<UserControl x:Class="Accounting.Views.Components.SettingsWorkspaceControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:comp="clr-namespace:Accounting.Views.Components"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
+            <StackPanel>
+                <TextBlock Text="Pengaturan" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                <TextBlock Text="Kelola konfigurasi organisasi, API inventori, dan parameter sistem."
+                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <comp:SettingsOrganizationControl DataContext="{Binding UserManagement}"
+                                              Visibility="{Binding DataContext.UserManagement.IsSettingsCompaniesTabSelected, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <comp:SettingsApiInvControl DataContext="{Binding UserManagement}"
+                                        Visibility="{Binding DataContext.UserManagement.IsSettingsApiInvTabSelected, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <comp:MasterDataPeriodsTabControl DataContext="{Binding MasterData}"
+                                              Visibility="{Binding DataContext.UserManagement.IsSettingsPeriodsTabSelected, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <comp:MasterDataPeriodAuditTabControl DataContext="{Binding MasterData}"
+                                                  Visibility="{Binding DataContext.UserManagement.IsSettingsPeriodAuditTabSelected, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <Border Margin="10"
+                    Padding="14"
+                    CornerRadius="{DynamicResource Radius.Card}"
+                    BorderThickness="1"
+                    Background="{DynamicResource Brush.SurfaceMuted}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    Visibility="{Binding DataContext.UserManagement.IsAnyAccountingConfigTabSelected, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding UserManagement.AccountingSettingsPlaceholderTitle}"
+                               Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                    <TextBlock Margin="0,8,0,0"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource Brush.TextSecondary}"
+                               Text="{Binding UserManagement.AccountingSettingsPlaceholderDescription}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <ContentControl Content="{Binding UserManagement}"
+                            ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}"
+                            Visibility="{Binding UserManagement.IsSettingsCompaniesTabSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <ContentControl Content="{Binding UserManagement}"
+                            ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}"
+                            Visibility="{Binding UserManagement.IsSettingsApiInvTabSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <ContentControl Content="{Binding MasterData}"
+                            ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}"
+                            Visibility="{Binding UserManagement.IsSettingsPeriodsTabSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <ContentControl Content="{Binding MasterData}"
+                            ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}"
+                            Visibility="{Binding UserManagement.IsSettingsPeriodAuditTabSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <ContentControl Content="{Binding UserManagement}"
+                            ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}"
+                            Visibility="{Binding UserManagement.IsAnyAccountingConfigTabSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+        </Grid>
+    </Grid>
+</UserControl>

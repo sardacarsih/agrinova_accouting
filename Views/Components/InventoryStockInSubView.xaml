@@ -1,0 +1,244 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryStockInSubView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10" x:Name="StockInResponsiveGrid">
+        <Grid.Resources>
+            <Style x:Key="StockInListPaneStyle" TargetType="DockPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="0" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=StockInResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1220}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="0" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="StockInEditorPaneStyle" TargetType="Grid">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="2" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Setter Property="Margin" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=StockInResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1220}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="2" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                        <Setter Property="Margin" Value="0,10,0,0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.1*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="1.5*" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Style="{StaticResource StockInListPaneStyle}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Stok Masuk" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                    <TextBlock Text="Kelola penerimaan stok, termasuk impor saldo awal."
+                               Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+                </StackPanel>
+            </Border>
+            <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+                <WrapPanel>
+                    <Button Command="{Binding NewStockInCommand}"
+                            IsEnabled="{Binding CanCreateStockIn}"
+                            ToolTip="{Binding NewStockInTooltip}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Transaksi Baru" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding DownloadOpeningBalanceTemplateCommand}"
+                            IsEnabled="{Binding CanOperateOpeningBalance}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Template OB" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding ImportOpeningBalanceCommand}"
+                            IsEnabled="{Binding CanOperateOpeningBalance}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Impor OB" />
+                </WrapPanel>
+            </Border>
+            <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding StockInSearchKeyword, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource InputTextBoxStyle}" />
+                    <Button Grid.Column="2"
+                            Command="{Binding SearchStockInCommand}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Cari" />
+                </Grid>
+            </Border>
+            <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                      Margin="0,8,0,0"
+                      ItemsSource="{Binding StockInTransactionList}"
+                      AutoGenerateColumns="False"
+                      MinHeight="220"
+                      IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="No." Binding="{Binding TransactionNo}" Width="120" />
+                    <DataGridTextColumn Header="Tanggal" Binding="{Binding TransactionDate, StringFormat=dd/MM/yyyy}" Width="100" />
+                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                    <DataGridTextColumn Header="Qty" Binding="{Binding TotalQty, StringFormat=N2}" Width="90" />
+                    <DataGridTemplateColumn Header="Aksi" Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Command="{Binding DataContext.LoadStockInCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Muat" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+
+        <Grid Style="{StaticResource StockInEditorPaneStyle}"
+              IsEnabled="{Binding CanOperateCurrentPeriodTransactions}"
+              ToolTip="{Binding InventoryPeriodActionTooltip}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource AdminToolbarCardStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Editor Penerimaan"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush.TextPrimary}" />
+                        <TextBlock Margin="0,4,0,0"
+                                   Foreground="{DynamicResource Brush.TextMuted}"
+                                   Text="Lengkapi header dan detail item sebelum pengajuan." />
+                    </StackPanel>
+                    <Border Grid.Column="1" Style="{StaticResource InlineMetricBadgeStyle}">
+                        <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                                   Text="{Binding StockInHeader.Status}" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="No. Transaksi" />
+                    <TextBox Margin="0,6,0,0" Text="{Binding StockInHeader.TransactionNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal" />
+                    <DatePicker Margin="0,6,0,0" SelectedDate="{Binding StockInHeader.TransactionDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="38" />
+                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Gudang" />
+                    <ComboBox Margin="0,6,0,0"
+                              Style="{StaticResource InputComboBoxStyle}"
+                              ItemsSource="{Binding Warehouses}"
+                              SelectedValuePath="Id"
+                              DisplayMemberPath="Name"
+                              SelectedValue="{Binding StockInHeader.WarehouseId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Referensi" />
+                    <TextBox Margin="0,6,0,0" Text="{Binding StockInHeader.ReferenceNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Keterangan" />
+                    <TextBox Margin="0,6,0,0" Text="{Binding StockInHeader.Description, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Status" />
+                    <TextBox Margin="0,6,0,0" Text="{Binding StockInHeader.Status}" IsReadOnly="True" Style="{StaticResource InputTextBoxStyle}" />
+                </StackPanel>
+            </Grid>
+
+            <DataGrid Grid.Row="2"
+                      Style="{StaticResource EnterpriseDataGridStyle}"
+                      Margin="0,8,0,0"
+                      ItemsSource="{Binding StockInLines}"
+                      AutoGenerateColumns="False"
+                      MinHeight="220"
+                      CanUserAddRows="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="No" Binding="{Binding LineNo}" Width="50" IsReadOnly="True" />
+                    <DataGridTemplateColumn Header="Item" Width="220">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.StockItemLookupOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          SelectedValuePath="Id"
+                                          SelectedValue="{Binding ItemId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEditable="True"
+                                          IsTextSearchEnabled="True"
+                                          TextSearch.TextPath="Name"
+                                          Height="30"
+                                          MinHeight="30"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource InputComboBoxStyle}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock>
+                                                <Run Text="{Binding Code}" />
+                                                <Run Text=" - " />
+                                                <Run Text="{Binding Name}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Qty" Binding="{Binding Qty, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="90" />
+                    <DataGridTextColumn Header="Harga" Binding="{Binding UnitCost, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="100" />
+                    <DataGridTextColumn Header="Catatan" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                    <DataGridTemplateColumn Header="Aksi" Width="80">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Command="{Binding DataContext.RemoveStockInLineCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Hapus" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Row="3" Margin="0,10,0,0" Style="{StaticResource StickyActionBarStyle}">
+                <WrapPanel>
+                    <Button Command="{Binding AddStockInLineCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Tambah Baris" />
+                    <Button Margin="8,0,0,0" Command="{Binding SaveStockInDraftCommand}" IsEnabled="{Binding CanSaveStockInDraft}" ToolTip="{Binding SaveStockInDraftTooltip}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Draft" />
+                    <Button Margin="8,0,0,0" Command="{Binding SubmitStockInCommand}" IsEnabled="{Binding CanSubmitStockIn}" ToolTip="{Binding SubmitStockInTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Ajukan" />
+                    <Button Margin="8,0,0,0" Command="{Binding ApproveStockInCommand}" IsEnabled="{Binding CanApproveStockIn}" ToolTip="{Binding ApproveStockInTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Setujui" />
+                    <Button Margin="8,0,0,0" Command="{Binding PostStockInCommand}" IsEnabled="{Binding CanPostStockIn}" ToolTip="{Binding PostStockInTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Posting" />
+                </WrapPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

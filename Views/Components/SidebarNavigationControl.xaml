@@ -1,0 +1,34 @@
+<UserControl x:Class="Accounting.Views.Components.SidebarNavigationControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid>
+        <Border Style="{StaticResource CardBorderStyle}" Padding="6">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="8" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Button Grid.Row="0"
+                        Command="{Binding ToggleSidebarCommand}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Height="34"
+                        ToolTip="{Binding SidebarToggleTooltip}">
+                    <TextBlock Text="{Binding SidebarToggleGlyph}"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="12"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Button>
+                <ScrollViewer Grid.Row="2"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding NavigationItems}"
+                                  ItemTemplate="{DynamicResource NavigationNodeItemTemplate}" />
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,90 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style x:Key="HeaderShellCardStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+        <Setter Property="Padding" Value="10,8" />
+    </Style>
+    <Style x:Key="FooterShellCardStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+        <Setter Property="Padding" Value="8,5" />
+    </Style>
+    <Style x:Key="EnvironmentBadgeBorderStyle" TargetType="Border">
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Margin" Value="0,0,10,0" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style x:Key="SummaryCardStyle" TargetType="Border">
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceMuted}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style x:Key="SettingsSectionCardStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="Margin" Value="0,10,0,0" />
+    </Style>
+    <Style x:Key="SettingsHintCardStyle" TargetType="Border">
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceMuted}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style x:Key="SettingsSectionTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+    </Style>
+    <Style x:Key="SettingsSectionSubtitleTextStyle" TargetType="TextBlock">
+        <Setter Property="Margin" Value="0,4,0,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Font.Caption}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="SettingsActionWrapPanelStyle" TargetType="WrapPanel">
+        <Setter Property="Margin" Value="0,10,0,0" />
+        <Setter Property="Orientation" Value="Horizontal" />
+    </Style>
+    <Style x:Key="ScopeBadgeStyle" TargetType="Border">
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Background" Value="{DynamicResource Brush.PrimarySubtle}" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+    </Style>
+    <Style x:Key="SelectAllLinkStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Primary}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style x:Key="AdminWorkspaceHeaderCardStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+        <Setter Property="Padding" Value="14,12" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceMuted}" />
+    </Style>
+    <Style x:Key="AdminToolbarCardStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="Margin" Value="0,8,0,8" />
+    </Style>
+    <Style x:Key="StickyActionBarStyle" TargetType="Border">
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Control}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource Brush.PrimarySubtle}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.SelectionBorder}" />
+    </Style>
+    <Style x:Key="InlineMetricBadgeStyle" TargetType="Border">
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceAlt}" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+    </Style>
+</ResourceDictionary>

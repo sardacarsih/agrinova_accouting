@@ -1,0 +1,148 @@
+<UserControl x:Class="Accounting.Views.Components.UserManagementOrganizationTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                <Button Command="{Binding NewCompanyCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Company Baru" />
+                <Button Margin="8,0,0,0" Command="{Binding SaveCompanyCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Company" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding DeleteCompanyCommand}"
+                        IsEnabled="{Binding HasSelectedCompany}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Nonaktifkan" />
+            </StackPanel>
+            <Grid Grid.Row="1" Margin="0,8,0,0">
+                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                          ItemsSource="{Binding Companies}"
+                          SelectedItem="{Binding SelectedCompany, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          MinHeight="220">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="110" />
+                        <DataGridTextColumn Header="Nama" Binding="{Binding Name}" Width="*" />
+                        <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Border IsHitTestVisible="False">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Companies.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="Belum ada company."
+                               FontSize="13"
+                               Foreground="{DynamicResource Brush.TextMuted}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+            <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                <TextBlock Text="Editor Company" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedCompany.Code, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedCompany.Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <CheckBox Margin="0,8,0,0" IsChecked="{Binding SelectedCompany.IsActive}" Style="{StaticResource CompactCheckBoxStyle}" Content="Aktif" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                <Button Command="{Binding NewLocationCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Lokasi Baru" />
+                <Button Margin="8,0,0,0" Command="{Binding SaveLocationCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Lokasi" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding DeleteLocationCommand}"
+                        IsEnabled="{Binding HasSelectedLocation}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Nonaktifkan" />
+            </StackPanel>
+            <Grid Grid.Row="1" Margin="0,8,0,0">
+                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                          ItemsSource="{Binding FilteredLocations}"
+                          SelectedItem="{Binding SelectedLocation, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          MinHeight="220">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Company" Binding="{Binding CompanyCode}" Width="110" />
+                        <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="100" />
+                        <DataGridTextColumn Header="Nama" Binding="{Binding Name}" Width="*" />
+                        <DataGridTextColumn Header="Tipe" Binding="{Binding LocationType}" Width="90" />
+                        <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Border IsHitTestVisible="False">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding FilteredLocations.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="Belum ada lokasi."
+                               FontSize="13"
+                               Foreground="{DynamicResource Brush.TextMuted}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+            <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                <TextBlock Text="Editor Lokasi" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" />
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Company" />
+                <ComboBox Margin="0,6,0,0"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding ActiveCompanyOptions}"
+                          SelectedValuePath="Id"
+                          SelectedValue="{Binding SelectedLocation.CompanyId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Foreground="{DynamicResource Brush.TextPrimary}">
+                                <Run Text="{Binding Code}" />
+                                <Run Text=" - " />
+                                <Run Text="{Binding Name}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedLocation.Code, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama" />
+                <TextBox Margin="0,6,0,0" Text="{Binding SelectedLocation.Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Tipe" />
+                <ComboBox Margin="0,6,0,0"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding LocationTypeOptions}"
+                          SelectedItem="{Binding SelectedLocation.LocationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <CheckBox Margin="0,8,0,0" IsChecked="{Binding SelectedLocation.IsActive}" Style="{StaticResource CompactCheckBoxStyle}" Content="Aktif" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

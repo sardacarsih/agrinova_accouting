@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>Accounting</AssemblyName>
+    <RootNamespace>Accounting</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Npgsql">
+      <HintPath>$(UserProfile)\.nuget\packages\npgsql\8.0.4\lib\net8.0\Npgsql.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions">
+      <HintPath>$(UserProfile)\.nuget\packages\microsoft.extensions.logging.abstractions\8.0.0\lib\net8.0\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tools\**\*.cs" />
+    <EmbeddedResource Remove="tools\**\*" />
+    <None Remove="tools\**\*" />
+    <Page Remove="tools\**\*.xaml" />
+  </ItemGroup>
+
+</Project>
+

@@ -1,0 +1,308 @@
+<UserControl x:Class="Accounting.Views.Components.MasterDataPeriodsTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10" x:Name="PeriodResponsiveGrid">
+        <Grid.Resources>
+            <Style x:Key="PeriodListPaneStyle" TargetType="Border">
+                <Setter Property="Grid.Row" Value="2" />
+                <Setter Property="Grid.Column" Value="0" />
+                <Setter Property="Grid.RowSpan" Value="1" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Setter Property="Margin" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=PeriodResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1120}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="2" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="PeriodEditorPaneStyle" TargetType="Border">
+                <Setter Property="Grid.Row" Value="2" />
+                <Setter Property="Grid.Column" Value="2" />
+                <Setter Property="Grid.RowSpan" Value="1" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Setter Property="Margin" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=PeriodResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1120}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="4" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                        <Setter Property="Margin" Value="0,10,0,0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.2*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Row="0"
+                Grid.ColumnSpan="3"
+                Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Periode Akuntansi" />
+                <TextBlock Margin="0,4,0,0"
+                           Style="{StaticResource MetaCaptionTextStyle}"
+                           Text="{Binding PeriodActionHint}" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource PeriodListPaneStyle}"
+                Padding="12"
+                Background="{DynamicResource Brush.Surface}"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource Radius.Card}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="Daftar Periode" />
+                    <TextBlock Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                               Text="Pantau status buka/tutup periode beserta histori penutupan." />
+                    <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                        <Button Command="{Binding NewPeriodCommand}"
+                                IsEnabled="{Binding CanManageAccountingPeriod}"
+                                ToolTip="{Binding OpenPeriodTooltip}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Periode Baru" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding RefreshCommand}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Muat Ulang" />
+                    </WrapPanel>
+                </StackPanel>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding AccountingPeriods}"
+                              SelectedItem="{Binding SelectedAccountingPeriod, Mode=TwoWay}"
+                              AutoGenerateColumns="False"
+                              MinHeight="220"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Periode" Binding="{Binding PeriodMonth, StringFormat=yyyy-MM}" Width="110" />
+                            <DataGridCheckBoxColumn Header="Terbuka" Binding="{Binding IsOpen}" Width="75" />
+                            <DataGridTextColumn Header="Ditutup Oleh" Binding="{Binding ClosedBy}" Width="130" />
+                            <DataGridTextColumn Header="Ditutup Pada" Binding="{Binding ClosedAt, StringFormat=yyyy-MM-dd HH:mm}" Width="155" />
+                            <DataGridTextColumn Header="Catatan" Binding="{Binding Note}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border IsHitTestVisible="False">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AccountingPeriods.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="Belum ada data periode akuntansi."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Brush.TextMuted}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border Style="{StaticResource PeriodEditorPaneStyle}"
+                Padding="12"
+                Background="{DynamicResource Brush.Surface}"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource Radius.Card}">
+            <Grid>
+                <Grid.Resources>
+                    <Style x:Key="ChecklistItemBorderStyle" TargetType="Border">
+                        <Setter Property="Padding" Value="10" />
+                        <Setter Property="Margin" Value="0,0,0,8" />
+                        <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Card}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Severity}" Value="Ready">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Success}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Severity}" Value="Warning">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warning}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Severity}" Value="Blocker">
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Resources>
+
+                <StackPanel Visibility="{Binding IsCloseWizardOpen, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="Aksi Periode Terpilih" />
+                    <TextBlock Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                               Text="Pilih bulan periode, isi catatan, lalu jalankan aksi buka atau tutup sesuai kebutuhan." />
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <TextBlock Foreground="{DynamicResource Brush.TextSecondary}" TextWrapping="Wrap" Text="{Binding PeriodActionHint}" />
+                    </Border>
+
+                    <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Periode (Bulan)" />
+                    <DatePicker Margin="0,6,0,0"
+                                SelectedDate="{Binding PeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                Height="46" />
+                    <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Catatan" />
+                    <TextBox Margin="0,6,0,0"
+                             Text="{Binding PeriodNote, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource InputTextBoxStyle}" />
+
+                    <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                        <Button Command="{Binding OpenPeriodCommand}"
+                                IsEnabled="{Binding CanManageAccountingPeriod}"
+                                ToolTip="{Binding OpenPeriodTooltip}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="Buka Periode" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding ClosePeriodCommand}"
+                                IsEnabled="{Binding CanManageAccountingPeriod}"
+                                ToolTip="{Binding ClosePeriodTooltip}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Mulai Wizard Tutup" />
+                    </WrapPanel>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding IsCloseWizardOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}" Text="{Binding CloseWizardTitle}" />
+                    <TextBlock Style="{StaticResource SettingsSectionSubtitleTextStyle}" Text="{Binding CloseWizardStepTitle}" />
+
+                    <Border Style="{StaticResource SettingsHintCardStyle}">
+                        <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding CloseWizardValidationSummary}" />
+                    </Border>
+
+                    <StackPanel Visibility="{Binding IsCloseWizardStep1, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Periode (Bulan)" />
+                        <DatePicker Margin="0,6,0,0"
+                                    SelectedDate="{Binding PeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Height="46" />
+                        <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Catatan" />
+                        <TextBox Margin="0,6,0,0"
+                                 Text="{Binding PeriodNote, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource InputTextBoxStyle}" />
+                        <Border Margin="0,10,0,0" Style="{StaticResource SettingsHintCardStyle}">
+                            <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                                       TextWrapping="Wrap"
+                                       Text="Jalankan checklist untuk memastikan jurnal accounting dan transaksi inventory periode terpilih sudah siap ditutup." />
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsCloseWizardStep2, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <WrapPanel Margin="0,10,0,0" Style="{StaticResource SettingsActionWrapPanelStyle}">
+                            <Button Command="{Binding ValidateCloseWizardChecklistCommand}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Refresh Checklist" />
+                        </WrapPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="320">
+                            <ItemsControl ItemsSource="{Binding ClosePeriodChecklistItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource ChecklistItemBorderStyle}">
+                                            <StackPanel>
+                                                <TextBlock FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Brush.TextPrimary}"
+                                                           Text="{Binding Label}" />
+                                                <TextBlock Margin="0,4,0,0"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource Brush.TextSecondary}"
+                                                           Text="{Binding Message}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsCloseWizardStep3, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border Margin="0,10,0,0" Style="{StaticResource SettingsHintCardStyle}">
+                            <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding CloseWizardImpactSummary}" />
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsCloseWizardStep4, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border Margin="0,10,0,0" Style="{StaticResource SettingsHintCardStyle}">
+                            <TextBlock TextWrapping="Wrap"
+                                       Text="{Binding CloseWizardResultMessage}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CloseWizardActionSucceeded}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource Brush.Success}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Border>
+                    </StackPanel>
+
+                    <WrapPanel Style="{StaticResource SettingsActionWrapPanelStyle}">
+                        <Button Command="{Binding PreviousCloseWizardStepCommand}"
+                                Visibility="{Binding ShowCloseWizardNavigationButtons, Converter={StaticResource BoolToVisibilityConverter}}"
+                                IsEnabled="{Binding CanMoveToPreviousCloseWizardStep}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Kembali" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding NextCloseWizardStepCommand}"
+                                Visibility="{Binding ShowCloseWizardNavigationButtons, Converter={StaticResource BoolToVisibilityConverter}}"
+                                IsEnabled="{Binding CanMoveToNextCloseWizardStep}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="{Binding CloseWizardNextLabel}" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding ConfirmCloseWizardCommand}"
+                                Visibility="{Binding ShowCloseWizardConfirmButton, Converter={StaticResource BoolToVisibilityConverter}}"
+                                IsEnabled="{Binding CanConfirmCloseWizard}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="Konfirmasi Tutup" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding CancelCloseWizardCommand}"
+                                Visibility="{Binding ShowCloseWizardFinishButton, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="Selesai" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding CancelCloseWizardCommand}"
+                                Visibility="{Binding ShowCloseWizardNavigationButtons, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Batalkan" />
+                    </WrapPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

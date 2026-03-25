@@ -1,0 +1,28 @@
+﻿<Window x:Class="Accounting.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:comp="clr-namespace:Accounting.Views.Components" Title="WFP Enterprise" Width="1600" Height="900" MinWidth="1100" MinHeight="720" WindowStartupLocation="CenterScreen" WindowState="Maximized" UseLayoutRounding="True" SnapsToDevicePixels="True" SizeChanged="MainWindow_OnSizeChanged">
+    <Grid Margin="{Binding Shell.ShellOuterMargin}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding Sidebar.Shell.SidebarColumnWidth}" />
+            <ColumnDefinition Width="{Binding Shell.ShellColumnGap}" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="{Binding Shell.ShellRowGap}" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="{Binding Shell.ShellRowGap}" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header spans all columns -->
+        <comp:HeaderBarControl Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" DataContext="{Binding Header.Shell}" />
+
+        <!-- Sidebar: left column, content row only -->
+        <comp:SidebarNavigationControl Grid.Row="2" Grid.Column="0" DataContext="{Binding Sidebar.Shell}" />
+
+        <!-- Workspace: right column, content row -->
+        <comp:WorkspaceHostControl Grid.Row="2" Grid.Column="2" DataContext="{Binding Workspace.Shell}" />
+
+        <!-- Footer spans all columns -->
+        <comp:StatusFooterControl Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" DataContext="{Binding Footer.Shell}" />
+    </Grid>
+</Window>

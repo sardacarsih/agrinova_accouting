@@ -1,0 +1,312 @@
+<UserControl x:Class="Accounting.Views.Components.MasterDataAccountsTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <UserControl.InputBindings>
+        <KeyBinding Modifiers="Control" Key="N" Command="{Binding NewAccountCommand}" />
+        <KeyBinding Modifiers="Control" Key="S" Command="{Binding SaveAccountCommand}" />
+    </UserControl.InputBindings>
+
+    <Grid Margin="10" x:Name="AccountResponsiveGrid">
+        <Grid.Resources>
+            <Style x:Key="AccountListPaneStyle" TargetType="DockPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="0" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=AccountResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1180}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="0" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="AccountEditorPaneStyle" TargetType="StackPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="2" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Setter Property="Margin" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=AccountResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1180}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="2" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                        <Setter Property="Margin" Value="0,10,0,0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.35*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Style="{StaticResource AccountListPaneStyle}">
+            <StackPanel DockPanel.Dock="Top">
+                <Border Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Master Akun"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Brush.TextPrimary}" />
+                            <TextBlock Margin="0,4,0,0"
+                                       Foreground="{DynamicResource Brush.TextSecondary}"
+                                       Text="Cari cepat, pilih akun, lalu edit di panel kanan." />
+                            <WrapPanel Margin="0,10,0,0">
+                                <TextBlock Foreground="{DynamicResource Brush.TextMuted}" Text="Visible: " />
+                                <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding VisibleAccountsCount}" />
+                                <TextBlock Margin="14,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="Active: " />
+                                <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding ActiveAccountsCount}" />
+                                <TextBlock Margin="14,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="Total: " />
+                                <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding TotalAccountsCount}" />
+                            </WrapPanel>
+                        </StackPanel>
+
+                        <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <Button Command="{Binding NewAccountCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Akun Baru" />
+                            <Button Margin="8,0,0,0" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
+                            <Button Margin="8,0,0,0" Command="{Binding RebuildAccountHierarchyCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Rebuild Hierarki" />
+                        </WrapPanel>
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,10,0,0"
+                        Padding="10"
+                        CornerRadius="8"
+                        Background="{DynamicResource Brush.Surface}"
+                        BorderBrush="{DynamicResource Brush.Border}"
+                        BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="220" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Cari Akun" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding AccountSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Filter Status" />
+                            <ComboBox Margin="0,6,0,0"
+                                      Style="{StaticResource InputComboBoxStyle}"
+                                      ItemsSource="{Binding AccountStatusFilterOptions}"
+                                      SelectedItem="{Binding SelectedAccountStatusFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <Grid Margin="0,10,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding Accounts}"
+                              SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
+                              AutoGenerateColumns="False"
+                              MinHeight="220"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="130" />
+                            <DataGridTextColumn Header="Nama Akun" Binding="{Binding Name}" Width="*" />
+                            <DataGridTextColumn Header="Tipe" Binding="{Binding AccountType}" Width="120" />
+                            <DataGridTextColumn Header="Parent" Binding="{Binding ParentAccountCode}" Width="130" />
+                            <DataGridTextColumn Header="Level" Binding="{Binding HierarchyLevel}" Width="70" />
+                            <DataGridCheckBoxColumn Header="Posting" Binding="{Binding IsPosting}" Width="70" />
+                            <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border IsHitTestVisible="False">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding VisibleAccountsCount}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="Tidak ada akun sesuai filter."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Brush.TextMuted}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+
+                <StackPanel Grid.Row="1"
+                            Margin="0,8,0,0"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.TextMuted}"
+                               Text="{Binding AccountPageSummary}" />
+                    <Button Margin="10,0,0,0"
+                            Command="{Binding PreviousAccountPageCommand}"
+                            IsEnabled="{Binding CanGoToPreviousAccountPage}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Sebelumnya" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding NextAccountPageCommand}"
+                            IsEnabled="{Binding CanGoToNextAccountPage}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Berikutnya" />
+                </StackPanel>
+            </Grid>
+        </DockPanel>
+
+        <StackPanel Style="{StaticResource AccountEditorPaneStyle}">
+            <Border Padding="12"
+                    CornerRadius="10"
+                    Background="{DynamicResource Brush.SurfaceAlt}"
+                    BorderBrush="{DynamicResource Brush.BorderSoft}"
+                    BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="{Binding AccountEditorTitle}"
+                               FontSize="17"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextPrimary}" />
+                    <TextBlock Margin="0,6,0,0"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource Brush.TextSecondary}"
+                               Text="{Binding AccountEditorSubtitle}" />
+                    <TextBlock Margin="0,8,0,0"
+                               Foreground="{DynamicResource Brush.TextMuted}"
+                               Text="Shortcut: Ctrl+N (baru), Ctrl+S (simpan)" />
+                </StackPanel>
+            </Border>
+
+            <Border Margin="0,10,0,0"
+                    Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsAccountValidationError}" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock FontWeight="SemiBold"
+                           Text="{Binding AccountValidationMessage}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAccountValidationError}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Border>
+
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode Akun" />
+            <TextBox Margin="0,6,0,0"
+                     Text="{Binding SelectedAccount.Code, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource InputTextBoxStyle}"
+                     TextChanged="AccountEditorText_OnChanged" />
+
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama Akun" />
+            <TextBox Margin="0,6,0,0"
+                     Text="{Binding SelectedAccount.Name, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource InputTextBoxStyle}"
+                     TextChanged="AccountEditorText_OnChanged" />
+
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Tipe Akun" />
+            <ComboBox Margin="0,6,0,0"
+                      Style="{StaticResource InputComboBoxStyle}"
+                      ItemsSource="{Binding AccountTypeOptions}"
+                      SelectedItem="{Binding SelectedAccount.AccountType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                      SelectionChanged="AccountEditorSelection_OnChanged" />
+
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Parent Akun" />
+            <ComboBox Margin="0,6,0,0"
+                      Style="{StaticResource InputComboBoxStyle}"
+                      ItemsSource="{Binding ParentAccountOptions}"
+                      SelectedItem="{Binding SelectedParentAccountOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+            <CheckBox Margin="0,10,0,0"
+                      IsChecked="{Binding SelectedAccount.IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                      Style="{StaticResource CompactCheckBoxStyle}"
+                      Content="Akun Aktif"
+                      Checked="AccountEditorCheck_OnChanged"
+                      Unchecked="AccountEditorCheck_OnChanged" />
+
+            <Border Margin="0,10,0,0"
+                    Padding="10"
+                    CornerRadius="8"
+                    Background="{DynamicResource Brush.SurfaceMuted}"
+                    BorderBrush="{DynamicResource Brush.BorderSoft}"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabelTextStyle}" Text="Parent Turunan" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding DerivedParentAccountCode}" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Level Turunan" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding DerivedHierarchyLevelText}" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Mode Posting" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding DerivedPostingModeText}" />
+                </Grid>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <Button Command="{Binding SaveAccountCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Akun" />
+                <Button Margin="8,0,0,0"
+                        Command="{Binding DeactivateAccountCommand}"
+                        IsEnabled="{Binding CanDeactivateAccount}"
+                        Style="{StaticResource SecondaryPillButtonStyle}"
+                        Content="Nonaktifkan" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

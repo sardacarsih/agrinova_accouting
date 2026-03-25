@@ -1,0 +1,133 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryUnitsTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10" x:Name="UnitResponsiveGrid">
+        <Grid.Resources>
+            <Style x:Key="UnitListPaneStyle" TargetType="DockPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="0" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=UnitResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1120}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="0" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="UnitEditorPaneStyle" TargetType="StackPanel">
+                <Setter Property="Grid.Row" Value="0" />
+                <Setter Property="Grid.Column" Value="2" />
+                <Setter Property="Grid.RowSpan" Value="3" />
+                <Setter Property="Grid.ColumnSpan" Value="1" />
+                <Setter Property="Margin" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding ElementName=UnitResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1120}"
+                                 Value="True">
+                        <Setter Property="Grid.Row" Value="2" />
+                        <Setter Property="Grid.Column" Value="0" />
+                        <Setter Property="Grid.RowSpan" Value="1" />
+                        <Setter Property="Grid.ColumnSpan" Value="3" />
+                        <Setter Property="Margin" Value="0,10,0,0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.2*" />
+            <ColumnDefinition Width="10" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Style="{StaticResource UnitListPaneStyle}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Master Satuan" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                    <TextBlock Text="Kelola satuan unit (UoM) untuk transaksi inventori."
+                               Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+                </StackPanel>
+            </Border>
+            <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+                <StackPanel Orientation="Horizontal">
+                    <Button Command="{Binding NewUnitCommand}"
+                            IsEnabled="{Binding CanCreateUnit}"
+                            ToolTip="{Binding NewUnitTooltip}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Satuan Baru" />
+                    <Button Margin="8,0,0,0" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
+                </StackPanel>
+            </Border>
+            <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                      Margin="0,8,0,0"
+                      ItemsSource="{Binding Units}"
+                      SelectedItem="{Binding SelectedUnit, Mode=TwoWay}"
+                      AutoGenerateColumns="False"
+                      MinHeight="220"
+                      IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="120" />
+                    <DataGridTextColumn Header="Nama Satuan" Binding="{Binding Name}" Width="*" />
+                    <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+
+        <StackPanel Style="{StaticResource UnitEditorPaneStyle}">
+            <Border Style="{StaticResource AdminToolbarCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Editor Satuan"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextPrimary}" />
+                    <TextBlock Margin="0,4,0,0"
+                               Foreground="{DynamicResource Brush.TextMuted}"
+                               Text="Gunakan kode ringkas dan nama satuan yang konsisten." />
+                </StackPanel>
+            </Border>
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode Satuan" />
+            <TextBox Margin="0,6,0,0"
+                     IsEnabled="{Binding CanSaveUnit}"
+                     ToolTip="{Binding SaveUnitTooltip}"
+                     Text="{Binding SelectedUnit.Code, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource InputTextBoxStyle}" />
+            <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama Satuan" />
+            <TextBox Margin="0,6,0,0"
+                     IsEnabled="{Binding CanSaveUnit}"
+                     ToolTip="{Binding SaveUnitTooltip}"
+                     Text="{Binding SelectedUnit.Name, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource InputTextBoxStyle}" />
+            <CheckBox Margin="0,8,0,0"
+                      IsEnabled="{Binding CanSaveUnit}"
+                      ToolTip="{Binding SaveUnitTooltip}"
+                      IsChecked="{Binding SelectedUnit.IsActive}"
+                      Style="{StaticResource CompactCheckBoxStyle}"
+                      Content="Aktif" />
+            <Border Margin="0,12,0,0" Style="{StaticResource StickyActionBarStyle}">
+                <WrapPanel>
+                    <Button Command="{Binding SaveUnitCommand}"
+                            IsEnabled="{Binding CanSaveUnit}"
+                            ToolTip="{Binding SaveUnitTooltip}"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Content="Simpan Satuan" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding DeactivateUnitCommand}"
+                            IsEnabled="{Binding CanDeactivateUnit}"
+                            ToolTip="{Binding DeactivateUnitTooltip}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Nonaktifkan" />
+                </WrapPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

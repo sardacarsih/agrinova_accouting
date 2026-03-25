@@ -1,0 +1,106 @@
+<UserControl x:Class="Accounting.Views.Components.JournalExportTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="Export Jurnal XLSX" />
+
+        <TextBlock Grid.Row="1"
+                   Margin="0,8,0,0"
+                   Foreground="{DynamicResource Brush.TextSecondary}"
+                   Text="Pilih periode, tampilkan detail jurnal, lalu export. Default: 1 sheet Journals (flat row per line). Centang Format lama untuk kompatibilitas Header + Detail program lama. Scope: lokasi aktif • status: semua."
+                   TextWrapping="Wrap" />
+
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Bulan" />
+                <ComboBox Margin="0,6,0,0"
+                          Height="38"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding ExportMonthOptions}"
+                          DisplayMemberPath="Value"
+                          SelectedValuePath="Key"
+                          SelectedValue="{Binding ExportPeriodMonth, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tahun" />
+                <ComboBox Margin="0,6,0,0"
+                          Height="38"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding ExportYearOptions}"
+                          SelectedItem="{Binding ExportPeriodYear, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="4"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,8">
+                <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                           Text="{Binding ExportPeriodPreviewSummary}"
+                           TextWrapping="Wrap" />
+                <CheckBox Margin="0,6,0,0"
+                          Content="Format lama (compatible program lama)"
+                          IsChecked="{Binding ExportPeriodUseLegacyFormat, Mode=TwoWay}" />
+            </StackPanel>
+
+            <Button Grid.Column="6"
+                    VerticalAlignment="Bottom"
+                    Command="{Binding PreviewExportPeriodCommand}"
+                    IsEnabled="{Binding CanPreviewExportPeriod}"
+                    ToolTip="{Binding PreviewExportPeriodTooltip}"
+                    Style="{StaticResource SecondaryPillButtonStyle}"
+                    Content="Tampilkan Detail" />
+
+            <Button Grid.Column="8"
+                    VerticalAlignment="Bottom"
+                    Command="{Binding ExportPeriodCommand}"
+                    IsEnabled="{Binding CanExportPeriod}"
+                    ToolTip="{Binding ExportPeriodTooltip}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Content="Export Periode" />
+        </Grid>
+
+        <DataGrid Grid.Row="3"
+                  Margin="0,10,0,0"
+                  Style="{StaticResource EnterpriseDataGridStyle}"
+                  ItemsSource="{Binding ExportPeriodPreviewLines}"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="No Jurnal" Binding="{Binding JournalNo}" Width="145" />
+                <DataGridTextColumn Header="Tanggal" Binding="{Binding JournalDate, StringFormat=yyyy-MM-dd}" Width="115" />
+                <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="130" />
+                <DataGridTextColumn Header="Status" Binding="{Binding JournalStatus}" Width="95" />
+                <DataGridTextColumn Header="Ln" Binding="{Binding LineNo}" Width="45" />
+                <DataGridTextColumn Header="Kode Akun" Binding="{Binding AccountCode}" Width="120" />
+                <DataGridTextColumn Header="Nama Perkiraan" Binding="{Binding AccountName}" Width="180" />
+                <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
+                <DataGridTextColumn Header="Debit" Binding="{Binding Debit, StringFormat=N2}" Width="110" />
+                <DataGridTextColumn Header="Kredit" Binding="{Binding Credit, StringFormat=N2}" Width="110" />
+                <DataGridTextColumn Header="Departemen" Binding="{Binding DepartmentCode}" Width="110" />
+                <DataGridTextColumn Header="Proyek" Binding="{Binding ProjectCode}" Width="100" />
+                <DataGridTextColumn Header="Cost Center" Binding="{Binding CostCenterCode}" Width="110" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>
