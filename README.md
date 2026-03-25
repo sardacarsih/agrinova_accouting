@@ -258,6 +258,10 @@ Full contributor guidance is available in [`CONTRIBUTING.md`](D:/VSCODE/wpf/CONT
 
 This repository is licensed under the MIT License. See [`LICENSE`](D:/VSCODE/wpf/LICENSE).
 
+## Changelog
+
+See [`CHANGELOG.md`](D:/VSCODE/wpf/CHANGELOG.md) for the current release history.
+
 ## Security
 
 For responsible disclosure guidance, see [`SECURITY.md`](D:/VSCODE/wpf/SECURITY.md).
