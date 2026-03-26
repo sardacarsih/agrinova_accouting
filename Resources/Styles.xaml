@@ -215,6 +215,14 @@
         </Style.Triggers>
     </Style>
     <Style TargetType="PasswordBox" BasedOn="{StaticResource InputPasswordBoxStyle}" />
+    <Style x:Key="MonthYearDatePickerStyle" TargetType="DatePicker">
+        <Setter Property="Height" Value="{DynamicResource Size.InputHeight}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Text" Value="{Binding SelectedDate, RelativeSource={RelativeSource Self}, StringFormat={}{0:MM/yyyy}, TargetNullValue=''}" />
+    </Style>
     <Style x:Key="InputComboBoxStyle" TargetType="ComboBox">
         <Setter Property="Height" Value="{DynamicResource Size.InputHeight}" />
         <Setter Property="Padding" Value="10,5" />
