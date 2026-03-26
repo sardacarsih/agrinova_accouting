@@ -22,6 +22,7 @@ Use this checklist before publishing a tagged release or deployment build.
 - [ ] `appsettings.json` remains untracked
 - [ ] `appsettings.example.json` reflects the current config shape
 - [ ] Any environment-variable requirements are documented
+- [ ] Deployment environments use `AGRINOVA_PG_CONNECTION`, `AGRINOVA_AUTH_USERS_TABLE`, `AGRINOVA_AUTH_QUERY_TIMEOUT`, and `AGRINOVA_ENVIRONMENT` where applicable
 
 ## Documentation
 
@@ -36,4 +37,4 @@ Use this checklist before publishing a tagged release or deployment build.
 - [ ] Release tag/version is chosen
 - [ ] Screenshots or release artifacts are attached if needed
 - [ ] Any breaking-change or migration note is called out clearly
-
+- [ ] Release notes explicitly mention the removal of legacy `WFP_*` environment variables

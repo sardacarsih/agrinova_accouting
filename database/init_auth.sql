@@ -397,7 +397,7 @@ $$;
 
 -- Password hash format expected by app:
 -- pbkdf2-sha256$<iterations>$<base64_salt>$<base64_hash>
--- You can generate hash via scripts/New-WfpPasswordHash.ps1
+-- You can generate hash via scripts/New-AgrInovaPasswordHash.ps1
 INSERT INTO app_users (username, full_name, email, password_hash, is_active)
 VALUES (
     'admin',

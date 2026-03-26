@@ -11,9 +11,9 @@
 
 - Use [`appsettings.example.json`](D:/VSCODE/wpf/appsettings.example.json) as the template for your local `appsettings.json`.
 - Prefer environment variables for temporary or sensitive database overrides:
-  - `WFP_PG_CONNECTION`
-  - `WFP_AUTH_USERS_TABLE`
-  - `WFP_AUTH_QUERY_TIMEOUT`
+  - `AGRINOVA_PG_CONNECTION`
+  - `AGRINOVA_AUTH_USERS_TABLE`
+  - `AGRINOVA_AUTH_QUERY_TIMEOUT`
 
 ## Required Checks
 
@@ -41,4 +41,3 @@ dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj
 - `appsettings.json` is local-only and must not be committed.
 - Build output folders such as `bin/`, `obj/`, `.vs/`, and `artifacts/` stay untracked.
 - Prefer small, reviewable commits with a clear message.
-

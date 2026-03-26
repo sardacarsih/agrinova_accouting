@@ -79,7 +79,7 @@ LIMIT 1;",
         var options = DatabaseAuthOptions.FromConfiguration();
         Assert(!string.IsNullOrWhiteSpace(options.ConnectionString), "Connection string is not configured.");
         Assert(!options.ConnectionString.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase),
-            "Set WFP_PG_CONNECTION before running integration tests.");
+            "Set AGRINOVA_PG_CONNECTION before running integration tests.");
         return new PostgresAccessControlService(options);
     }
 

@@ -15,9 +15,9 @@ public sealed class DatabaseAuthOptions
     {
         var fromFile = LoadFromAppSettings();
 
-        var connectionFromEnv = Environment.GetEnvironmentVariable("WFP_PG_CONNECTION");
-        var tableFromEnv = Environment.GetEnvironmentVariable("WFP_AUTH_USERS_TABLE");
-        var timeoutFromEnv = Environment.GetEnvironmentVariable("WFP_AUTH_QUERY_TIMEOUT");
+        var connectionFromEnv = Environment.GetEnvironmentVariable("AGRINOVA_PG_CONNECTION");
+        var tableFromEnv = Environment.GetEnvironmentVariable("AGRINOVA_AUTH_USERS_TABLE");
+        var timeoutFromEnv = Environment.GetEnvironmentVariable("AGRINOVA_AUTH_QUERY_TIMEOUT");
 
         return new DatabaseAuthOptions
         {

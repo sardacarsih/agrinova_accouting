@@ -21,6 +21,8 @@ This project currently follows a simple keep-a-changelog style format.
 - Journal import/export actions now honor dedicated `transactions.import` and `transactions.export` permissions
 - Report XLSX export now honors dedicated `accounting.reports.export` permission
 - Integration coverage expanded for RBAC regression scenarios around GL navigation and export/import gating
+- Application branding renamed from `WFP Suite` to `AgrInova Suite`
+- Runtime environment variables renamed from `WFP_*` to `AGRINOVA_*` with no backward-compatibility fallback
 
 ## [2026-03-25]
 
@@ -34,4 +36,3 @@ This project currently follows a simple keep-a-changelog style format.
 ### Changed
 
 - Repository prepared for GitHub publication and ongoing collaboration
-

@@ -39,7 +39,7 @@ public partial class MainWindow : Window
 
     private static string ResolveEnvironmentName()
     {
-        var env = Environment.GetEnvironmentVariable("WFP_ENVIRONMENT");
+        var env = Environment.GetEnvironmentVariable("AGRINOVA_ENVIRONMENT");
         return string.IsNullOrWhiteSpace(env) ? "PROD" : env.Trim().ToUpperInvariant();
     }
 

@@ -119,7 +119,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
         _selectedCompanyId = accessContext.SelectedCompanyId;
         _selectedLocationId = accessContext.SelectedLocationId;
 
-        AppDisplayName = "WFP Suite";
+        AppDisplayName = "AgrInova Suite";
         EnvironmentName = environmentName;
         CurrentUserDisplayName = string.IsNullOrWhiteSpace(accessContext.Username) ? "User" : accessContext.Username.Trim();
         CurrentRoleDisplayName = string.IsNullOrWhiteSpace(accessContext.SelectedRoleCode)

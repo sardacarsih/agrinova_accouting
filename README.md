@@ -82,16 +82,16 @@ Expected local config shape:
 
 You can also override the database configuration with environment variables:
 
-- `WFP_PG_CONNECTION`
-- `WFP_AUTH_USERS_TABLE`
-- `WFP_AUTH_QUERY_TIMEOUT`
+- `AGRINOVA_PG_CONNECTION`
+- `AGRINOVA_AUTH_USERS_TABLE`
+- `AGRINOVA_AUTH_QUERY_TIMEOUT`
 
 PowerShell example:
 
 ```powershell
-$env:WFP_PG_CONNECTION = "Host=127.0.0.1;Port=5432;Database=agrinova_accounting;Username=agrinova;Password=your_password;Pooling=true;Timeout=8;Command Timeout=8;"
-$env:WFP_AUTH_USERS_TABLE = "public.app_users"
-$env:WFP_AUTH_QUERY_TIMEOUT = "8"
+$env:AGRINOVA_PG_CONNECTION = "Host=127.0.0.1;Port=5432;Database=agrinova_accounting;Username=agrinova;Password=your_password;Pooling=true;Timeout=8;Command Timeout=8;"
+$env:AGRINOVA_AUTH_USERS_TABLE = "public.app_users"
+$env:AGRINOVA_AUTH_QUERY_TIMEOUT = "8"
 ```
 
 ### 2. Initialize the database
@@ -164,7 +164,7 @@ Expected format:
 Generate a hash with:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\New-WfpPasswordHash.ps1 -Password "Password123!"
+powershell -ExecutionPolicy Bypass -File .\scripts\New-AgrInovaPasswordHash.ps1 -Password "Password123!"
 ```
 
 ## Reporting and Period Close
@@ -207,7 +207,7 @@ dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj
 If needed, set the database connection first:
 
 ```powershell
-$env:WFP_PG_CONNECTION = "Host=127.0.0.1;Port=5432;Database=agrinova_accounting;Username=agrinova;Password=your_password;Pooling=true;Timeout=8;Command Timeout=8;"
+$env:AGRINOVA_PG_CONNECTION = "Host=127.0.0.1;Port=5432;Database=agrinova_accounting;Username=agrinova;Password=your_password;Pooling=true;Timeout=8;Command Timeout=8;"
 dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj
 ```
 

@@ -8,7 +8,7 @@ Console-based integration test harness for `Accounting.Services.PostgresAccessCo
 dotnet run --project tools\IntegrationTests\IntegrationTests.csproj
 ```
 
-The test harness expects database connection configuration from `DatabaseAuthOptions.FromConfiguration()` (for example `WFP_PG_CONNECTION`).
+The test harness expects database connection configuration from `DatabaseAuthOptions.FromConfiguration()` (for example `AGRINOVA_PG_CONNECTION`).
 
 ## File Structure
 

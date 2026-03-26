@@ -19,7 +19,7 @@ public sealed class PostgresAuthService : IAuthService
     {
         if (string.IsNullOrWhiteSpace(_options.ConnectionString))
         {
-            return new AuthResult(false, "Database connection is not configured. Set DatabaseAuth.ConnectionString or WFP_PG_CONNECTION.");
+            return new AuthResult(false, "Database connection is not configured. Set DatabaseAuth.ConnectionString or AGRINOVA_PG_CONNECTION.");
         }
 
         if (!TryBuildQualifiedTableName(_options.UsersTable, out var qualifiedTableName))

@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:Accounting.Controls"
         mc:Ignorable="d"
-        Title="WFP Login"
+        Title="AgrInova Login"
         Width="1366"
         Height="768"
         MinWidth="1024"
@@ -129,7 +129,7 @@
                                 </Viewbox>
                             </Border>
                             <StackPanel Margin="14,2,0,0">
-                                <TextBlock Text="WFP Suite" Foreground="White" FontFamily="Bahnschrift" FontSize="20" FontWeight="SemiBold"/>
+                                <TextBlock Text="AgrInova Suite" Foreground="White" FontFamily="Bahnschrift" FontSize="20" FontWeight="SemiBold"/>
                                 <TextBlock Text="Enterprise Operations Platform" Foreground="#CCE9F8" FontSize="12"/>
                             </StackPanel>
                         </StackPanel>
@@ -239,7 +239,7 @@
                             <TextBlock Margin="0,8,0,0"
                                        FontSize="{Binding SubtitleFontSize}"
                                        Foreground="{DynamicResource Brush.TextMuted}"
-                                       Text="Sign in to continue to WFP enterprise desktop."/>
+                                       Text="Sign in to continue to the AgrInova enterprise desktop."/>
                             <Border Margin="0,12,0,0"
                                     Background="{DynamicResource Brush.SurfaceMuted}"
                                     BorderBrush="{DynamicResource Brush.Border}"
