@@ -4,16 +4,6 @@
             <ContentPresenter Content="{Binding}" />
         </Border>
     </DataTemplate>
-    <DataTemplate x:Key="CompanyLocationContextTemplate">
-        <Border Margin="10,10,10,0" Padding="12,8" CornerRadius="10" Background="{DynamicResource Brush.SurfaceMuted}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Company:" />
-                <TextBlock Margin="6,0,14,0" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding CompanyDisplayName}" />
-                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Location:" />
-                <TextBlock Margin="6,0,0,0" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding LocationDisplayName}" />
-            </StackPanel>
-        </Border>
-    </DataTemplate>
     <DataTemplate x:Key="WorkspaceStatusMessageTemplate">
         <Border Margin="10,8,10,0" Padding="10,6" CornerRadius="8" Background="{DynamicResource Brush.SurfaceMuted}">
             <TextBlock FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Text="{Binding StatusMessage}" />
