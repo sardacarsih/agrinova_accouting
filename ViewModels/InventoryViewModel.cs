@@ -94,14 +94,12 @@ public sealed partial class InventoryViewModel : ViewModelBase
     private int _stockItemLookupPage = 1;
     private int _stockItemLookupTotalCount;
     private bool _isCurrentAccountingPeriodOpen = true;
-    private string _currentAccountingPeriodMonthText = DateTime.Today.ToString("yyyy-MM");
+    private string _currentAccountingPeriodMonthText = DateTime.Today.ToString("MM/yyyy");
     private string _currentAccountingPeriodStatusText = "OPEN";
 
     public InventoryViewModel(
         IAccessControlService accessControlService,
         UserAccessContext accessContext,
-        string companyDisplayName,
-        string locationDisplayName,
         bool canOperateOpeningBalance = false)
     {
         _accessControlService = accessControlService;
@@ -145,9 +143,6 @@ public sealed partial class InventoryViewModel : ViewModelBase
         _canSubmitStockOpname = accessContext.HasAction("inventory", "stock_opname", "submit");
         _canApproveStockOpname = accessContext.HasAction("inventory", "stock_opname", "approve");
         _canPostStockOpname = accessContext.HasAction("inventory", "stock_opname", "post");
-
-        CompanyDisplayName = string.IsNullOrWhiteSpace(companyDisplayName) ? "-" : companyDisplayName.Trim();
-        LocationDisplayName = string.IsNullOrWhiteSpace(locationDisplayName) ? "-" : locationDisplayName.Trim();
 
         Categories = new ObservableCollection<ManagedInventoryCategory>();
         ActiveCategories = new ObservableCollection<ManagedInventoryCategory>();
@@ -197,10 +192,6 @@ public sealed partial class InventoryViewModel : ViewModelBase
         InitializeDashboardCommands();
         InitializeReportsCommands();
     }
-
-    public string CompanyDisplayName { get; }
-
-    public string LocationDisplayName { get; }
 
     public ObservableCollection<ManagedInventoryCategory> Categories { get; }
 
@@ -683,7 +674,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
     {
         var month = new DateTime(periodMonth.Year, periodMonth.Month, 1);
         IsCurrentAccountingPeriodOpen = isOpen;
-        CurrentAccountingPeriodMonthText = month.ToString("yyyy-MM");
+        CurrentAccountingPeriodMonthText = month.ToString("MM/yyyy");
         CurrentAccountingPeriodStatusText = isOpen ? "OPEN" : "CLOSED";
     }
 

@@ -911,6 +911,7 @@ WHERE h.id = @journal_id
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
         var journalNo = $"CLS-{monthStart:yyyyMM}-{companyId}-{locationId}";
 
+        var existingPostedIds = new List<long>();
         await using (var checkExisting = new NpgsqlCommand(@"
 SELECT id, status
 FROM gl_journal_headers
@@ -923,9 +924,8 @@ FOR UPDATE;", connection, transaction))
             checkExisting.Parameters.AddWithValue("location_id", locationId);
             checkExisting.Parameters.AddWithValue("journal_no", journalNo);
             await using var reader = await checkExisting.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken))
             {
-                var existingId = reader.GetInt64(0);
                 var status = reader.GetString(1);
                 if (!string.Equals(status, "POSTED", StringComparison.OrdinalIgnoreCase))
                 {
@@ -935,14 +935,23 @@ FOR UPDATE;", connection, transaction))
                         string.Empty);
                 }
 
-                await reader.DisposeAsync();
-                await using var deleteExisting = new NpgsqlCommand(
-                    "DELETE FROM gl_journal_headers WHERE id = @id;",
-                    connection,
-                    transaction);
-                deleteExisting.Parameters.AddWithValue("id", existingId);
-                await deleteExisting.ExecuteNonQueryAsync(cancellationToken);
+                existingPostedIds.Add(reader.GetInt64(0));
             }
+        }
+
+        if (existingPostedIds.Count > 0)
+        {
+            await using var deleteExisting = new NpgsqlCommand(@"
+DELETE FROM gl_journal_headers
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND journal_no = @journal_no;",
+                connection,
+                transaction);
+            deleteExisting.Parameters.AddWithValue("company_id", companyId);
+            deleteExisting.Parameters.AddWithValue("location_id", locationId);
+            deleteExisting.Parameters.AddWithValue("journal_no", journalNo);
+            await deleteExisting.ExecuteNonQueryAsync(cancellationToken);
         }
 
         var closingLines = new List<ClosingLine>();
@@ -1050,6 +1059,7 @@ INSERT INTO gl_journal_headers (
     location_id,
     journal_no,
     journal_date,
+    period_month,
     reference_no,
     description,
     status,
@@ -1063,6 +1073,7 @@ VALUES (
     @location_id,
     @journal_no,
     @journal_date,
+    @period_month,
     @reference_no,
     @description,
     'POSTED',
@@ -1077,6 +1088,7 @@ RETURNING id;", connection, transaction))
             insertHeader.Parameters.AddWithValue("location_id", locationId);
             insertHeader.Parameters.AddWithValue("journal_no", journalNo);
             insertHeader.Parameters.AddWithValue("journal_date", monthEnd);
+            insertHeader.Parameters.AddWithValue("period_month", monthStart);
             insertHeader.Parameters.AddWithValue("reference_no", $"CLOSING-{monthStart:yyyyMM}");
             insertHeader.Parameters.AddWithValue("description", $"Jurnal penutup periode {monthStart:yyyy-MM}");
             insertHeader.Parameters.AddWithValue("actor", actor);

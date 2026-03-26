@@ -40,19 +40,19 @@
                             <Border Style="{StaticResource ScopeBadgeStyle}">
                                 <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
                                     <Run Text="Dipilih: " />
-                                    <Run Text="{Binding SelectedRolePermissionCount}" />
+                                    <Run Text="{Binding SelectedRolePermissionCount, Mode=OneWay}" />
                                 </TextBlock>
                             </Border>
                             <Border Style="{StaticResource ScopeBadgeStyle}" Margin="4,0,0,0">
                                 <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
                                     <Run Text="Tampil: " />
-                                    <Run Text="{Binding VisibleRolePermissionCount}" />
+                                    <Run Text="{Binding VisibleRolePermissionCount, Mode=OneWay}" />
                                 </TextBlock>
                             </Border>
                             <Border Style="{StaticResource ScopeBadgeStyle}" Margin="4,0,0,0">
                                 <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
                                     <Run Text="Pengguna: " />
-                                    <Run Text="{Binding SelectedRoleAssignedUserCount}" />
+                                    <Run Text="{Binding SelectedRoleAssignedUserCount, Mode=OneWay}" />
                                 </TextBlock>
                             </Border>
                         </StackPanel>
@@ -172,9 +172,9 @@
                                             <Expander.Header>
                                                 <DockPanel>
                                                     <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}">
-                                                        <Run Text="{Binding ModuleName}" />
+                                                        <Run Text="{Binding ModuleName, Mode=OneWay}" />
                                                         <Run Text=" (" />
-                                                        <Run Text="{Binding SelectedActionsCount}" />
+                                                        <Run Text="{Binding SelectedActionsCount, Mode=OneWay}" />
                                                         <Run Text=" dipilih)" />
                                                     </TextBlock>
                                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -198,9 +198,9 @@
                                                             <Expander.Header>
                                                                 <DockPanel>
                                                                     <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}">
-                                                                        <Run Text="{Binding SubmoduleName}" />
+                                                                        <Run Text="{Binding SubmoduleName, Mode=OneWay}" />
                                                                         <Run Text=" (" />
-                                                                        <Run Text="{Binding SelectedActionsCount}" />
+                                                                        <Run Text="{Binding SelectedActionsCount, Mode=OneWay}" />
                                                                         <Run Text=" dipilih)" />
                                                                     </TextBlock>
                                                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">

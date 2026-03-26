@@ -148,24 +148,12 @@ public sealed partial class JournalManagementViewModel
     private void OpenAccountPicker(object? parameter)
     {
         var targetLine = parameter as JournalLineEditor ?? SelectedInputLine;
-        if (targetLine is null)
+        if (!TryPrepareAccountPicker(targetLine, out var activeAccounts, out var initialFilter))
         {
-            StatusMessage = "Pilih baris jurnal terlebih dahulu.";
             return;
         }
 
-        var activeAccounts = Accounts
-            .Where(x => x.IsActive)
-            .OrderBy(x => x.Code)
-            .ToList();
-
-        if (activeAccounts.Count == 0)
-        {
-            StatusMessage = "Tidak ada akun aktif yang bisa dipilih.";
-            return;
-        }
-
-        var picker = new Accounting.AccountSelectionWindow(activeAccounts, targetLine.AccountCode)
+        var picker = new Accounting.AccountSelectionWindow(activeAccounts, initialFilter)
         {
             Owner = Application.Current?.MainWindow
         };
@@ -175,11 +163,54 @@ public sealed partial class JournalManagementViewModel
             return;
         }
 
+        ApplySelectedAccountToLine(targetLine, picker.SelectedAccount);
+    }
+
+
+    public bool TryPrepareAccountPicker(
+        JournalLineEditor? targetLine,
+        out IReadOnlyList<ManagedAccount> activeAccounts,
+        out string initialFilter)
+    {
+        initialFilter = targetLine?.AccountCode ?? string.Empty;
+
+        if (targetLine is null)
+        {
+            StatusMessage = "Pilih baris jurnal terlebih dahulu.";
+            activeAccounts = Array.Empty<ManagedAccount>();
+            return false;
+        }
+
+        var accounts = Accounts
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Code)
+            .ToList();
+
+        if (accounts.Count == 0)
+        {
+            StatusMessage = "Tidak ada akun aktif yang bisa dipilih.";
+            activeAccounts = Array.Empty<ManagedAccount>();
+            return false;
+        }
+
+        activeAccounts = accounts;
+        return true;
+    }
+
+
+    public bool ApplySelectedAccountToLine(JournalLineEditor? targetLine, ManagedAccount? selectedAccount)
+    {
+        if (targetLine is null || selectedAccount is null)
+        {
+            return false;
+        }
+
         SelectedInputLine = targetLine;
-        targetLine.AccountCode = picker.SelectedAccount.Code;
-        targetLine.AccountName = picker.SelectedAccount.Name;
+        targetLine.AccountCode = selectedAccount.Code;
+        targetLine.AccountName = selectedAccount.Name;
         SyncAccountLine(targetLine);
         UpdateLineValidationState(targetLine);
+        return true;
     }
 
 

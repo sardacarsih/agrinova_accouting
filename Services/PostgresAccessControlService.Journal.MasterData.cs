@@ -895,6 +895,7 @@ ORDER BY account_code;", connection))
 SELECT h.id,
        h.journal_no,
        h.journal_date,
+       h.period_month,
        COALESCE(h.reference_no, ''),
        COALESCE(h.description, ''),
        h.status,
@@ -904,7 +905,7 @@ FROM gl_journal_headers h
 LEFT JOIN gl_journal_details d ON d.header_id = h.id
 WHERE h.company_id = @company_id
   AND h.location_id = @location_id
-GROUP BY h.id, h.journal_no, h.journal_date, h.reference_no, h.description, h.status
+GROUP BY h.id, h.journal_no, h.journal_date, h.period_month, h.reference_no, h.description, h.status
 ORDER BY h.journal_date DESC, h.id DESC
 LIMIT 300;", connection))
         {
@@ -919,11 +920,11 @@ LIMIT 300;", connection))
                     Id = reader.GetInt64(0),
                     JournalNo = reader.GetString(1),
                     JournalDate = reader.GetDateTime(2),
-                    ReferenceNo = reader.GetString(3),
-                    Description = reader.GetString(4),
-                    Status = reader.GetString(5),
-                    TotalDebit = reader.GetDecimal(6),
-                    TotalCredit = reader.GetDecimal(7)
+                    ReferenceNo = reader.GetString(4),
+                    Description = reader.GetString(5),
+                    Status = reader.GetString(6),
+                    TotalDebit = reader.GetDecimal(7),
+                    TotalCredit = reader.GetDecimal(8)
                 });
             }
         }

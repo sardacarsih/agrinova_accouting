@@ -1,9 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Globalization;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Accounting.Services;
 using Accounting.ViewModels;
 
 namespace Accounting.Views.Components;
@@ -21,6 +23,11 @@ public partial class JournalInputTabControl : UserControl
     private void JournalLinesGrid_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStartPoint = e.GetPosition(JournalLinesGrid);
+
+        if (FindAncestor<TextBox>(e.OriginalSource as DependencyObject) is not null)
+        {
+            SyncCurrentCellFromEventSource(e.OriginalSource as DependencyObject);
+        }
     }
 
     private void JournalLinesGrid_OnPreviewMouseMove(object sender, MouseEventArgs e)
@@ -126,6 +133,25 @@ public partial class JournalInputTabControl : UserControl
 
         JournalLinesGrid.ScrollIntoView(moved[0]);
         e.Handled = true;
+    }
+
+    private void JournalLinesGrid_OnPreparingCellForEdit(object sender, DataGridPreparingCellForEditEventArgs e)
+    {
+        if (e.EditingElement is not TextBox textBox)
+        {
+            return;
+        }
+
+        textBox.PreviewTextInput -= AmountTextBox_OnPreviewTextInput;
+        DataObject.RemovePastingHandler(textBox, AmountTextBox_OnPasting);
+
+        if (!IsAmountColumn(e.Column))
+        {
+            return;
+        }
+
+        textBox.PreviewTextInput += AmountTextBox_OnPreviewTextInput;
+        DataObject.AddPastingHandler(textBox, AmountTextBox_OnPasting);
     }
 
     private bool TryGetDropTarget(DependencyObject? source, Point gridPosition, out int targetIndex, out bool insertBefore)
@@ -245,12 +271,55 @@ public partial class JournalInputTabControl : UserControl
                !string.IsNullOrWhiteSpace(line.AccountName);
     }
 
-    private static void TryRunAccountPicker(JournalManagementViewModel viewModel, JournalLineEditor line)
+    private bool TryRunAccountPicker(JournalManagementViewModel viewModel, JournalLineEditor line)
     {
-        var command = viewModel.OpenAccountPickerCommand;
-        if (command.CanExecute(line))
+        if (!viewModel.TryPrepareAccountPicker(line, out var activeAccounts, out var initialFilter))
         {
-            command.Execute(line);
+            return false;
+        }
+
+        var picker = new Accounting.AccountSelectionWindow(activeAccounts, initialFilter)
+        {
+            Owner = Window.GetWindow(this) ?? Application.Current?.MainWindow
+        };
+
+        if (picker.ShowDialog() != true || picker.SelectedAccount is null)
+        {
+            return false;
+        }
+
+        return viewModel.ApplySelectedAccountToLine(line, picker.SelectedAccount);
+    }
+
+    private void AmountTextBox_OnPreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        e.Handled = !IsAllowedAmountText(textBox, e.Text);
+    }
+
+    private void AmountTextBox_OnPasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+        {
+            e.CancelCommand();
+            return;
+        }
+
+        if (!e.SourceDataObject.GetDataPresent(DataFormats.UnicodeText, true))
+        {
+            e.CancelCommand();
+            return;
+        }
+
+        var pastedText = e.SourceDataObject.GetData(DataFormats.UnicodeText) as string ?? string.Empty;
+        if (!IsAllowedAmountText(textBox, pastedText))
+        {
+            e.CancelCommand();
         }
     }
 
@@ -339,13 +408,47 @@ public partial class JournalInputTabControl : UserControl
     private (JournalLineEditor Line, DataGridColumn Column)? GetCurrentGridContext()
     {
         var focused = Keyboard.FocusedElement as DependencyObject;
-        var currentCell = FindAncestor<DataGridCell>(focused);
-        if (currentCell?.DataContext is not JournalLineEditor line || currentCell.Column is null)
+        if (TryGetGridContextFromElement(focused, out var line, out var column))
+        {
+            return (line, column);
+        }
+
+        if (JournalLinesGrid.CurrentCell.Item is not JournalLineEditor currentLine ||
+            JournalLinesGrid.CurrentCell.Column is null)
         {
             return null;
         }
 
-        return (line, currentCell.Column);
+        return (currentLine, JournalLinesGrid.CurrentCell.Column);
+    }
+
+    private void SyncCurrentCellFromEventSource(DependencyObject? source)
+    {
+        if (!TryGetGridContextFromElement(source, out var line, out var column))
+        {
+            return;
+        }
+
+        JournalLinesGrid.CurrentCell = new DataGridCellInfo(line, column);
+    }
+
+    private static bool TryGetGridContextFromElement(
+        DependencyObject? source,
+        out JournalLineEditor line,
+        out DataGridColumn column)
+    {
+        line = null!;
+        column = null!;
+
+        var currentCell = FindAncestor<DataGridCell>(source);
+        if (currentCell?.DataContext is not JournalLineEditor rowLine || currentCell.Column is null)
+        {
+            return false;
+        }
+
+        line = rowLine;
+        column = currentCell.Column;
+        return true;
     }
 
     private bool TryGetLineFromEventSource(DependencyObject? source, out JournalLineEditor line, out int index)
@@ -376,6 +479,35 @@ public partial class JournalInputTabControl : UserControl
             ProjectColumn,
             CostCenterColumn
         };
+    }
+
+    private bool IsAmountColumn(DataGridColumn? column)
+    {
+        return ReferenceEquals(column, DebitColumn) || ReferenceEquals(column, CreditColumn);
+    }
+
+    private static bool IsAllowedAmountText(TextBox textBox, string incomingText)
+    {
+        var candidateText = BuildCandidateText(textBox, incomingText);
+        if (string.IsNullOrWhiteSpace(candidateText))
+        {
+            return true;
+        }
+
+        return decimal.TryParse(candidateText, NumberStyles.Number, CultureInfo.CurrentCulture, out _) ||
+               decimal.TryParse(candidateText, NumberStyles.Number, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static string BuildCandidateText(TextBox textBox, string incomingText)
+    {
+        var currentText = textBox.Text ?? string.Empty;
+        var selectionStart = textBox.SelectionStart;
+        var selectionLength = textBox.SelectionLength;
+        var textAfterSelection = selectionStart + selectionLength <= currentText.Length
+            ? currentText.Remove(selectionStart, selectionLength)
+            : currentText;
+
+        return textAfterSelection.Insert(selectionStart, incomingText);
     }
 
     private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject

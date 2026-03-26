@@ -86,6 +86,8 @@ public sealed class ManagedJournalHeader
 
     public DateTime JournalDate { get; set; } = DateTime.Today;
 
+    public DateTime PeriodMonth { get; set; }
+
     public string ReferenceNo { get; set; } = string.Empty;
 
     public string Description { get; set; } = string.Empty;
@@ -274,6 +276,8 @@ public sealed class JournalWorkspaceData
 
 public sealed class JournalSearchFilter
 {
+    public DateTime? PeriodMonth { get; init; }
+
     public DateTime? DateFrom { get; init; }
 
     public DateTime? DateTo { get; init; }

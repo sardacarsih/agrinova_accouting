@@ -13,28 +13,30 @@
 
         <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
             <StackPanel>
-                <TextBlock Text="Jurnal" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                <TextBlock Text="Kelola input, daftar, pencarian, import, dan export jurnal."
+                <TextBlock Text="{Binding JournalWorkspaceTitle}" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                <TextBlock Text="{Binding JournalWorkspaceSubtitle}"
                            Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
             </StackPanel>
         </Border>
 
         <Grid Grid.Row="1">
             <TabControl SelectedIndex="{Binding SelectedJournalTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                <TabItem Header="Input Jurnal">
+                <TabItem Header="Editor">
                     <comp:JournalInputTabControl />
                 </TabItem>
                 <TabItem Header="Daftar">
                     <comp:JournalListTabControl />
                 </TabItem>
-                <TabItem Header="Cari">
-                    <comp:JournalSearchTabControl />
-                </TabItem>
-                <TabItem Header="Import">
-                    <comp:JournalImportTabControl />
-                </TabItem>
-                <TabItem Header="Export">
-                    <comp:JournalExportTabControl />
+                <TabItem Header="Proses Batch">
+                    <TabControl Margin="10,10,10,0"
+                                SelectedIndex="{Binding SelectedBatchTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <TabItem Header="Import">
+                            <comp:JournalImportTabControl />
+                        </TabItem>
+                        <TabItem Header="Export">
+                            <comp:JournalExportTabControl />
+                        </TabItem>
+                    </TabControl>
                 </TabItem>
             </TabControl>
 

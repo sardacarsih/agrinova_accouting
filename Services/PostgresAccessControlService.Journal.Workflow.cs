@@ -28,6 +28,7 @@ SELECT id,
        location_id,
        journal_no,
        journal_date,
+       period_month,
        COALESCE(reference_no, ''),
        COALESCE(description, ''),
        status
@@ -50,9 +51,10 @@ WHERE id = @id
                     LocationId = reader.GetInt64(2),
                     JournalNo = reader.GetString(3),
                     JournalDate = reader.GetDateTime(4),
-                    ReferenceNo = reader.GetString(5),
-                    Description = reader.GetString(6),
-                    Status = reader.GetString(7)
+                    PeriodMonth = reader.GetDateTime(5),
+                    ReferenceNo = reader.GetString(6),
+                    Description = reader.GetString(7),
+                    Status = reader.GetString(8)
                 };
             }
         }
@@ -210,12 +212,13 @@ WHERE company_id = @company_id
             var normalizedRef = header.ReferenceNo?.Trim() ?? string.Empty;
             var normalizedDesc = header.Description?.Trim() ?? string.Empty;
             var journalDate = header.JournalDate.Date;
+            var periodMonth = GetPeriodMonthStart(header.PeriodMonth == default ? journalDate : header.PeriodMonth);
             var isPeriodOpen = await IsAccountingPeriodOpenAsync(
                 connection,
                 transaction,
                 header.CompanyId,
                 header.LocationId,
-                journalDate,
+                periodMonth,
                 forUpdate: true,
                 cancellationToken);
             if (!isPeriodOpen)
@@ -223,7 +226,7 @@ WHERE company_id = @company_id
                 await transaction.RollbackAsync(cancellationToken);
                 return new AccessOperationResult(
                     false,
-                    $"Periode akuntansi {journalDate:yyyy-MM} sudah ditutup. Draft jurnal tidak dapat disimpan.");
+                    $"Periode akuntansi {periodMonth:yyyy-MM} sudah ditutup. Draft jurnal tidak dapat disimpan.");
             }
 
             long journalId;
@@ -235,6 +238,7 @@ INSERT INTO gl_journal_headers (
     location_id,
     journal_no,
     journal_date,
+    period_month,
     reference_no,
     description,
     status,
@@ -246,6 +250,7 @@ VALUES (
     @location_id,
     @journal_no,
     @journal_date,
+    @period_month,
     @reference_no,
     @description,
     'DRAFT',
@@ -258,6 +263,7 @@ RETURNING id;", connection, transaction);
                 insertHeader.Parameters.AddWithValue("location_id", header.LocationId);
                 insertHeader.Parameters.AddWithValue("journal_no", normalizedNo);
                 insertHeader.Parameters.AddWithValue("journal_date", journalDate);
+                insertHeader.Parameters.AddWithValue("period_month", periodMonth);
                 insertHeader.Parameters.AddWithValue("reference_no", normalizedRef);
                 insertHeader.Parameters.AddWithValue("description", normalizedDesc);
                 insertHeader.Parameters.AddWithValue("created_by", actor);
@@ -301,6 +307,7 @@ FOR UPDATE;", connection, transaction);
 UPDATE gl_journal_headers
 SET journal_no = @journal_no,
     journal_date = @journal_date,
+    period_month = @period_month,
     reference_no = @reference_no,
     description = @description,
     updated_at = NOW()
@@ -308,6 +315,7 @@ WHERE id = @id;", connection, transaction);
                 updateHeader.Parameters.AddWithValue("id", header.Id);
                 updateHeader.Parameters.AddWithValue("journal_no", normalizedNo);
                 updateHeader.Parameters.AddWithValue("journal_date", journalDate);
+                updateHeader.Parameters.AddWithValue("period_month", periodMonth);
                 updateHeader.Parameters.AddWithValue("reference_no", normalizedRef);
                 updateHeader.Parameters.AddWithValue("description", normalizedDesc);
                 await updateHeader.ExecuteNonQueryAsync(cancellationToken);
@@ -372,7 +380,7 @@ VALUES (
                 journalId,
                 "SAVE_DRAFT",
                 actor,
-                $"journal_no={normalizedNo};company={header.CompanyId};location={header.LocationId};lines={normalizedLines.Count};debit={totalDebit};credit={totalCredit}",
+                $"journal_no={normalizedNo};company={header.CompanyId};location={header.LocationId};period={periodMonth:yyyy-MM};lines={normalizedLines.Count};debit={totalDebit};credit={totalCredit}",
                 cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
@@ -636,8 +644,9 @@ WHERE id = @id;", connection, transaction))
             string? status = null;
             string? journalNo = null;
             DateTime journalDate = DateTime.Today;
+            DateTime periodMonth = GetPeriodMonthStart(DateTime.Today);
             await using (var lockCommand = new NpgsqlCommand(@"
-SELECT status, journal_no, journal_date
+SELECT status, journal_no, journal_date, period_month
 FROM gl_journal_headers
 WHERE id = @id
   AND company_id = @company_id
@@ -654,6 +663,7 @@ FOR UPDATE;", connection, transaction))
                     status = reader.GetString(0);
                     journalNo = reader.GetString(1);
                     journalDate = reader.GetDateTime(2);
+                    periodMonth = reader.GetDateTime(3);
                 }
             }
 
@@ -674,7 +684,7 @@ FOR UPDATE;", connection, transaction))
                 transaction,
                 companyId,
                 locationId,
-                journalDate.Date,
+                periodMonth,
                 forUpdate: true,
                 cancellationToken);
             if (!isPeriodOpen)
@@ -682,10 +692,8 @@ FOR UPDATE;", connection, transaction))
                 await transaction.RollbackAsync(cancellationToken);
                 return new AccessOperationResult(
                     false,
-                    $"Periode akuntansi {journalDate:yyyy-MM} sudah ditutup. Jurnal tidak dapat diposting.");
+                    $"Periode akuntansi {periodMonth:yyyy-MM} sudah ditutup. Jurnal tidak dapat diposting.");
             }
-
-            var periodMonth = GetPeriodMonthStart(journalDate);
 
             await using (var deleteLedger = new NpgsqlCommand(@"
 DELETE FROM gl_ledger_entries
@@ -826,6 +834,7 @@ WHERE id = @id;", connection, transaction))
 SELECT h.id,
        h.journal_no,
        h.journal_date,
+       h.period_month,
        COALESCE(h.reference_no, ''),
        COALESCE(h.description, ''),
        h.status,
@@ -835,6 +844,7 @@ FROM gl_journal_headers h
 LEFT JOIN gl_journal_details d ON d.header_id = h.id
 WHERE h.company_id = @company_id
   AND h.location_id = @location_id
+  AND (@period_month IS NULL OR h.period_month = @period_month)
   AND (@date_from IS NULL OR h.journal_date >= @date_from)
   AND (@date_to IS NULL OR h.journal_date <= @date_to)
   AND (
@@ -845,12 +855,13 @@ WHERE h.company_id = @company_id
       OR h.journal_no ILIKE @keyword_like
       OR COALESCE(h.reference_no, '') ILIKE @keyword_like
       OR COALESCE(h.description, '') ILIKE @keyword_like)
-GROUP BY h.id, h.journal_no, h.journal_date, h.reference_no, h.description, h.status
+GROUP BY h.id, h.journal_no, h.journal_date, h.period_month, h.reference_no, h.description, h.status
 ORDER BY h.journal_date DESC, h.id DESC
 LIMIT 500;", connection);
 
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("period_month", safeFilter.PeriodMonth?.Date ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("date_from", safeFilter.DateFrom?.Date ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("date_to", safeFilter.DateTo?.Date ?? (object)DBNull.Value);
 
@@ -869,11 +880,11 @@ LIMIT 500;", connection);
                 Id = reader.GetInt64(0),
                 JournalNo = reader.GetString(1),
                 JournalDate = reader.GetDateTime(2),
-                ReferenceNo = reader.GetString(3),
-                Description = reader.GetString(4),
-                Status = reader.GetString(5),
-                TotalDebit = reader.GetDecimal(6),
-                TotalCredit = reader.GetDecimal(7)
+                ReferenceNo = reader.GetString(4),
+                Description = reader.GetString(5),
+                Status = reader.GetString(6),
+                TotalDebit = reader.GetDecimal(7),
+                TotalCredit = reader.GetDecimal(8)
             });
         }
 

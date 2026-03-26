@@ -13,7 +13,7 @@ internal static partial class Program
             "inventory.item.update",
             "inventory.gudang.delete");
 
-        var viewModel = new InventoryViewModel(service, accessContext, "ITEST Company", "ITEST Location");
+        var viewModel = new InventoryViewModel(service, accessContext);
         SetInventoryMasterPolicy(viewModel, canMaintainMasterData: true, masterCompanyLabel: "ITEST-HQ");
 
         Assert(viewModel.CanCreateCategory, "Category create should be enabled when create permission exists.");
@@ -108,7 +108,7 @@ internal static partial class Program
         var importAccessContext = await BuildTestAccessContextAsync(
             "inventory.api_inv.import_master_data",
             "inventory.api_inv.download_import_template");
-        var importViewModel = new InventoryViewModel(service, importAccessContext, "ITEST Company", "ITEST Location");
+        var importViewModel = new InventoryViewModel(service, importAccessContext);
         SetInventoryMasterPolicy(importViewModel, canMaintainMasterData: true, masterCompanyLabel: "ITEST-HQ");
 
         Assert(importViewModel.CanImportInventoryMasterData, "Inventory import should be enabled when dedicated import permission exists.");
@@ -280,7 +280,7 @@ internal static partial class Program
             "inventory.stock_opname.submit",
             "inventory.stock_opname.approve",
             "inventory.stock_opname.post");
-        var viewModel = new InventoryViewModel(service, accessContext, "ITEST Company", "ITEST Location");
+        var viewModel = new InventoryViewModel(service, accessContext);
         viewModel.ApplyCurrentAccountingPeriodState(DateTime.Today, isOpen: true);
 
         viewModel.StockInHeader = new ManagedStockTransaction
@@ -396,7 +396,7 @@ internal static partial class Program
             "inventory.stock_opname.submit",
             "inventory.stock_opname.approve",
             "inventory.stock_opname.post");
-        var viewModel = new InventoryViewModel(service, accessContext, "ITEST Company", "ITEST Location");
+        var viewModel = new InventoryViewModel(service, accessContext);
 
         viewModel.StockInHeader = new ManagedStockTransaction
         {

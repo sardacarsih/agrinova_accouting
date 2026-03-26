@@ -171,14 +171,17 @@ public sealed partial class JournalManagementViewModel
     private async Task LoadPulledDraftsToSearchAsync()
     {
         var monthStart = new DateTime(InventoryPullPeriodMonth.Year, InventoryPullPeriodMonth.Month, 1);
-        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
 
-        SearchDateFrom = monthStart;
-        SearchDateTo = monthEnd;
+        _suppressBrowseFilterAutoSearch = true;
+        SearchPeriodMonth = monthStart;
+        SearchDateFrom = null;
+        SearchDateTo = null;
         SearchStatus = "DRAFT";
         SearchKeyword = string.Empty;
+        _suppressBrowseFilterAutoSearch = false;
 
         await SearchAsync();
+        SelectedJournalTabIndex = 1;
 
         if (SearchResults.Count == 0)
         {
@@ -186,7 +189,7 @@ public sealed partial class JournalManagementViewModel
             return;
         }
 
-        InventoryPullMessage = $"Draft jurnal periode {monthStart:yyyy-MM} dimuat di tab Cari ({SearchResults.Count} data).";
+        InventoryPullMessage = $"Draft jurnal periode {monthStart:yyyy-MM} dimuat di daftar jurnal ({SearchResults.Count} data).";
     }
 
     private async Task OpenPulledDraftJournalAsync(object? parameter)
@@ -225,7 +228,7 @@ public sealed partial class JournalManagementViewModel
         }
 
         await OpenJournalAsync(existing.Id);
-        InventoryPullMessage = $"Draft jurnal {targetJournalNo} dibuka di tab Input.";
+        InventoryPullMessage = $"Draft jurnal {targetJournalNo} dibuka di editor jurnal.";
     }
 
     private static IReadOnlyCollection<string> ParsePulledDraftJournalNos(string message)
@@ -267,6 +270,7 @@ public sealed partial class JournalManagementViewModel
             LocationId = _locationId,
             JournalNo = JournalNo,
             JournalDate = JournalDate,
+            PeriodMonth = JournalPeriodMonth,
             ReferenceNo = ReferenceNo,
             Description = JournalDescription,
             Status = JournalStatus

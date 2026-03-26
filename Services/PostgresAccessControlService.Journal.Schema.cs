@@ -236,6 +236,7 @@ CREATE TABLE IF NOT EXISTS gl_journal_headers (
     location_id BIGINT NOT NULL REFERENCES org_locations(id) ON DELETE RESTRICT,
     journal_no VARCHAR(80) NOT NULL,
     journal_date DATE NOT NULL,
+    period_month DATE NOT NULL DEFAULT DATE_TRUNC('month', CURRENT_DATE)::DATE,
     reference_no VARCHAR(120) NOT NULL DEFAULT '',
     description VARCHAR(500) NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
@@ -255,6 +256,19 @@ ALTER TABLE gl_journal_headers
 
 ALTER TABLE gl_journal_headers
     ADD COLUMN IF NOT EXISTS approved_by VARCHAR(100) NULL;
+
+ALTER TABLE gl_journal_headers
+    ADD COLUMN IF NOT EXISTS period_month DATE;
+
+UPDATE gl_journal_headers
+SET period_month = DATE_TRUNC('month', journal_date)::DATE
+WHERE period_month IS NULL;
+
+ALTER TABLE gl_journal_headers
+    ALTER COLUMN period_month SET NOT NULL;
+
+ALTER TABLE gl_journal_headers
+    ALTER COLUMN period_month SET DEFAULT DATE_TRUNC('month', CURRENT_DATE)::DATE;
 
 DO $$
 BEGIN

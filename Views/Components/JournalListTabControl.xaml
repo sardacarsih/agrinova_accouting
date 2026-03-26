@@ -3,8 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
+    <UserControl.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding ResetBrowseFiltersCommand}" />
+    </UserControl.InputBindings>
     <Grid Margin="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -13,14 +18,50 @@
         <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
             <StackPanel>
                 <TextBlock Text="Daftar Jurnal" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                <TextBlock Text="Pantau jurnal yang sudah tersimpan dan buka kembali ke form input."
+                <TextBlock Text="Pantau, filter, dan buka jurnal ke editor dari satu layar browse."
                            Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
             </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal">
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Periode Akuntansi" />
+                <DatePicker Margin="0,6,0,0"
+                            Style="{StaticResource MonthYearDatePickerStyle}"
+                            SelectedDate="{Binding SearchPeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            SelectedDateFormat="Short"
+                            Language="en-GB"
+                            MinWidth="220"
+                            Height="40" />
+            </StackPanel>
+
+            <Button Grid.Column="2"
+                    VerticalAlignment="Bottom"
+                    Command="{Binding SearchCommand}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Content="Cari" />
+            <Button Grid.Column="4"
+                    VerticalAlignment="Bottom"
+                    Command="{Binding ResetBrowseFiltersCommand}"
+                    Style="{StaticResource SecondaryPillButtonStyle}"
+                    Content="Reset" />
+        </Grid>
+
+        <StackPanel Grid.Row="2" Margin="0,8,0,0" Orientation="Horizontal">
             <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
-            <Button Margin="8,0,0,0" Command="{Binding OpenSelectedJournalCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Buka ke Input" />
+            <Button Margin="8,0,0,0"
+                    Command="{Binding OpenSelectedJournalCommand}"
+                    IsEnabled="{Binding CanOpenSelectedJournal}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Content="Buka Editor" />
             <Button Margin="8,0,0,0"
                     Command="{Binding ExportSelectedCommand}"
                     CommandParameter="{Binding ElementName=JournalListGrid, Path=SelectedItems}"
@@ -30,25 +71,63 @@
                     Content="Export Terpilih" />
         </StackPanel>
 
-        <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
-                  x:Name="JournalListGrid"
-                  Grid.Row="2"
-                  Margin="0,8,0,0"
-                  SelectionMode="Extended"
-                  SelectionUnit="FullRow"
-                  ItemsSource="{Binding JournalList}"
-                  SelectedItem="{Binding SelectedJournal, Mode=TwoWay}"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="True">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="No Jurnal" Binding="{Binding JournalNo}" Width="150" />
-                <DataGridTextColumn Header="Tanggal" Binding="{Binding JournalDate, StringFormat=yyyy-MM-dd}" Width="120" />
-                <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="130" />
-                <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
-                <DataGridTextColumn Header="Debit" Binding="{Binding TotalDebit, StringFormat=N2}" Width="120" />
-                <DataGridTextColumn Header="Kredit" Binding="{Binding TotalCredit, StringFormat=N2}" Width="120" />
-            </DataGrid.Columns>
-        </DataGrid>
+        <TextBlock Grid.Row="3"
+                   Margin="0,8,0,0"
+                   Foreground="{DynamicResource Brush.TextSecondary}"
+                   Text="{Binding BrowseResultSummary}" />
+
+        <Grid Grid.Row="4">
+            <DataGrid x:Name="JournalListGrid"
+                      Margin="0,8,0,0"
+                      SelectionMode="Extended"
+                      SelectionUnit="FullRow"
+                      ItemsSource="{Binding BrowseJournals}"
+                      SelectedItem="{Binding SelectedBrowseJournal, Mode=TwoWay}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True">
+                <DataGrid.InputBindings>
+                    <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding OpenSelectedJournalCommand}" />
+                </DataGrid.InputBindings>
+                <DataGrid.Style>
+                    <Style TargetType="DataGrid" BasedOn="{StaticResource EnterpriseDataGridStyle}">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasNoBrowseResults}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.Style>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="No Jurnal" Binding="{Binding JournalNo}" Width="150" />
+                    <DataGridTextColumn Header="Tanggal" Binding="{Binding JournalDate, StringFormat=yyyy-MM-dd}" Width="120" />
+                    <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="130" />
+                    <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
+                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                    <DataGridTextColumn Header="Debit" Binding="{Binding TotalDebit, StringFormat=N2}" Width="120" />
+                    <DataGridTextColumn Header="Kredit" Binding="{Binding TotalCredit, StringFormat=N2}" Width="120" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Margin="0,8,0,0"
+                    Padding="18"
+                    CornerRadius="{DynamicResource Radius.Card}"
+                    BorderThickness="1"
+                    Background="{DynamicResource Brush.SurfaceMuted}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    Visibility="{Binding HasNoBrowseResults, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding BrowseEmptyStateTitle}"
+                               HorizontalAlignment="Center"
+                               Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                    <TextBlock Margin="0,8,0,0"
+                               MaxWidth="460"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource Brush.TextSecondary}"
+                               Text="{Binding BrowseEmptyStateDescription}" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

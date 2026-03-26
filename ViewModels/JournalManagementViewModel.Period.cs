@@ -52,7 +52,7 @@ public sealed partial class JournalManagementViewModel
         var isOpen = !_periodOpenByMonthKey.TryGetValue(key, out var mappedOpen) || mappedOpen;
         IsCurrentPeriodOpen = isOpen;
         CurrentPeriodStatusText = isOpen ? "OPEN" : "CLOSED";
-        CurrentPeriodMonthText = target.ToString("yyyy-MM");
+        CurrentPeriodMonthText = target.ToString("MM/yyyy");
     }
 
 

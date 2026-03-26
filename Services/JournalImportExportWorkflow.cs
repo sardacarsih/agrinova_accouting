@@ -77,6 +77,9 @@ public sealed class JournalImportExportWorkflow
                 LocationId = locationId,
                 JournalNo = bundle.Header.JournalNo,
                 JournalDate = bundle.Header.JournalDate,
+                PeriodMonth = bundle.Header.PeriodMonth == default
+                    ? new DateTime(bundle.Header.JournalDate.Year, bundle.Header.JournalDate.Month, 1)
+                    : new DateTime(bundle.Header.PeriodMonth.Year, bundle.Header.PeriodMonth.Month, 1),
                 ReferenceNo = bundle.Header.ReferenceNo,
                 Description = bundle.Header.Description,
                 Status = "DRAFT"

@@ -8,7 +8,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -21,11 +20,7 @@
             </StackPanel>
         </Border>
 
-        <ContentControl Grid.Row="1"
-                        Content="{Binding}"
-                        ContentTemplate="{StaticResource CompanyLocationContextTemplate}" />
-
-        <Border Grid.Row="2"
+        <Border Grid.Row="1"
                 Margin="10,8,10,0"
                 Padding="10"
                 CornerRadius="{DynamicResource Radius.Card}"
@@ -76,7 +71,7 @@
             </WrapPanel>
         </Border>
 
-        <Grid Grid.Row="3" Margin="10,8,10,0">
+        <Grid Grid.Row="2" Margin="10,8,10,0">
             <comp:InventoryDashboardSubView Visibility="{Binding IsInventoryDashboardSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryItemsTabControl Visibility="{Binding IsInventoryItemSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryCategoriesTabControl Visibility="{Binding IsInventoryCategorySelected, Converter={StaticResource BoolToVisibilityConverter}}" />
@@ -105,7 +100,7 @@
             </Border>
         </Grid>
 
-        <ContentControl Grid.Row="4"
+        <ContentControl Grid.Row="3"
                         Content="{Binding}"
                         ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}" />
     </Grid>

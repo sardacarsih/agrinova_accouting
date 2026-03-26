@@ -67,8 +67,6 @@ public sealed class MasterDataViewModel : ViewModelBase
         string actorUsername,
         long companyId,
         long locationId,
-        string companyDisplayName,
-        string locationDisplayName,
         bool canManageAccountingPeriod,
         Func<string, bool>? confirmClosePeriod = null)
     {
@@ -78,8 +76,6 @@ public sealed class MasterDataViewModel : ViewModelBase
         _locationId = locationId;
         _confirmClosePeriod = confirmClosePeriod ?? (_ => true);
 
-        CompanyDisplayName = string.IsNullOrWhiteSpace(companyDisplayName) ? "-" : companyDisplayName.Trim();
-        LocationDisplayName = string.IsNullOrWhiteSpace(locationDisplayName) ? "-" : locationDisplayName.Trim();
         CanManageAccountingPeriod = canManageAccountingPeriod;
 
         Accounts = new ObservableCollection<ManagedAccount>();
@@ -132,10 +128,6 @@ public sealed class MasterDataViewModel : ViewModelBase
     }
 
     public event Action<DateTime, bool>? AccountingPeriodStateChanged;
-
-    public string CompanyDisplayName { get; }
-
-    public string LocationDisplayName { get; }
 
     public bool CanManageAccountingPeriod { get; }
 

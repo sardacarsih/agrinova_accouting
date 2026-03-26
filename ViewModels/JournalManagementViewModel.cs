@@ -27,6 +27,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private readonly bool _canImportJournals;
     private readonly bool _canExportJournals;
     private readonly bool _canPullInventoryJournals;
+    private readonly RelayCommand _openSelectedJournalCommand;
 
     private bool _isLoaded;
     private bool _isBusy;
@@ -35,6 +36,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private long _journalId;
     private string _journalNo = string.Empty;
     private DateTime _journalDate = DateTime.Today;
+    private DateTime _journalPeriodMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private string _referenceNo = string.Empty;
     private string _journalDescription = string.Empty;
     private string _journalStatus = "DRAFT";
@@ -42,9 +44,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private decimal _totalCredit;
 
     private JournalLineEditor? _selectedInputLine;
+    private ManagedJournalSummary? _selectedBrowseJournal;
     private ManagedJournalSummary? _selectedJournal;
-    private ManagedJournalSummary? _selectedSearchJournal;
 
+    private DateTime _searchPeriodMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime? _searchDateFrom;
     private DateTime? _searchDateTo;
     private string _searchKeyword = string.Empty;
@@ -60,7 +63,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private string _exportPeriodPreviewKey = string.Empty;
     private string _inventoryPullMessage = string.Empty;
     private int _selectedJournalTabIndex;
+    private int _selectedBatchTabIndex;
     private string _selectedJournalScenarioCode = "jurnal_umum";
+    private bool _isBrowseSearchActive;
+    private bool _suppressBrowseFilterAutoSearch;
     private readonly string _inventoryPullLocationLabel;
     private List<JournalImportBundleResult> _stagedImportBundles = new();
     private readonly Dictionary<string, ManagedAccount> _accountLookupByCode = new(StringComparer.OrdinalIgnoreCase);
@@ -68,7 +74,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private readonly Dictionary<string, bool> _periodOpenByMonthKey = new(StringComparer.OrdinalIgnoreCase);
     private bool _isCurrentPeriodOpen = true;
     private string _currentPeriodStatusText = "OPEN";
-    private string _currentPeriodMonthText = DateTime.Today.ToString("yyyy-MM");
+    private string _currentPeriodMonthText = DateTime.Today.ToString("MM/yyyy");
 
     public JournalManagementViewModel(
         IAccessControlService accessControlService,
@@ -118,7 +124,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
             _exportPeriodYear = ExportYearOptions[0];
         }
 
-        RefreshCommand = new RelayCommand(() => _ = LoadWorkspaceAsync());
+        RefreshCommand = new RelayCommand(() => _ = RefreshBrowseAsync());
         NewJournalCommand = new RelayCommand(NewJournal);
         AddLineCommand = new RelayCommand(AddLine);
         RemoveLineCommand = new RelayCommand(RemoveSelectedLine);
@@ -127,9 +133,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         SubmitCommand = new RelayCommand(() => _ = SubmitCurrentAsync());
         ApproveCommand = new RelayCommand(() => _ = ApproveCurrentAsync());
         PostCommand = new RelayCommand(() => _ = PostCurrentAsync());
-        OpenSelectedJournalCommand = new RelayCommand(() => _ = OpenSelectedJournalAsync());
+        _openSelectedJournalCommand = new RelayCommand(() => _ = OpenSelectedJournalAsync(), () => CanOpenSelectedJournal);
+        OpenSelectedJournalCommand = _openSelectedJournalCommand;
         SearchCommand = new RelayCommand(() => _ = SearchAsync());
-        OpenSelectedSearchCommand = new RelayCommand(() => _ = OpenSelectedSearchAsync());
+        ResetBrowseFiltersCommand = new RelayCommand(ResetBrowseFilters);
         BrowseImportFileCommand = new RelayCommand(BrowseImportFile, () => CanBrowseImportFile);
         PreviewImportCommand = new RelayCommand(PreviewImport, () => CanPreviewImportFile);
         CommitImportCommand = new RelayCommand(() => _ = CommitImportAsync(), () => CanCommitImportDrafts);
@@ -190,8 +197,6 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
 
     public ICommand SearchCommand { get; }
 
-    public ICommand OpenSelectedSearchCommand { get; }
-
     public ICommand BrowseImportFileCommand { get; }
 
     public ICommand PreviewImportCommand { get; }
@@ -225,6 +230,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
             }
 
             OnPropertyChanged(nameof(CanPullInventoryJournals));
+            _openSelectedJournalCommand.RaiseCanExecuteChanged();
             RaiseAllJournalActionStateChanged();
         }
     }
@@ -258,23 +264,28 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     public DateTime JournalDate
     {
         get => _journalDate;
+        set => SetProperty(ref _journalDate, value.Date);
+    }
+
+    public DateTime JournalPeriodMonth
+    {
+        get => _journalPeriodMonth;
         set
         {
-            var previousMonthStart = new DateTime(_journalDate.Year, _journalDate.Month, 1);
-            var newValue = value.Date;
-            if (!SetProperty(ref _journalDate, newValue))
+            var normalized = new DateTime(value.Year, value.Month, 1);
+            var previous = _journalPeriodMonth;
+            if (!SetProperty(ref _journalPeriodMonth, normalized))
             {
                 return;
             }
 
-            var nextMonthStart = new DateTime(newValue.Year, newValue.Month, 1);
-            if (previousMonthStart != nextMonthStart)
+            if (previous.Year != normalized.Year || previous.Month != normalized.Month)
             {
-                _ = RefreshPeriodStatusForDateAsync(newValue, reloadFromService: true);
+                _ = RefreshPeriodStatusForDateAsync(normalized, reloadFromService: true);
                 return;
             }
 
-            UpdatePeriodStatusFromCache(newValue);
+            UpdatePeriodStatusFromCache(normalized);
         }
     }
 
@@ -559,28 +570,86 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         set => SetProperty(ref _selectedInputLine, value);
     }
 
+    public ManagedJournalSummary? SelectedBrowseJournal
+    {
+        get => _selectedBrowseJournal;
+        set
+        {
+            if (!SetProperty(ref _selectedBrowseJournal, value))
+            {
+                return;
+            }
+
+            _openSelectedJournalCommand.RaiseCanExecuteChanged();
+        }
+    }
+
     public ManagedJournalSummary? SelectedJournal
     {
         get => _selectedJournal;
-        set => SetProperty(ref _selectedJournal, value);
-    }
+        set
+        {
+            if (!SetProperty(ref _selectedJournal, value))
+            {
+                return;
+            }
 
-    public ManagedJournalSummary? SelectedSearchJournal
-    {
-        get => _selectedSearchJournal;
-        set => SetProperty(ref _selectedSearchJournal, value);
+            if (!IsBrowseSearchActive)
+            {
+                SelectedBrowseJournal = value;
+            }
+
+            _openSelectedJournalCommand.RaiseCanExecuteChanged();
+        }
     }
 
     public DateTime? SearchDateFrom
     {
         get => _searchDateFrom;
-        set => SetProperty(ref _searchDateFrom, value);
+        set
+        {
+            if (!SetProperty(ref _searchDateFrom, value))
+            {
+                return;
+            }
+
+            OnBrowseFilterChanged(autoSearchRequested: true);
+        }
+    }
+
+    public DateTime SearchPeriodMonth
+    {
+        get => _searchPeriodMonth;
+        set
+        {
+            var normalized = new DateTime(value.Year, value.Month, 1);
+            if (!SetProperty(ref _searchPeriodMonth, normalized))
+            {
+                return;
+            }
+
+            if (!_suppressBrowseFilterAutoSearch && !string.IsNullOrWhiteSpace(_searchStatus))
+            {
+                _searchStatus = string.Empty;
+                OnPropertyChanged(nameof(SearchStatus));
+            }
+
+            OnBrowseFilterChanged(autoSearchRequested: true);
+        }
     }
 
     public DateTime? SearchDateTo
     {
         get => _searchDateTo;
-        set => SetProperty(ref _searchDateTo, value);
+        set
+        {
+            if (!SetProperty(ref _searchDateTo, value))
+            {
+                return;
+            }
+
+            OnBrowseFilterChanged(autoSearchRequested: true);
+        }
     }
 
     public string SearchKeyword
@@ -592,7 +661,15 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     public string SearchStatus
     {
         get => _searchStatus;
-        set => SetProperty(ref _searchStatus, value);
+        set
+        {
+            if (!SetProperty(ref _searchStatus, value))
+            {
+                return;
+            }
+
+            OnBrowseFilterChanged(autoSearchRequested: true);
+        }
     }
 
     public string ImportFilePath
@@ -670,29 +747,64 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     public int SelectedJournalTabIndex
     {
         get => _selectedJournalTabIndex;
-        set => SetProperty(ref _selectedJournalTabIndex, Math.Clamp(value, 0, 4));
+        set => SetProperty(ref _selectedJournalTabIndex, Math.Clamp(value, 0, 2));
     }
 
-    public bool IsJournalPlaceholderSelected =>
-        string.Equals(_selectedJournalScenarioCode, "jurnal_penyesuaian", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(_selectedJournalScenarioCode, "jurnal_penutup", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(_selectedJournalScenarioCode, "jurnal_berulang", StringComparison.OrdinalIgnoreCase);
-
-    public string JournalPlaceholderTitle => _selectedJournalScenarioCode switch
+    public int SelectedBatchTabIndex
     {
-        "jurnal_penyesuaian" => "Jurnal Penyesuaian",
-        "jurnal_penutup" => "Jurnal Penutup",
-        "jurnal_berulang" => "Jurnal Berulang",
-        _ => "Fitur Jurnal"
-    };
+        get => _selectedBatchTabIndex;
+        set => SetProperty(ref _selectedBatchTabIndex, Math.Clamp(value, 0, 1));
+    }
 
-    public string JournalPlaceholderDescription => _selectedJournalScenarioCode switch
+    public bool IsBrowseSearchActive
     {
-        "jurnal_penyesuaian" => "Menu ini sudah tersedia pada struktur baru. Workflow jurnal penyesuaian terpisah akan ditambahkan pada iterasi berikutnya.",
-        "jurnal_penutup" => "Menu ini sudah tersedia pada struktur baru. Workflow jurnal penutup terpisah akan ditambahkan pada iterasi berikutnya.",
-        "jurnal_berulang" => "Menu ini sudah tersedia pada struktur baru. Workflow template dan auto-generate jurnal berulang akan ditambahkan pada iterasi berikutnya.",
-        _ => "Fitur ini belum tersedia."
-    };
+        get => _isBrowseSearchActive;
+        private set
+        {
+            if (!SetProperty(ref _isBrowseSearchActive, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(BrowseJournals));
+            OnPropertyChanged(nameof(BrowseResultSummary));
+        }
+    }
+
+    public IEnumerable<ManagedJournalSummary> BrowseJournals => IsBrowseSearchActive ? SearchResults : JournalList;
+
+    public string BrowseResultSummary =>
+        IsBrowseSearchActive
+            ? $"Periode {SearchPeriodMonth:MM/yyyy}: {SearchResults.Count} jurnal."
+            : $"Daftar jurnal: {JournalList.Count} data.";
+
+    public bool HasBrowseResults => BrowseJournals.Any();
+
+    public bool HasNoBrowseResults => !HasBrowseResults;
+
+    public string BrowseEmptyStateTitle =>
+        IsBrowseSearchActive
+            ? "Tidak ada jurnal yang cocok"
+            : "Belum ada jurnal";
+
+    public string BrowseEmptyStateDescription =>
+        IsBrowseSearchActive
+            ? $"Tidak ada jurnal pada periode {SearchPeriodMonth:MM/yyyy}. Pilih periode lain lalu coba lagi."
+            : "Belum ada jurnal pada company dan lokasi aktif. Buat jurnal baru dari tab Editor.";
+
+    public bool IsJournalPlaceholderSelected => false;
+
+    public string JournalWorkspaceTitle => "Jurnal";
+
+    public string JournalWorkspaceSubtitle => "Kelola editor, daftar, dan proses batch jurnal.";
+
+    public string JournalEditorTitle => "Editor Jurnal";
+
+    public string JournalEditorSubtitle => "Isi header jurnal, lengkapi baris akun, lalu simpan draft atau ajukan.";
+
+    public string JournalPlaceholderTitle => "Fitur Jurnal";
+
+    public string JournalPlaceholderDescription => "Fitur ini belum tersedia.";
 
     public bool CanPullInventoryJournals => !IsBusy && _canPullInventoryJournals;
 
@@ -706,6 +818,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     public bool HasPulledInventoryDrafts => InventoryPullCreatedJournalNos.Count > 0;
 
     public bool HasExportPeriodPreview => ExportPeriodPreviewLines.Count > 0;
+
+    public bool CanOpenSelectedJournal => !IsBusy && (SelectedBrowseJournal ?? SelectedJournal) is not null;
+
+    public ICommand ResetBrowseFiltersCommand { get; }
 
     private void RaiseAllJournalActionStateChanged()
     {
@@ -774,6 +890,42 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         RaiseJournalActionTooltipChanged(includeSaveDraft: false);
     }
 
+    private bool HasAnyBrowseFilters =>
+        SearchPeriodMonth != default ||
+        SearchDateFrom.HasValue ||
+        SearchDateTo.HasValue ||
+        !string.IsNullOrWhiteSpace(SearchStatus) ||
+        !string.IsNullOrWhiteSpace(SearchKeyword);
+
+    private bool HasAnyAutoBrowseFilters =>
+        SearchPeriodMonth != default ||
+        SearchDateFrom.HasValue ||
+        SearchDateTo.HasValue ||
+        !string.IsNullOrWhiteSpace(SearchStatus);
+
+    private void OnBrowseFilterChanged(bool autoSearchRequested)
+    {
+        if (_suppressBrowseFilterAutoSearch)
+        {
+            return;
+        }
+
+        if (!HasAnyBrowseFilters)
+        {
+            if (IsBrowseSearchActive)
+            {
+                ResetBrowseFilters(silent: true);
+            }
+
+            return;
+        }
+
+        if (autoSearchRequested && HasAnyAutoBrowseFilters)
+        {
+            _ = SearchAsync();
+        }
+    }
+
     public async Task EnsureLoadedAsync()
     {
         if (_isLoaded)
@@ -824,20 +976,17 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         _selectedJournalScenarioCode = normalized;
         switch (normalized)
         {
-            case "import_jurnal":
-                SelectedJournalTabIndex = 3;
-                break;
-
             case "posting_jurnal":
                 SelectedJournalTabIndex = 1;
                 break;
 
             case "jurnal_belum_posting":
-                SelectedJournalTabIndex = 2;
+                SelectedJournalTabIndex = 1;
+                SearchPeriodMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
                 SearchStatus = string.Empty;
                 SearchKeyword = string.Empty;
-                SearchDateFrom = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-                SearchDateTo = DateTime.Today;
+                SearchDateFrom = null;
+                SearchDateTo = null;
                 break;
 
             default:
@@ -846,6 +995,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(IsJournalPlaceholderSelected));
+        OnPropertyChanged(nameof(JournalWorkspaceTitle));
+        OnPropertyChanged(nameof(JournalWorkspaceSubtitle));
+        OnPropertyChanged(nameof(JournalEditorTitle));
+        OnPropertyChanged(nameof(JournalEditorSubtitle));
         OnPropertyChanged(nameof(JournalPlaceholderTitle));
         OnPropertyChanged(nameof(JournalPlaceholderDescription));
     }

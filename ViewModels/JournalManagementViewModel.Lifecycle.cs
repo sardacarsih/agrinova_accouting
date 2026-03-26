@@ -30,12 +30,17 @@ public sealed partial class JournalManagementViewModel
             ReplaceCollection(Accounts, data.Accounts.OrderBy(x => x.Code));
             RefreshAccountLookup();
             ReplaceCollection(JournalList, data.Journals.OrderByDescending(x => x.JournalDate).ThenByDescending(x => x.Id));
+            RaiseBrowseStateChanged();
             RefreshPeriodCache(periodTask.Result);
-            UpdatePeriodStatusFromCache(JournalDate);
+            UpdatePeriodStatusFromCache(JournalPeriodMonth);
 
             if (selectedJournalId.HasValue)
             {
                 SelectedJournal = JournalList.FirstOrDefault(x => x.Id == selectedJournalId.Value);
+                if (!IsBrowseSearchActive)
+                {
+                    SelectedBrowseJournal = SelectedJournal;
+                }
             }
 
             _isLoaded = true;
@@ -68,6 +73,7 @@ public sealed partial class JournalManagementViewModel
         JournalId = 0;
         JournalNo = string.Empty;
         JournalDate = DateTime.Today;
+        JournalPeriodMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         ReferenceNo = string.Empty;
         JournalDescription = string.Empty;
         JournalStatus = "DRAFT";
@@ -78,6 +84,7 @@ public sealed partial class JournalManagementViewModel
         ImportMessage = string.Empty;
         _stagedImportBundles = new List<JournalImportBundleResult>();
         ImportPreviewItems.Clear();
+        SelectedJournalTabIndex = 0;
 
         StatusMessage = "Input jurnal baru siap.";
     }
@@ -108,6 +115,7 @@ public sealed partial class JournalManagementViewModel
             LocationId = _locationId,
             JournalNo = JournalNo,
             JournalDate = JournalDate.Date,
+            PeriodMonth = JournalPeriodMonth,
             ReferenceNo = ReferenceNo,
             Description = JournalDescription,
             Status = JournalStatus
@@ -277,23 +285,13 @@ public sealed partial class JournalManagementViewModel
 
     private async Task OpenSelectedJournalAsync()
     {
-        if (SelectedJournal is null || IsBusy)
+        var target = SelectedBrowseJournal ?? SelectedJournal;
+        if (target is null || IsBusy)
         {
             return;
         }
 
-        await OpenJournalAsync(SelectedJournal.Id);
-    }
-
-
-    private async Task OpenSelectedSearchAsync()
-    {
-        if (SelectedSearchJournal is null || IsBusy)
-        {
-            return;
-        }
-
-        await OpenJournalAsync(SelectedSearchJournal.Id);
+        await OpenJournalAsync(target.Id);
     }
 
 
@@ -332,6 +330,9 @@ public sealed partial class JournalManagementViewModel
         JournalId = bundle.Header.Id;
         JournalNo = bundle.Header.JournalNo;
         JournalDate = bundle.Header.JournalDate;
+        JournalPeriodMonth = bundle.Header.PeriodMonth == default
+            ? new DateTime(bundle.Header.JournalDate.Year, bundle.Header.JournalDate.Month, 1)
+            : new DateTime(bundle.Header.PeriodMonth.Year, bundle.Header.PeriodMonth.Month, 1);
         ReferenceNo = bundle.Header.ReferenceNo;
         JournalDescription = bundle.Header.Description;
         JournalStatus = bundle.Header.Status;
@@ -344,6 +345,7 @@ public sealed partial class JournalManagementViewModel
 
         ReplaceInputLines(editors);
         RecalculateTotals();
+        SelectedJournalTabIndex = 0;
     }
 
 
@@ -362,13 +364,18 @@ public sealed partial class JournalManagementViewModel
                 _locationId,
                 new JournalSearchFilter
                 {
+                    PeriodMonth = SearchPeriodMonth,
                     DateFrom = SearchDateFrom,
                     DateTo = SearchDateTo,
                     Keyword = SearchKeyword,
                     Status = SearchStatus
                 });
 
+            SelectedBrowseJournal = null;
             ReplaceCollection(SearchResults, result);
+            IsBrowseSearchActive = true;
+            SelectedJournalTabIndex = 1;
+            RaiseBrowseStateChanged();
             StatusMessage = $"Hasil pencarian: {SearchResults.Count} jurnal.";
         }
         catch (Exception ex)
@@ -394,6 +401,56 @@ public sealed partial class JournalManagementViewModel
         {
             target.Add(item);
         }
+    }
+
+    private async Task RefreshBrowseAsync()
+    {
+        if (IsBrowseSearchActive || HasAnyBrowseFilters)
+        {
+            await SearchAsync();
+            return;
+        }
+
+        await LoadWorkspaceAsync(forceReload: true);
+    }
+
+    private void ResetBrowseFilters()
+    {
+        ResetBrowseFilters(silent: false);
+    }
+
+    private void ResetBrowseFilters(bool silent)
+    {
+        _suppressBrowseFilterAutoSearch = true;
+        SearchPeriodMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        SearchDateFrom = null;
+        SearchDateTo = null;
+        SearchStatus = string.Empty;
+        SearchKeyword = string.Empty;
+        _suppressBrowseFilterAutoSearch = false;
+
+        if (silent)
+        {
+            SelectedBrowseJournal = null;
+            SearchResults.Clear();
+            IsBrowseSearchActive = false;
+            _openSelectedJournalCommand.RaiseCanExecuteChanged();
+            RaiseBrowseStateChanged();
+            return;
+        }
+
+        _ = SearchAsync();
+        StatusMessage = $"Filter jurnal direset ke periode {SearchPeriodMonth:MM/yyyy}.";
+    }
+
+    private void RaiseBrowseStateChanged()
+    {
+        OnPropertyChanged(nameof(BrowseJournals));
+        OnPropertyChanged(nameof(BrowseResultSummary));
+        OnPropertyChanged(nameof(HasBrowseResults));
+        OnPropertyChanged(nameof(HasNoBrowseResults));
+        OnPropertyChanged(nameof(BrowseEmptyStateTitle));
+        OnPropertyChanged(nameof(BrowseEmptyStateDescription));
     }
 
 }

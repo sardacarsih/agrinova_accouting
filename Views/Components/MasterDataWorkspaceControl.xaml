@@ -7,7 +7,6 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -20,11 +19,7 @@
             </StackPanel>
         </Border>
 
-        <ContentControl Grid.Row="1"
-                        Content="{Binding}"
-                        ContentTemplate="{StaticResource CompanyLocationContextTemplate}" />
-
-        <Grid Grid.Row="2" Margin="10,8,10,0">
+        <Grid Grid.Row="1" Margin="10,8,10,0">
             <comp:MasterDataAccountsTabControl Visibility="{Binding IsMasterAccountListSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:MasterDataPeriodsTabControl Visibility="{Binding IsMasterPeriodSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <Border Padding="14"
@@ -44,7 +39,7 @@
             </Border>
         </Grid>
 
-        <ContentControl Grid.Row="3"
+        <ContentControl Grid.Row="2"
                         Content="{Binding}"
                         ContentTemplate="{StaticResource WorkspaceStatusMessageTemplate}" />
     </Grid>

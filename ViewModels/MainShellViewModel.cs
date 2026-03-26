@@ -101,7 +101,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
     private string _currentScopePlaceholderTitle = "Ruang Kerja";
     private string _currentScopePlaceholderDescription = "Ruang kerja siap digunakan.";
     private string _currentPeriodStatusText = "OPEN";
-    private string _currentPeriodMonthText = DateTime.Today.ToString("yyyy-MM");
+    private string _currentPeriodMonthText = DateTime.Today.ToString("MM/yyyy");
     private bool _isCurrentPeriodOpen = true;
     private DateTime _lastPeriodRefreshAt = DateTime.MinValue;
     private bool _isRefreshingPeriodStatus;
@@ -152,16 +152,12 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
             CurrentUserDisplayName,
             accessContext.SelectedCompanyId,
             accessContext.SelectedLocationId,
-            CurrentCompanyDisplayName,
-            CurrentLocationDisplayName,
             canManageAccountingPeriod,
             ConfirmPeriodClose);
         MasterData.AccountingPeriodStateChanged += OnAccountingPeriodStateChanged;
         Inventory = new InventoryViewModel(
             accessControlService,
             accessContext,
-            CurrentCompanyDisplayName,
-            CurrentLocationDisplayName,
             canOperateInventoryOpeningBalance);
         JournalManagement = new JournalManagementViewModel(
             accessControlService,
@@ -207,7 +203,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
 
     public string CurrentLocationDisplayName { get; }
 
-    public string ActiveAccessSummary => $"Role: {CurrentRoleDisplayName}  |  Company: {CurrentCompanyDisplayName}  |  Lokasi: {CurrentLocationDisplayName}";
+    public string ActiveAccessSummary => $"Pengguna: {CurrentUserDisplayName}  |  Role: {CurrentRoleDisplayName}  |  Company: {CurrentCompanyDisplayName}  |  Lokasi: {CurrentLocationDisplayName}";
 
     public string WorkContextButtonLabel => "Konteks Kerja";
 
@@ -543,7 +539,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
 
             var isOpen = current?.IsOpen ?? true;
             IsCurrentPeriodOpen = isOpen;
-            CurrentPeriodMonthText = currentMonth.ToString("yyyy-MM");
+            CurrentPeriodMonthText = currentMonth.ToString("MM/yyyy");
             CurrentPeriodStatusText = isOpen ? "OPEN" : "CLOSED";
             Inventory.ApplyCurrentAccountingPeriodState(currentMonth, isOpen);
         }
@@ -587,11 +583,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
                 {
                     Children = new ObservableCollection<MainShellNavigationItem>
                     {
-                        new("transactions", "Jurnal Umum", "\uE7C3", subCode: "jurnal_umum"),
-                        new("transactions", "Jurnal Penyesuaian", "\uE7C3", subCode: "jurnal_penyesuaian"),
-                        new("transactions", "Jurnal Penutup", "\uE7C3", subCode: "jurnal_penutup"),
-                        new("transactions", "Jurnal Berulang", "\uE7C3", subCode: "jurnal_berulang"),
-                        new("transactions", "Import Jurnal", "\uE8B5", subCode: "import_jurnal")
+                        new("transactions", "Jurnal", "\uE7C3", subCode: "jurnal_umum")
                     }
                 });
             }
@@ -1037,7 +1029,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
         }
 
         IsCurrentPeriodOpen = isOpen;
-        CurrentPeriodMonthText = currentMonth.ToString("yyyy-MM");
+        CurrentPeriodMonthText = currentMonth.ToString("MM/yyyy");
         CurrentPeriodStatusText = isOpen ? "OPEN" : "CLOSED";
         Inventory.ApplyCurrentAccountingPeriodState(currentMonth, isOpen);
     }

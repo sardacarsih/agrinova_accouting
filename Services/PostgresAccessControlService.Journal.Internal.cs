@@ -314,10 +314,10 @@ WHERE id = @location_id
         NpgsqlTransaction transaction,
         long companyId,
         long locationId,
-        DateTime journalDate,
+        DateTime periodMonth,
         CancellationToken cancellationToken)
     {
-        var periodMonth = GetPeriodMonthStart(journalDate);
+        var normalizedPeriodMonth = GetPeriodMonthStart(periodMonth);
 
         await using var command = new NpgsqlCommand(@"
 INSERT INTO gl_accounting_periods (
@@ -339,7 +339,7 @@ VALUES (
 ON CONFLICT (company_id, location_id, period_month) DO NOTHING;", connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
-        command.Parameters.AddWithValue("period_month", periodMonth);
+        command.Parameters.AddWithValue("period_month", normalizedPeriodMonth);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -348,12 +348,12 @@ ON CONFLICT (company_id, location_id, period_month) DO NOTHING;", connection, tr
         NpgsqlTransaction transaction,
         long companyId,
         long locationId,
-        DateTime journalDate,
+        DateTime periodMonth,
         bool forUpdate,
         CancellationToken cancellationToken)
     {
-        await EnsureAccountingPeriodRowAsync(connection, transaction, companyId, locationId, journalDate, cancellationToken);
-        var periodMonth = GetPeriodMonthStart(journalDate);
+        await EnsureAccountingPeriodRowAsync(connection, transaction, companyId, locationId, periodMonth, cancellationToken);
+        var normalizedPeriodMonth = GetPeriodMonthStart(periodMonth);
         var sql = forUpdate
             ? @"
 SELECT is_open
@@ -372,7 +372,7 @@ WHERE company_id = @company_id
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
-        command.Parameters.AddWithValue("period_month", periodMonth);
+        command.Parameters.AddWithValue("period_month", normalizedPeriodMonth);
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
         if (scalar is bool isOpen)
         {

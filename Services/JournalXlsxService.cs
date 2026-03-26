@@ -47,6 +47,7 @@ public sealed class JournalXlsxService
             {
                 "JournalNo",
                 "JournalDate",
+                "PeriodMonth",
                 "ReferenceNo",
                 "JournalDescription",
                 "JournalStatus",
@@ -80,6 +81,7 @@ public sealed class JournalXlsxService
                 {
                     header.JournalNo,
                     header.JournalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    ResolvePeriodMonth(header).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                     header.ReferenceNo,
                     header.Description,
                     header.Status,
@@ -128,6 +130,7 @@ public sealed class JournalXlsxService
             {
                 "JournalNo",
                 "JournalDate",
+                "PeriodMonth",
                 "ReferenceNo",
                 "Description",
                 "Status"
@@ -167,6 +170,7 @@ public sealed class JournalXlsxService
             {
                 header.JournalNo,
                 header.JournalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ResolvePeriodMonth(header).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 header.ReferenceNo,
                 header.Description,
                 header.Status
@@ -272,6 +276,7 @@ public sealed class JournalXlsxService
         }
 
         var journalDateCol = GetColumnIndex(columnByKey, "JOURNALDATE");
+        var periodMonthCol = GetColumnIndex(columnByKey, "PERIODMONTH");
         var referenceNoCol = GetColumnIndex(columnByKey, "REFERENCENO");
         var journalDescriptionCol = GetColumnIndex(columnByKey, "JOURNALDESCRIPTION");
         var journalStatusCol = GetColumnIndex(columnByKey, "JOURNALSTATUS");
@@ -353,12 +358,23 @@ public sealed class JournalXlsxService
                     }
                 }
 
+                var periodMonth = new DateTime(journalDate.Year, journalDate.Month, 1);
+                if (periodMonthCol >= 0)
+                {
+                    var periodValue = GetCell(row, periodMonthCol);
+                    if (DateTime.TryParse(periodValue, out var parsedPeriod))
+                    {
+                        periodMonth = new DateTime(parsedPeriod.Year, parsedPeriod.Month, 1);
+                    }
+                }
+
                 group = new JournalImportGroup
                 {
                     Header = new ManagedJournalHeader
                     {
                         JournalNo = journalNo,
                         JournalDate = journalDate,
+                        PeriodMonth = periodMonth,
                         ReferenceNo = referenceNo,
                         Description = journalDescription,
                         Status = string.IsNullOrWhiteSpace(journalStatus) ? "DRAFT" : journalStatus
@@ -505,6 +521,13 @@ public sealed class JournalXlsxService
         }
 
         return map;
+    }
+
+    private static DateTime ResolvePeriodMonth(ManagedJournalHeader header)
+    {
+        var fallbackDate = header.JournalDate == default ? DateTime.Today : header.JournalDate;
+        var source = header.PeriodMonth == default ? fallbackDate : header.PeriodMonth;
+        return new DateTime(source.Year, source.Month, 1);
     }
 
     private static string NormalizeFlatColumnName(string? name)

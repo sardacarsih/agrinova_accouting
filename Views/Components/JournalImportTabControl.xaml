@@ -112,7 +112,7 @@
                         <Button Command="{Binding LoadPulledDraftsToSearchCommand}"
                                 IsEnabled="{Binding CanPullInventoryJournals}"
                                 Style="{StaticResource SecondaryPillButtonStyle}"
-                                Content="Muat ke Tab Cari (Draft)" />
+                                Content="Muat ke Daftar (Draft)" />
                         <Button Margin="8,0,0,0"
                                 Command="{Binding OpenPulledDraftJournalCommand}"
                                 CommandParameter=""

@@ -438,6 +438,7 @@ INSERT INTO gl_journal_headers (
     location_id,
     journal_no,
     journal_date,
+    period_month,
     reference_no,
     description,
     status,
@@ -452,6 +453,7 @@ VALUES (
     @location_id,
     @journal_no,
     @journal_date,
+    @period_month,
     @reference_no,
     @description,
     'POSTED',
@@ -467,6 +469,7 @@ RETURNING id;", connection, transaction))
             insertHeader.Parameters.AddWithValue("location_id", locationId);
             insertHeader.Parameters.AddWithValue("journal_no", journalNo);
             insertHeader.Parameters.AddWithValue("journal_date", journalDate.Date);
+            insertHeader.Parameters.AddWithValue("period_month", new DateTime(journalDate.Year, journalDate.Month, 1));
             insertHeader.Parameters.AddWithValue("reference_no", (referenceNo ?? string.Empty).Trim());
             insertHeader.Parameters.AddWithValue("description", (description ?? string.Empty).Trim());
             insertHeader.Parameters.AddWithValue("actor", actor);
