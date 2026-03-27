@@ -726,9 +726,10 @@ public sealed class MasterDataViewModel : ViewModelBase
             StatusMessage = "Memuat master data akun dan periode...";
             var accountTask = _accessControlService.SearchAccountsAsync(
                 _companyId,
-                BuildAccountSearchFilter(AccountPage));
-            var parentTask = _accessControlService.GetAccountsAsync(_companyId, includeInactive: false);
-            var periodTask = _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId);
+                BuildAccountSearchFilter(AccountPage),
+                _actorUsername);
+            var parentTask = _accessControlService.GetAccountsAsync(_companyId, includeInactive: false, actorUsername: _actorUsername);
+            var periodTask = _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
             var auditTask = _accessControlService.GetAuditLogsAsync("ACCOUNTING_PERIOD", 300);
             await Task.WhenAll(accountTask, parentTask, periodTask, auditTask);
 
@@ -924,7 +925,8 @@ public sealed class MasterDataViewModel : ViewModelBase
             IsBusy = true;
             var result = await _accessControlService.SearchAccountsAsync(
                 _companyId,
-                BuildAccountSearchFilter(requestedPage));
+                BuildAccountSearchFilter(requestedPage),
+                _actorUsername);
             ApplyAccountSearchResult(result, preferredSelectedAccountId);
             StatusMessage = AccountTotalCount <= 0
                 ? "Tidak ada akun sesuai filter."
@@ -1121,7 +1123,7 @@ public sealed class MasterDataViewModel : ViewModelBase
             var monthEnd = monthStart.AddMonths(1).AddDays(-1);
 
             var checklist = new List<PeriodCloseChecklistItem>();
-            var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId);
+            var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
             var selectedPeriod = periods.FirstOrDefault(x => x.PeriodMonth.Date == monthStart.Date);
 
             if (selectedPeriod is null)
@@ -1252,7 +1254,8 @@ public sealed class MasterDataViewModel : ViewModelBase
                     DateFrom = monthStart,
                     DateTo = monthEnd,
                     Status = status
-                });
+                },
+                _actorUsername);
             pendingCount += journals.Count;
         }
 

@@ -9,6 +9,7 @@ public sealed partial class PostgresAccessControlService
         long journalId,
         long companyId,
         long locationId,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -21,6 +22,20 @@ public sealed partial class PostgresAccessControlService
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                AccountingSubmoduleTransactions,
+                AccountingTransactionsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return null;
+        }
 
         ManagedJournalHeader? header = null;
         await using (var headerCommand = new NpgsqlCommand(@"
@@ -440,8 +455,9 @@ VALUES (
 
             string? status = null;
             string? journalNo = null;
+            DateTime periodMonth = GetPeriodMonthStart(DateTime.Today);
             await using (var lockCommand = new NpgsqlCommand(@"
-SELECT status, journal_no
+SELECT status, journal_no, period_month
 FROM gl_journal_headers
 WHERE id = @id
   AND company_id = @company_id
@@ -456,6 +472,7 @@ FOR UPDATE;", connection, transaction))
                 {
                     status = reader.GetString(0);
                     journalNo = reader.GetString(1);
+                    periodMonth = reader.GetDateTime(2);
                 }
             }
 
@@ -469,6 +486,22 @@ FOR UPDATE;", connection, transaction))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return new AccessOperationResult(false, "Hanya jurnal DRAFT yang dapat di-submit.");
+            }
+
+            var isPeriodOpen = await IsAccountingPeriodOpenAsync(
+                connection,
+                transaction,
+                companyId,
+                locationId,
+                periodMonth,
+                forUpdate: true,
+                cancellationToken);
+            if (!isPeriodOpen)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AccessOperationResult(
+                    false,
+                    $"Periode akuntansi {periodMonth:yyyy-MM} sudah ditutup. Jurnal tidak dapat di-submit.");
             }
 
             await using (var update = new NpgsqlCommand(@"
@@ -541,8 +574,9 @@ WHERE id = @id;", connection, transaction))
 
             string? status = null;
             string? journalNo = null;
+            DateTime periodMonth = GetPeriodMonthStart(DateTime.Today);
             await using (var lockCommand = new NpgsqlCommand(@"
-SELECT status, journal_no
+SELECT status, journal_no, period_month
 FROM gl_journal_headers
 WHERE id = @id
   AND company_id = @company_id
@@ -557,6 +591,7 @@ FOR UPDATE;", connection, transaction))
                 {
                     status = reader.GetString(0);
                     journalNo = reader.GetString(1);
+                    periodMonth = reader.GetDateTime(2);
                 }
             }
 
@@ -570,6 +605,22 @@ FOR UPDATE;", connection, transaction))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return new AccessOperationResult(false, "Hanya jurnal SUBMITTED yang dapat di-approve.");
+            }
+
+            var isPeriodOpen = await IsAccountingPeriodOpenAsync(
+                connection,
+                transaction,
+                companyId,
+                locationId,
+                periodMonth,
+                forUpdate: true,
+                cancellationToken);
+            if (!isPeriodOpen)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AccessOperationResult(
+                    false,
+                    $"Periode akuntansi {periodMonth:yyyy-MM} sudah ditutup. Jurnal tidak dapat di-approve.");
             }
 
             await using (var update = new NpgsqlCommand(@"
@@ -816,6 +867,7 @@ WHERE id = @id;", connection, transaction))
         long companyId,
         long locationId,
         JournalSearchFilter filter,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -831,6 +883,20 @@ WHERE id = @id;", connection, transaction))
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                AccountingSubmoduleTransactions,
+                AccountingTransactionsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT h.id,

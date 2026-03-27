@@ -22,8 +22,8 @@ public sealed partial class JournalManagementViewModel
             IsBusy = true;
             StatusMessage = "Memuat data jurnal...";
 
-            var workspaceTask = _accessControlService.GetJournalWorkspaceDataAsync(_companyId, _locationId);
-            var periodTask = _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId);
+            var workspaceTask = _accessControlService.GetJournalWorkspaceDataAsync(_companyId, _locationId, _actorUsername);
+            var periodTask = _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
             await Task.WhenAll(workspaceTask, periodTask);
 
             var data = workspaceTask.Result;
@@ -37,7 +37,8 @@ public sealed partial class JournalManagementViewModel
             var browseResult = await _accessControlService.SearchJournalsAsync(
                 EffectiveSearchCompanyId,
                 EffectiveSearchLocationId,
-                BuildBrowseSearchFilter());
+                BuildBrowseSearchFilter(),
+                _actorUsername);
             ApplyBrowseSearchResult(browseResult);
 
             if (selectedJournalId.HasValue)
@@ -304,7 +305,7 @@ public sealed partial class JournalManagementViewModel
         try
         {
             IsBusy = true;
-            var result = await _journalLifecycleWorkflow.OpenAsync(journalId, EffectiveSearchCompanyId, EffectiveSearchLocationId);
+            var result = await _journalLifecycleWorkflow.OpenAsync(journalId, EffectiveSearchCompanyId, EffectiveSearchLocationId, _actorUsername);
             StatusMessage = result.Message;
             if (!result.IsSuccess || result.Bundle is null)
             {
@@ -366,7 +367,8 @@ public sealed partial class JournalManagementViewModel
             var result = await _accessControlService.SearchJournalsAsync(
                 EffectiveSearchCompanyId,
                 EffectiveSearchLocationId,
-                BuildBrowseSearchFilter());
+                BuildBrowseSearchFilter(),
+                _actorUsername);
 
             ApplyBrowseSearchResult(result);
             SelectedJournalTabIndex = 1;

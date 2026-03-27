@@ -2039,7 +2039,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         try
         {
             var settings = await _accessControlService.GetInventoryCostingSettingsAsync(companyId);
-            var accounts = await _accessControlService.GetAccountsAsync(companyId, includeInactive: false);
+            var accounts = await _accessControlService.GetAccountsAsync(companyId, includeInactive: false, actorUsername: _actorUsername);
 
             ReplaceCollection(
                 InventoryCostingAccountOptions,

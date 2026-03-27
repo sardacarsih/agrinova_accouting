@@ -23,6 +23,7 @@ public sealed partial class PostgresAccessControlService
     private const string InventorySubmoduleApiInv = "api_inv";
 
     private const string PermissionActionCreate = "create";
+    private const string PermissionActionView = "view";
     private const string PermissionActionUpdate = "update";
     private const string PermissionActionDelete = "delete";
     private const string PermissionActionSubmit = "submit";
@@ -38,6 +39,22 @@ public sealed partial class PostgresAccessControlService
     private const string PermissionActionPullJournal = "pull_journal";
     private const string PermissionActionImportMasterData = "import_master_data";
     private const string PermissionActionDownloadImportTemplate = "download_import_template";
+    private static readonly string[] AccountingTransactionsReadActions =
+    [
+        PermissionActionView,
+        PermissionActionCreate,
+        PermissionActionUpdate,
+        PermissionActionSubmit,
+        PermissionActionApprove,
+        PermissionActionPost,
+        "import",
+        "export"
+    ];
+    private static readonly string[] AccountingReportsReadActions =
+    [
+        PermissionActionView,
+        "export"
+    ];
 
     private async Task<bool> HasPermissionAsync(
         NpgsqlConnection connection,
@@ -117,6 +134,143 @@ SELECT fn_user_has_permission(
         }
 
         return new AccessOperationResult(false, failureMessage);
+    }
+
+    private async Task<bool> HasAnyPermissionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        string username,
+        string moduleCode,
+        string submoduleCode,
+        IReadOnlyCollection<string> actionCodes,
+        long? companyId,
+        long? locationId,
+        CancellationToken cancellationToken)
+    {
+        if (actionCodes is null || actionCodes.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var actionCode in actionCodes)
+        {
+            if (await HasPermissionAsync(
+                    connection,
+                    transaction,
+                    username,
+                    moduleCode,
+                    submoduleCode,
+                    actionCode,
+                    companyId,
+                    locationId,
+                    cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> HasScopeAccessAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        string username,
+        long? companyId,
+        long? locationId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            return false;
+        }
+
+        if (!TryBuildQualifiedTableName(_options.UsersTable, out var usersTable))
+        {
+            return false;
+        }
+
+        await using var userCommand = new NpgsqlCommand($@"
+SELECT u.id,
+       EXISTS (
+           SELECT 1
+           FROM sec_user_roles ur
+           JOIN sec_roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id
+             AND r.is_active = TRUE
+             AND COALESCE(r.is_super_role, FALSE) = TRUE
+       )
+FROM {usersTable} u
+WHERE lower(u.username) = lower(@username)
+  AND u.is_active = TRUE
+LIMIT 1;", connection, transaction);
+        userCommand.Parameters.AddWithValue("username", username.Trim());
+
+        long? userId = null;
+        var hasSuperRole = false;
+        await using (var reader = await userCommand.ExecuteReaderAsync(cancellationToken))
+        {
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                userId = reader.GetInt64(0);
+                hasSuperRole = !reader.IsDBNull(1) && reader.GetBoolean(1);
+            }
+        }
+
+        if (!userId.HasValue)
+        {
+            return false;
+        }
+
+        if (hasSuperRole)
+        {
+            return true;
+        }
+
+        if (companyId.HasValue)
+        {
+            await using var companyCommand = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM sec_user_company_access uca
+JOIN org_companies c ON c.id = uca.company_id
+WHERE uca.user_id = @user_id
+  AND uca.company_id = @company_id
+  AND c.is_active = TRUE;", connection, transaction);
+            companyCommand.Parameters.AddWithValue("user_id", userId.Value);
+            companyCommand.Parameters.AddWithValue("company_id", companyId.Value);
+
+            var companyCount = Convert.ToInt32(await companyCommand.ExecuteScalarAsync(cancellationToken));
+            if (companyCount <= 0)
+            {
+                return false;
+            }
+        }
+
+        if (locationId.HasValue)
+        {
+            await using var locationCommand = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM sec_user_location_access ula
+JOIN org_locations l ON l.id = ula.location_id
+WHERE ula.user_id = @user_id
+  AND ula.location_id = @location_id
+  AND l.is_active = TRUE
+  AND (@company_id IS NULL OR l.company_id = @company_id);", connection, transaction);
+            locationCommand.Parameters.AddWithValue("user_id", userId.Value);
+            locationCommand.Parameters.AddWithValue("location_id", locationId.Value);
+            locationCommand.Parameters.Add(new NpgsqlParameter("company_id", NpgsqlDbType.Bigint)
+            {
+                Value = companyId.HasValue ? companyId.Value : DBNull.Value
+            });
+
+            var locationCount = Convert.ToInt32(await locationCommand.ExecuteScalarAsync(cancellationToken));
+            if (locationCount <= 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task<InventoryImportExecutionResult?> EnsureInventoryImportPermissionAsync(

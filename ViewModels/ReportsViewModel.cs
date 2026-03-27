@@ -31,6 +31,7 @@ public sealed partial class ReportsViewModel : ViewModelBase
     private readonly RelayCommand _exportCommand;
     private readonly long _companyId;
     private readonly long _locationId;
+    private readonly string _actorUsername;
     private readonly bool _canViewReports;
     private readonly bool _canExportReports;
 
@@ -74,6 +75,7 @@ public sealed partial class ReportsViewModel : ViewModelBase
         _xlsxService = new FinancialReportXlsxService();
         _companyId = companyId;
         _locationId = locationId;
+        _actorUsername = string.IsNullOrWhiteSpace(accessContext.Username) ? "SYSTEM" : accessContext.Username.Trim();
         _canViewReports = accessContext.HasAction("accounting", "reports", "view");
         _canExportReports = accessContext.HasAction("accounting", "reports", "export");
 
@@ -431,11 +433,11 @@ public sealed partial class ReportsViewModel : ViewModelBase
             IsBusy = true;
             StatusMessage = "Memuat laporan keuangan...";
 
-            var trialBalanceTask = _accessControlService.GetTrialBalanceAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth);
-            var profitLossTask = _accessControlService.GetProfitLossAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth);
-            var balanceSheetTask = _accessControlService.GetBalanceSheetAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth);
+            var trialBalanceTask = _accessControlService.GetTrialBalanceAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth, _actorUsername);
+            var profitLossTask = _accessControlService.GetProfitLossAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth, _actorUsername);
+            var balanceSheetTask = _accessControlService.GetBalanceSheetAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth, _actorUsername);
             var accountOptionsTask = IsInquiryFilterMode
-                ? _accessControlService.GetAccountsAsync(EffectiveCompanyId)
+                ? _accessControlService.GetAccountsAsync(EffectiveCompanyId, actorUsername: _actorUsername)
                 : Task.FromResult(new List<ManagedAccount>());
             var generalLedgerTask = IsGeneralLedgerMode
                 ? _accessControlService.GetGeneralLedgerAsync(
@@ -443,7 +445,8 @@ public sealed partial class ReportsViewModel : ViewModelBase
                     EffectiveLocationId,
                     PeriodMonth,
                     SelectedGeneralLedgerAccountCode,
-                    GeneralLedgerKeyword)
+                    GeneralLedgerKeyword,
+                    _actorUsername)
                 : Task.FromResult(new List<ManagedGeneralLedgerRow>());
             var subLedgerTask = IsSubLedgerMode
                 ? _accessControlService.GetSubLedgerAsync(
@@ -451,10 +454,11 @@ public sealed partial class ReportsViewModel : ViewModelBase
                     EffectiveLocationId,
                     PeriodMonth,
                     SelectedGeneralLedgerAccountCode,
-                    GeneralLedgerKeyword)
+                    GeneralLedgerKeyword,
+                    _actorUsername)
                 : Task.FromResult(new List<ManagedSubLedgerRow>());
             var cashFlowTask = IsCashFlowMode
-                ? _accessControlService.GetCashFlowAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth)
+                ? _accessControlService.GetCashFlowAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth, _actorUsername)
                 : Task.FromResult(new List<ManagedCashFlowRow>());
             var accountMutationTask = IsAccountMutationMode
                 ? _accessControlService.GetAccountMutationAsync(
@@ -462,7 +466,8 @@ public sealed partial class ReportsViewModel : ViewModelBase
                     EffectiveLocationId,
                     PeriodMonth,
                     SelectedGeneralLedgerAccountCode,
-                    GeneralLedgerKeyword)
+                    GeneralLedgerKeyword,
+                    _actorUsername)
                 : Task.FromResult(new List<ManagedAccountMutationRow>());
 
             await Task.WhenAll(

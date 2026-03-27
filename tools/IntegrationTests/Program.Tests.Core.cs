@@ -253,6 +253,33 @@ WHERE lower(mo.module_code) = lower(@module_code)
             $"Missing RBAC seed permissions: {string.Join(", ", missingPermissions)}");
     }
 
+    private static long RequireAccessScopeId(
+        UserManagementData managementData,
+        string moduleCode,
+        string submoduleCode,
+        string actionCode)
+    {
+        var scope = managementData.AccessScopes.FirstOrDefault(candidate =>
+            string.Equals(candidate.ModuleCode, moduleCode, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.SubmoduleCode, submoduleCode, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.ActionCode, actionCode, StringComparison.OrdinalIgnoreCase));
+
+        Assert(
+            scope is not null,
+            $"Required access scope was not found: {moduleCode}.{submoduleCode}.{actionCode}.");
+
+        return scope!.Id;
+    }
+
+    private static ManagedRole RequireRole(UserManagementData managementData, string roleCode)
+    {
+        var role = managementData.Roles.FirstOrDefault(candidate =>
+            string.Equals(candidate.Code, roleCode, StringComparison.OrdinalIgnoreCase));
+
+        Assert(role is not null, $"Required role was not found: {roleCode}.");
+        return role!;
+    }
+
     private static async Task TestSaveUserSingleRoleRuleAsync()
     {
         var service = CreateService();
@@ -387,6 +414,162 @@ WHERE lower(mo.module_code) = lower(@module_code)
         }
     }
 
+    private static async Task TestJournalReadApisRespectScopeAccessAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        var managementData = await service.GetUserManagementDataAsync();
+
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var targetCompanyId = accessOptions.Companies[0].Id;
+        var targetLocationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == targetCompanyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var previousTargetPeriod = await GetAccountingPeriodStateAsync(targetCompanyId, targetLocationId, targetMonth);
+
+        var transactionViewScopeId = RequireAccessScopeId(managementData, "accounting", "transactions", "view");
+        var reportViewScopeId = RequireAccessScopeId(managementData, "accounting", "reports", "view");
+
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var roleCode = $"ITEST_GL_READ_{stamp}";
+        var username = $"itest_gl_read_{stamp}";
+        var companyCode = $"ITGLR{stamp % 100000:00000}";
+        var locationCode = $"L{stamp % 100000:00000}";
+
+        long? scopedRoleId = null;
+        long? scopedUserId = null;
+        long? scopedCompanyId = null;
+        long? scopedLocationId = null;
+
+        try
+        {
+            await SetAccountingPeriodStateAsync(targetCompanyId, targetLocationId, targetMonth, isOpen: true, note: "ITEST_SCOPE_READ_TARGET");
+
+            var adminWorkspace = await service.GetJournalWorkspaceDataAsync(targetCompanyId, targetLocationId, "admin");
+            var adminAccounts = await service.GetAccountsAsync(targetCompanyId, includeInactive: false, actorUsername: "admin");
+            var adminPeriods = await service.GetAccountingPeriodsAsync(targetCompanyId, targetLocationId, "admin");
+
+            Assert(adminWorkspace.Accounts.Count > 0, "Target scope should expose journal workspace data to admin.");
+            Assert(adminAccounts.Count > 0, "Target scope should expose accounts to admin.");
+            Assert(adminPeriods.Count > 0, "Target scope should expose accounting periods to admin.");
+
+            var createCompanyResult = await service.SaveCompanyAsync(
+                new ManagedCompany
+                {
+                    Id = 0,
+                    Code = companyCode,
+                    Name = $"GL Read Scope Company {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createCompanyResult.IsSuccess && createCompanyResult.EntityId.HasValue,
+                $"Failed to create scoped company: {createCompanyResult.Message}");
+            scopedCompanyId = createCompanyResult.EntityId!.Value;
+
+            var createLocationResult = await service.SaveLocationAsync(
+                new ManagedLocation
+                {
+                    Id = 0,
+                    CompanyId = scopedCompanyId.Value,
+                    Code = locationCode,
+                    Name = $"GL Read Scope Location {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createLocationResult.IsSuccess && createLocationResult.EntityId.HasValue,
+                $"Failed to create scoped location: {createLocationResult.Message}");
+            scopedLocationId = createLocationResult.EntityId!.Value;
+
+            var roleSaveResult = await service.SaveRoleAsync(
+                new ManagedRole
+                {
+                    Id = 0,
+                    Code = roleCode,
+                    Name = "GL Read Scope Role",
+                    IsSuperRole = false,
+                    IsActive = true
+                },
+                [transactionViewScopeId, reportViewScopeId],
+                "admin");
+            Assert(roleSaveResult.IsSuccess && roleSaveResult.EntityId.HasValue, "Failed to create GL read scope role.");
+            scopedRoleId = roleSaveResult.EntityId!.Value;
+
+            var userSaveResult = await service.SaveUserAsync(
+                new ManagedUser
+                {
+                    Id = 0,
+                    Username = username,
+                    FullName = "GL Read Scope User",
+                    Email = $"{username}@local",
+                    IsActive = true,
+                    DefaultCompanyId = scopedCompanyId.Value,
+                    DefaultLocationId = scopedLocationId.Value
+                },
+                "Admin@123",
+                [scopedRoleId.Value],
+                [scopedCompanyId.Value],
+                [scopedLocationId.Value],
+                "admin");
+            Assert(userSaveResult.IsSuccess && userSaveResult.EntityId.HasValue, "Failed to create GL read scope user.");
+            scopedUserId = userSaveResult.EntityId!.Value;
+
+            var unauthorizedWorkspace = await service.GetJournalWorkspaceDataAsync(targetCompanyId, targetLocationId, username);
+            var unauthorizedJournals = await service.SearchJournalsAsync(
+                targetCompanyId,
+                targetLocationId,
+                new JournalSearchFilter { PeriodMonth = targetMonth },
+                actorUsername: username);
+            var unauthorizedTrialBalance = await service.GetTrialBalanceAsync(targetCompanyId, targetLocationId, targetMonth, username);
+            var unauthorizedAccounts = await service.GetAccountsAsync(targetCompanyId, includeInactive: false, actorUsername: username);
+            var unauthorizedPeriods = await service.GetAccountingPeriodsAsync(targetCompanyId, targetLocationId, username);
+
+            Assert(unauthorizedWorkspace.Accounts.Count == 0, "Out-of-scope actor should not receive workspace accounts.");
+            Assert(unauthorizedWorkspace.Journals.Count == 0, "Out-of-scope actor should not receive workspace journals.");
+            Assert(unauthorizedJournals.Count == 0, "Out-of-scope actor should not receive journal search results.");
+            Assert(unauthorizedTrialBalance.Count == 0, "Out-of-scope actor should not receive report data.");
+            Assert(unauthorizedAccounts.Count == 0, "Out-of-scope actor should not receive account master data.");
+            Assert(unauthorizedPeriods.Count == 0, "Out-of-scope actor should not receive accounting periods.");
+        }
+        finally
+        {
+            if (scopedUserId.HasValue)
+            {
+                await using var connection = await OpenConnectionAsync();
+                await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
+                {
+                    deleteRoles.Parameters.AddWithValue("id", scopedUserId.Value);
+                    await deleteRoles.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteUser = new NpgsqlCommand("DELETE FROM app_users WHERE id = @id;", connection))
+                {
+                    deleteUser.Parameters.AddWithValue("id", scopedUserId.Value);
+                    await deleteUser.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (scopedRoleId.HasValue)
+            {
+                await service.DeleteRoleAsync(scopedRoleId.Value, "admin");
+            }
+
+            if (scopedCompanyId.HasValue)
+            {
+                await CleanupTemporaryInventoryCostingCompanyAsync(scopedCompanyId.Value);
+            }
+
+            if (previousTargetPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(targetCompanyId, targetLocationId, targetMonth, previousTargetPeriod.IsOpen, "ITEST_RESTORE_SCOPE_READ");
+            }
+        }
+    }
+
     private static async Task TestJournalDraftPostFlowAsync()
     {
         var service = CreateService();
@@ -399,7 +582,7 @@ WHERE lower(mo.module_code) = lower(@module_code)
         var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
             ?? accessOptions.Locations[0].Id;
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
         Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
         await SetAccountingPeriodStateAsync(companyId, locationId, DateTime.Today, isOpen: true, note: "ITEST_OPEN");
 
@@ -453,7 +636,7 @@ WHERE lower(mo.module_code) = lower(@module_code)
             Assert(saveResult.EntityId.HasValue && saveResult.EntityId.Value > 0, "Journal id must be returned.");
             journalId = saveResult.EntityId!.Value;
 
-            var bundle = await service.GetJournalBundleAsync(journalId.Value, companyId, locationId);
+            var bundle = await service.GetJournalBundleAsync(journalId.Value, companyId, locationId, "admin");
             Assert(bundle is not null, "Saved journal bundle should be loadable.");
             Assert(string.Equals(bundle!.Header.Status, "DRAFT", StringComparison.OrdinalIgnoreCase), "Saved journal status must be DRAFT.");
             Assert(bundle.Lines.Count == 2, $"Expected 2 detail lines, got {bundle.Lines.Count}.");
@@ -492,7 +675,7 @@ WHERE journal_id = @journal_id;",
                 Assert(ledgerCredit == 100000m, $"Expected ledger credit 100000, got {ledgerCredit}.");
             }
 
-            var trialBalance = await service.GetTrialBalanceAsync(companyId, locationId, DateTime.Today);
+            var trialBalance = await service.GetTrialBalanceAsync(companyId, locationId, DateTime.Today, "admin");
             var debitRow = trialBalance.FirstOrDefault(x => x.AccountCode == debitAccount.Code);
             var creditRow = trialBalance.FirstOrDefault(x => x.AccountCode == creditAccount.Code);
             Assert(debitRow is not null, $"Trial balance should include account {debitAccount.Code}.");
@@ -500,10 +683,10 @@ WHERE journal_id = @journal_id;",
             Assert(debitRow!.TotalDebit >= 100000m, "Trial balance debit account should include posted amount.");
             Assert(creditRow!.TotalCredit >= 100000m, "Trial balance credit account should include posted amount.");
 
-            var profitLoss = await service.GetProfitLossAsync(companyId, locationId, DateTime.Today);
+            var profitLoss = await service.GetProfitLossAsync(companyId, locationId, DateTime.Today, "admin");
             Assert(profitLoss is not null, "Profit/loss result should not be null.");
 
-            var balanceSheet = await service.GetBalanceSheetAsync(companyId, locationId, DateTime.Today) ?? new List<ManagedBalanceSheetRow>();
+            var balanceSheet = await service.GetBalanceSheetAsync(companyId, locationId, DateTime.Today, "admin") ?? new List<ManagedBalanceSheetRow>();
             Assert(balanceSheet is not null, "Balance sheet result should not be null.");
 
             var debitPrefix = debitAccount.Code.Length > 0 ? debitAccount.Code[0] : '0';
@@ -566,7 +749,7 @@ WHERE journal_id = @journal_id;",
         var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
             ?? accessOptions.Locations[0].Id;
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
         Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
         await SetAccountingPeriodStateAsync(companyId, locationId, DateTime.Today, isOpen: true, note: "ITEST_OPEN_APPROVE_MODULE");
 
@@ -743,7 +926,7 @@ WHERE journal_id = @journal_id;",
         var journalDate = DateTime.Today;
         var periodMonth = new DateTime(journalDate.Year, journalDate.Month, 1);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
         Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
 
         var debitAccount = workspace.Accounts[0];
@@ -815,6 +998,132 @@ WHERE company_id = @company_id
         }
     }
 
+    private static async Task TestJournalSubmitApproveRejectWhenPeriodClosedAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
+        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for submit/approve close test.");
+
+        var debitAccount = workspace.Accounts[0];
+        var creditAccount = workspace.Accounts[1];
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var journalNo = $"ITEST-SUBMIT-CLOSED-{stamp}";
+        long? journalId = null;
+
+        try
+        {
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_SUBMIT_APPROVE_OPEN");
+
+            var saveResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = journalNo,
+                    JournalDate = targetMonth.AddDays(1),
+                    ReferenceNo = "ITEST-SUBMIT",
+                    Description = "Submit/approve closed period regression"
+                },
+                [
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = debitAccount.Code,
+                        Description = "Debit line",
+                        Debit = 2500m,
+                        Credit = 0m
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = creditAccount.Code,
+                        Description = "Credit line",
+                        Debit = 0m,
+                        Credit = 2500m
+                    }
+                ],
+                "admin");
+            Assert(saveResult.IsSuccess && saveResult.EntityId.HasValue, $"Failed to save journal draft: {saveResult.Message}");
+            journalId = saveResult.EntityId!.Value;
+
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: false, note: "ITEST_SUBMIT_APPROVE_CLOSED");
+
+            var blockedSubmit = await service.SubmitJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(!blockedSubmit.IsSuccess, "Submit should be rejected when the accounting period is closed.");
+            Assert(
+                blockedSubmit.Message.Contains("periode", StringComparison.OrdinalIgnoreCase),
+                $"Expected closed-period submit message, got: {blockedSubmit.Message}");
+
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_SUBMIT_APPROVE_REOPEN");
+
+            var submitResult = await service.SubmitJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(submitResult.IsSuccess, $"Submit should succeed after reopening period: {submitResult.Message}");
+
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: false, note: "ITEST_APPROVE_CLOSED");
+
+            var blockedApprove = await service.ApproveJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(!blockedApprove.IsSuccess, "Approve should be rejected when the accounting period is closed.");
+            Assert(
+                blockedApprove.Message.Contains("periode", StringComparison.OrdinalIgnoreCase),
+                $"Expected closed-period approve message, got: {blockedApprove.Message}");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (journalId.HasValue)
+            {
+                await using (var deleteJournalAudit = new NpgsqlCommand(
+                    @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'JOURNAL'
+  AND (entity_id = @entity_id OR details ILIKE @journal_no);",
+                    connection))
+                {
+                    deleteJournalAudit.Parameters.AddWithValue("entity_id", journalId.Value);
+                    deleteJournalAudit.Parameters.AddWithValue("journal_no", $"%{journalNo}%");
+                    await deleteJournalAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteJournal = new NpgsqlCommand(
+                    "DELETE FROM gl_journal_headers WHERE id = @id;",
+                    connection))
+                {
+                    deleteJournal.Parameters.AddWithValue("id", journalId.Value);
+                    await deleteJournal.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (previousPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_RESTORE_SUBMIT_APPROVE");
+            }
+            else
+            {
+                await using var deletePeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deletePeriod.Parameters.AddWithValue("company_id", companyId);
+                deletePeriod.Parameters.AddWithValue("location_id", locationId);
+                deletePeriod.Parameters.AddWithValue("period_month", targetMonth);
+                await deletePeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
     private static async Task TestJournalAllowsSameNumberAcrossDifferentPeriodsAsync()
     {
         var service = CreateService();
@@ -832,7 +1141,7 @@ WHERE company_id = @company_id
         var previousCurrent = await GetAccountingPeriodStateAsync(companyId, locationId, currentMonth);
         var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
         Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
 
         var debitAccount = workspace.Accounts[0];
@@ -989,7 +1298,7 @@ WHERE company_id = @company_id
                 note: "ITEST_CLOSE_API");
             Assert(closeResult.IsSuccess, $"Close period API failed: {closeResult.Message}");
 
-            var periodsAfterClose = await service.GetAccountingPeriodsAsync(companyId, locationId);
+            var periodsAfterClose = await service.GetAccountingPeriodsAsync(companyId, locationId, "admin");
             var closed = periodsAfterClose.FirstOrDefault(x => x.PeriodMonth.Date == targetMonth.Date);
             Assert(closed is not null, "Closed period row should exist.");
             Assert(!closed!.IsOpen, "Period should be closed after close API.");
@@ -1013,7 +1322,7 @@ WHERE company_id = @company_id
                 note: "ITEST_OPEN_API");
             Assert(openResult.IsSuccess, $"Open period API failed: {openResult.Message}");
 
-            var periodsAfterOpen = await service.GetAccountingPeriodsAsync(companyId, locationId);
+            var periodsAfterOpen = await service.GetAccountingPeriodsAsync(companyId, locationId, "admin");
             var opened = periodsAfterOpen.FirstOrDefault(x => x.PeriodMonth.Date == targetMonth.Date);
             Assert(opened is not null, "Opened period row should exist.");
             Assert(opened!.IsOpen, "Period should be open after open API.");
@@ -1076,7 +1385,7 @@ WHERE company_id = @company_id
         var previous = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
         var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
         var accounts = workspace.Accounts;
         var asset = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
         var revenue = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "REVENUE", StringComparison.OrdinalIgnoreCase));
@@ -1329,7 +1638,7 @@ WHERE company_id = @company_id
         var previousTarget = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
         var previousPrior = await GetAccountingPeriodStateAsync(companyId, locationId, priorMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
         var accounts = workspace.Accounts;
         var asset = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
         var revenue = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "REVENUE", StringComparison.OrdinalIgnoreCase));
@@ -1434,7 +1743,7 @@ WHERE le.company_id = @company_id
                 closeResult.IsSuccess,
                 $"Close period should succeed when equation is balanced despite balance-sheet-only diff: {closeResult.Message}");
 
-            var periodsAfterClose = await service.GetAccountingPeriodsAsync(companyId, locationId);
+            var periodsAfterClose = await service.GetAccountingPeriodsAsync(companyId, locationId, "admin");
             var closed = periodsAfterClose.FirstOrDefault(x => x.PeriodMonth.Date == targetMonth.Date);
             Assert(closed is not null, "Target period row should exist after close.");
             Assert(!closed!.IsOpen, "Target period should be closed.");
@@ -1523,6 +1832,415 @@ WHERE company_id = @company_id
                 deletePriorPeriod.Parameters.AddWithValue("location_id", locationId);
                 deletePriorPeriod.Parameters.AddWithValue("period_month", priorMonth);
                 await deletePriorPeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
+    private static async Task TestAccountingPeriodRejectsOutOfScopeFinanceAdminAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        var managementData = await service.GetUserManagementDataAsync();
+
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var targetCompanyId = accessOptions.Companies[0].Id;
+        var targetLocationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == targetCompanyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var financeAdminRole = RequireRole(managementData, "FINANCE_ADMIN");
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(2);
+
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var username = $"itest_fin_scope_{stamp}";
+        var companyCode = $"ITFNA{stamp % 100000:00000}";
+        var locationCode = $"L{stamp % 100000:00000}";
+
+        long? scopedCompanyId = null;
+        long? scopedLocationId = null;
+        long? scopedUserId = null;
+
+        try
+        {
+            var createCompanyResult = await service.SaveCompanyAsync(
+                new ManagedCompany
+                {
+                    Id = 0,
+                    Code = companyCode,
+                    Name = $"Finance Admin Scope Company {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createCompanyResult.IsSuccess && createCompanyResult.EntityId.HasValue,
+                $"Failed to create finance-admin scope company: {createCompanyResult.Message}");
+            scopedCompanyId = createCompanyResult.EntityId!.Value;
+
+            var createLocationResult = await service.SaveLocationAsync(
+                new ManagedLocation
+                {
+                    Id = 0,
+                    CompanyId = scopedCompanyId.Value,
+                    Code = locationCode,
+                    Name = $"Finance Admin Scope Location {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createLocationResult.IsSuccess && createLocationResult.EntityId.HasValue,
+                $"Failed to create finance-admin scope location: {createLocationResult.Message}");
+            scopedLocationId = createLocationResult.EntityId!.Value;
+
+            var userSaveResult = await service.SaveUserAsync(
+                new ManagedUser
+                {
+                    Id = 0,
+                    Username = username,
+                    FullName = "Scoped Finance Admin",
+                    Email = $"{username}@local",
+                    IsActive = true,
+                    DefaultCompanyId = scopedCompanyId.Value,
+                    DefaultLocationId = scopedLocationId.Value
+                },
+                "Admin@123",
+                [financeAdminRole.Id],
+                [scopedCompanyId.Value],
+                [scopedLocationId.Value],
+                "admin");
+            Assert(userSaveResult.IsSuccess && userSaveResult.EntityId.HasValue, "Failed to create scoped finance-admin user.");
+            scopedUserId = userSaveResult.EntityId!.Value;
+
+            var result = await service.SetAccountingPeriodOpenStateAsync(
+                targetCompanyId,
+                targetLocationId,
+                targetMonth,
+                isOpen: false,
+                actorUsername: username,
+                note: "ITEST_SCOPE_DENIED");
+            Assert(!result.IsSuccess, "Finance admin should not manage periods outside assigned company/location scope.");
+            Assert(
+                result.Message.Contains("akses", StringComparison.OrdinalIgnoreCase) ||
+                result.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected scope-denial message, got: {result.Message}");
+        }
+        finally
+        {
+            if (scopedUserId.HasValue)
+            {
+                await using var connection = await OpenConnectionAsync();
+                await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
+                {
+                    deleteRoles.Parameters.AddWithValue("id", scopedUserId.Value);
+                    await deleteRoles.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteUser = new NpgsqlCommand("DELETE FROM app_users WHERE id = @id;", connection))
+                {
+                    deleteUser.Parameters.AddWithValue("id", scopedUserId.Value);
+                    await deleteUser.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (scopedCompanyId.HasValue)
+            {
+                await CleanupTemporaryInventoryCostingCompanyAsync(scopedCompanyId.Value);
+            }
+        }
+    }
+
+    private static async Task TestAccountingPeriodCloseRejectsPendingStockOpnameAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(2);
+        var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var opnameNo = $"ITEST-OPN-{stamp}";
+        long? opnameId = null;
+
+        try
+        {
+            _ = await service.GetInventoryWorkspaceDataAsync(companyId, locationId);
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_PENDING_OPNAME_OPEN");
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using var insertOpname = new NpgsqlCommand(
+                    @"INSERT INTO inv_stock_opname (
+    company_id,
+    location_id,
+    opname_no,
+    opname_date,
+    warehouse_id,
+    description,
+    status,
+    created_by,
+    updated_by,
+    created_at,
+    updated_at)
+VALUES (
+    @company_id,
+    @location_id,
+    @opname_no,
+    @opname_date,
+    NULL,
+    @description,
+    'DRAFT',
+    'admin',
+    'admin',
+    NOW(),
+    NOW())
+RETURNING id;",
+                    connection);
+                insertOpname.Parameters.AddWithValue("company_id", companyId);
+                insertOpname.Parameters.AddWithValue("location_id", locationId);
+                insertOpname.Parameters.AddWithValue("opname_no", opnameNo);
+                insertOpname.Parameters.AddWithValue("opname_date", targetMonth.AddDays(1));
+                insertOpname.Parameters.AddWithValue("description", "Pending stock opname blocker");
+                opnameId = Convert.ToInt64(await insertOpname.ExecuteScalarAsync());
+            }
+
+            var closeResult = await service.SetAccountingPeriodOpenStateAsync(
+                companyId,
+                locationId,
+                targetMonth,
+                isOpen: false,
+                actorUsername: "admin",
+                note: "ITEST_PENDING_OPNAME");
+            Assert(!closeResult.IsSuccess, "Close period should be rejected when stock opname is still pending.");
+            Assert(
+                closeResult.Message.Contains("stock opname", StringComparison.OrdinalIgnoreCase),
+                $"Expected stock-opname blocker message, got: {closeResult.Message}");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (opnameId.HasValue)
+            {
+                await using var deleteOpname = new NpgsqlCommand(
+                    "DELETE FROM inv_stock_opname WHERE id = @id;",
+                    connection);
+                deleteOpname.Parameters.AddWithValue("id", opnameId.Value);
+                await deleteOpname.ExecuteNonQueryAsync();
+            }
+
+            if (previousPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_RESTORE_PENDING_OPNAME");
+            }
+            else
+            {
+                await using var deletePeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deletePeriod.Parameters.AddWithValue("company_id", companyId);
+                deletePeriod.Parameters.AddWithValue("location_id", locationId);
+                deletePeriod.Parameters.AddWithValue("period_month", targetMonth);
+                await deletePeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
+    private static async Task TestReportsCashFlowHonorsCashMetadataAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var journalNo = $"ITEST-CASHFLOW-{stamp}";
+
+        long? cashAccountId = null;
+        string cashAccountCode = string.Empty;
+        string originalReportGroup = string.Empty;
+        string originalCashflowCategory = string.Empty;
+        string revenueAccountCode = string.Empty;
+        long? journalId = null;
+
+        try
+        {
+            _ = await service.GetCashFlowAsync(companyId, locationId, targetMonth, "admin");
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_CASHFLOW_OPEN");
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using (var accountCommand = new NpgsqlCommand(
+                    @"SELECT id,
+       account_code,
+       COALESCE(report_group, ''),
+       COALESCE(cashflow_category, '')
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND is_active = TRUE
+  AND is_posting = TRUE
+  AND upper(account_type) = 'ASSET'
+  AND account_code NOT LIKE '%11100%'
+  AND account_name NOT ILIKE '%kas%'
+  AND account_name NOT ILIKE '%bank%'
+ORDER BY account_code
+LIMIT 1;",
+                    connection))
+                {
+                    accountCommand.Parameters.AddWithValue("company_id", companyId);
+                    await using var reader = await accountCommand.ExecuteReaderAsync();
+                    Assert(await reader.ReadAsync(), "A non-cash heuristic asset account is required for cash-flow metadata test.");
+                    cashAccountId = reader.GetInt64(0);
+                    cashAccountCode = reader.GetString(1);
+                    originalReportGroup = reader.GetString(2);
+                    originalCashflowCategory = reader.GetString(3);
+                }
+
+                await using (var revenueCommand = new NpgsqlCommand(
+                    @"SELECT account_code
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND is_active = TRUE
+  AND is_posting = TRUE
+  AND upper(account_type) = 'REVENUE'
+ORDER BY account_code
+LIMIT 1;",
+                    connection))
+                {
+                    revenueCommand.Parameters.AddWithValue("company_id", companyId);
+                    var scalar = await revenueCommand.ExecuteScalarAsync();
+                    Assert(scalar is not null && scalar is not DBNull, "A revenue account is required for cash-flow metadata test.");
+                    revenueAccountCode = Convert.ToString(scalar) ?? string.Empty;
+                }
+
+                await using var updateMetadata = new NpgsqlCommand(
+                    @"UPDATE gl_accounts
+SET report_group = 'CASH_BANK',
+    cashflow_category = 'OPERATING_CASH',
+    updated_by = 'admin',
+    updated_at = NOW()
+WHERE id = @id;",
+                    connection);
+                updateMetadata.Parameters.AddWithValue("id", cashAccountId.Value);
+                await updateMetadata.ExecuteNonQueryAsync();
+            }
+
+            var saveResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = journalNo,
+                    JournalDate = targetMonth.AddDays(2),
+                    ReferenceNo = "ITEST-CASHFLOW",
+                    Description = "Cash flow metadata regression"
+                },
+                [
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = cashAccountCode,
+                        Description = "Metadata-classified cash inflow",
+                        Debit = 4321m,
+                        Credit = 0m
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = revenueAccountCode,
+                        Description = "Revenue offset",
+                        Debit = 0m,
+                        Credit = 4321m
+                    }
+                ],
+                "admin");
+            Assert(saveResult.IsSuccess && saveResult.EntityId.HasValue, $"Failed to save cash-flow setup journal: {saveResult.Message}");
+            journalId = saveResult.EntityId!.Value;
+
+            var submitResult = await service.SubmitJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(submitResult.IsSuccess, $"Failed to submit cash-flow setup journal: {submitResult.Message}");
+            var approveResult = await service.ApproveJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(approveResult.IsSuccess, $"Failed to approve cash-flow setup journal: {approveResult.Message}");
+            var postResult = await service.PostJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(postResult.IsSuccess, $"Failed to post cash-flow setup journal: {postResult.Message}");
+
+            var cashFlow = await service.GetCashFlowAsync(companyId, locationId, targetMonth, "admin");
+            var cashRow = cashFlow.FirstOrDefault(x => string.Equals(x.AccountCode, cashAccountCode, StringComparison.OrdinalIgnoreCase));
+            Assert(cashRow is not null, $"Cash-flow report should include metadata-classified account {cashAccountCode}.");
+            Assert(cashRow!.CashIn >= 4321m, $"Cash-flow report should include the posted inflow amount for {cashAccountCode}.");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (cashAccountId.HasValue)
+            {
+                await using var restoreMetadata = new NpgsqlCommand(
+                    @"UPDATE gl_accounts
+SET report_group = @report_group,
+    cashflow_category = @cashflow_category,
+    updated_by = 'admin',
+    updated_at = NOW()
+WHERE id = @id;",
+                    connection);
+                restoreMetadata.Parameters.AddWithValue("id", cashAccountId.Value);
+                restoreMetadata.Parameters.AddWithValue("report_group", originalReportGroup);
+                restoreMetadata.Parameters.AddWithValue("cashflow_category", originalCashflowCategory);
+                await restoreMetadata.ExecuteNonQueryAsync();
+            }
+
+            if (journalId.HasValue)
+            {
+                await using (var deleteJournalAudit = new NpgsqlCommand(
+                    @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'JOURNAL'
+  AND (entity_id = @entity_id OR details ILIKE @journal_no);",
+                    connection))
+                {
+                    deleteJournalAudit.Parameters.AddWithValue("entity_id", journalId.Value);
+                    deleteJournalAudit.Parameters.AddWithValue("journal_no", $"%{journalNo}%");
+                    await deleteJournalAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteJournal = new NpgsqlCommand(
+                    "DELETE FROM gl_journal_headers WHERE id = @id;",
+                    connection))
+                {
+                    deleteJournal.Parameters.AddWithValue("id", journalId.Value);
+                    await deleteJournal.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (previousPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_RESTORE_CASHFLOW");
+            }
+            else
+            {
+                await using var deletePeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deletePeriod.Parameters.AddWithValue("company_id", companyId);
+                deletePeriod.Parameters.AddWithValue("location_id", locationId);
+                deletePeriod.Parameters.AddWithValue("period_month", targetMonth);
+                await deletePeriod.ExecuteNonQueryAsync();
             }
         }
     }
@@ -1650,7 +2368,7 @@ WHERE company_id = @company_id
             Assert(saveResult.EntityId.HasValue && saveResult.EntityId.Value > 0, "Saved account id must be returned.");
 
             accountId = saveResult.EntityId!.Value;
-            var listAfterSave = await service.GetAccountsAsync(companyId, includeInactive: true);
+            var listAfterSave = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
             var saved = listAfterSave.FirstOrDefault(x => x.Id == accountId.Value);
             Assert(saved is not null, "Saved account should be returned by GetAccounts.");
             Assert(saved!.IsActive, "Saved account should be active.");
@@ -1661,7 +2379,7 @@ WHERE company_id = @company_id
             var deactivateResult = await service.SoftDeleteAccountAsync(companyId, accountId.Value, "admin");
             Assert(deactivateResult.IsSuccess, $"SoftDeleteAccount failed: {deactivateResult.Message}");
 
-            var listAfterDeactivate = await service.GetAccountsAsync(companyId, includeInactive: true);
+            var listAfterDeactivate = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
             var deactivated = listAfterDeactivate.FirstOrDefault(x => x.Id == accountId.Value);
             Assert(deactivated is not null, "Deactivated account should remain queryable.");
             Assert(!deactivated!.IsActive, "Deactivated account should be inactive.");

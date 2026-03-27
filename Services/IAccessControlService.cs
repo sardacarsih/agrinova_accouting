@@ -67,11 +67,13 @@ public interface IAccessControlService
     Task<List<ManagedAccount>> GetAccountsAsync(
         long companyId,
         bool includeInactive = false,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<AccountSearchResult> SearchAccountsAsync(
         long companyId,
         AccountSearchFilter filter,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<AccessOperationResult> SaveAccountAsync(
@@ -94,6 +96,7 @@ public interface IAccessControlService
     Task<List<ManagedAccountingPeriod>> GetAccountingPeriodsAsync(
         long companyId,
         long locationId,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<AccessOperationResult> SetAccountingPeriodOpenStateAsync(
@@ -113,12 +116,14 @@ public interface IAccessControlService
     Task<JournalWorkspaceData> GetJournalWorkspaceDataAsync(
         long companyId,
         long locationId,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<ManagedJournalBundle?> GetJournalBundleAsync(
         long journalId,
         long companyId,
         long locationId,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<AccessOperationResult> SaveJournalDraftAsync(
@@ -152,6 +157,7 @@ public interface IAccessControlService
         long companyId,
         long locationId,
         JournalSearchFilter filter,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<InventoryWorkspaceData> GetInventoryWorkspaceDataAsync(
@@ -409,18 +415,21 @@ public interface IAccessControlService
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<List<ManagedProfitLossRow>> GetProfitLossAsync(
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<List<ManagedBalanceSheetRow>> GetBalanceSheetAsync(
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<List<ManagedGeneralLedgerRow>> GetGeneralLedgerAsync(
@@ -429,6 +438,7 @@ public interface IAccessControlService
         DateTime periodMonth,
         string accountCode = "",
         string keyword = "",
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<List<ManagedSubLedgerRow>> GetSubLedgerAsync(
@@ -437,12 +447,14 @@ public interface IAccessControlService
         DateTime periodMonth,
         string accountCode = "",
         string keyword = "",
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<List<ManagedCashFlowRow>> GetCashFlowAsync(
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 
     Task<List<ManagedAccountMutationRow>> GetAccountMutationAsync(
@@ -451,5 +463,6 @@ public interface IAccessControlService
         DateTime periodMonth,
         string accountCode = "",
         string keyword = "",
+        string actorUsername = "",
         CancellationToken cancellationToken = default);
 }
