@@ -1626,41 +1626,68 @@ WHERE company_id = @company_id
         Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
 
         var companyId = accessOptions.Companies[0].Id;
-        var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var uniqueSuffix = (int)(Math.Abs(stamp) % 1000);
-        var code = $"HO.51999.{uniqueSuffix:000}";
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
+        var suffixSegment = (int)(Math.Abs(stamp) % 1000);
+        var code = $"HO.5{middleSegment:0000}.{suffixSegment:000}";
+        long? accountId = null;
 
-        var saveResult = await service.SaveAccountAsync(
-            companyId,
-            new ManagedAccount
+        try
+        {
+            var saveResult = await service.SaveAccountAsync(
+                companyId,
+                new ManagedAccount
+                {
+                    Id = 0,
+                    Code = code,
+                    Name = $"Integration Test Account {stamp}",
+                    AccountType = "EXPENSE",
+                    IsActive = true
+                },
+                "admin");
+
+            Assert(saveResult.IsSuccess, $"SaveAccount failed: {saveResult.Message}");
+            Assert(saveResult.EntityId.HasValue && saveResult.EntityId.Value > 0, "Saved account id must be returned.");
+
+            accountId = saveResult.EntityId!.Value;
+            var listAfterSave = await service.GetAccountsAsync(companyId, includeInactive: true);
+            var saved = listAfterSave.FirstOrDefault(x => x.Id == accountId.Value);
+            Assert(saved is not null, "Saved account should be returned by GetAccounts.");
+            Assert(saved!.IsActive, "Saved account should be active.");
+            Assert(
+                string.Equals(saved.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase),
+                $"Expected account type EXPENSE, got {saved.AccountType}.");
+
+            var deactivateResult = await service.SoftDeleteAccountAsync(companyId, accountId.Value, "admin");
+            Assert(deactivateResult.IsSuccess, $"SoftDeleteAccount failed: {deactivateResult.Message}");
+
+            var listAfterDeactivate = await service.GetAccountsAsync(companyId, includeInactive: true);
+            var deactivated = listAfterDeactivate.FirstOrDefault(x => x.Id == accountId.Value);
+            Assert(deactivated is not null, "Deactivated account should remain queryable.");
+            Assert(!deactivated!.IsActive, "Deactivated account should be inactive.");
+        }
+        finally
+        {
+            if (accountId.HasValue)
             {
-                Id = 0,
-                Code = code,
-                Name = $"Integration Test Account {stamp}",
-                AccountType = "EXPENSE",
-                IsActive = true
-            },
-            "admin");
+                await using var connection = await OpenConnectionAsync();
+                await using (var deleteAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'ACCOUNT' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteAudit.Parameters.AddWithValue("entity_id", accountId.Value);
+                    await deleteAudit.ExecuteNonQueryAsync();
+                }
 
-        Assert(saveResult.IsSuccess, $"SaveAccount failed: {saveResult.Message}");
-        Assert(saveResult.EntityId.HasValue && saveResult.EntityId.Value > 0, "Saved account id must be returned.");
-
-        var accountId = saveResult.EntityId!.Value;
-        var listAfterSave = await service.GetAccountsAsync(companyId, includeInactive: true);
-        var saved = listAfterSave.FirstOrDefault(x => x.Id == accountId);
-        Assert(saved is not null, "Saved account should be returned by GetAccounts.");
-        Assert(saved!.IsActive, "Saved account should be active.");
-        Assert(
-            string.Equals(saved.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase),
-            $"Expected account type EXPENSE, got {saved.AccountType}.");
-
-        var deactivateResult = await service.SoftDeleteAccountAsync(companyId, accountId, "admin");
-        Assert(deactivateResult.IsSuccess, $"SoftDeleteAccount failed: {deactivateResult.Message}");
-
-        var listAfterDeactivate = await service.GetAccountsAsync(companyId, includeInactive: true);
-        var deactivated = listAfterDeactivate.FirstOrDefault(x => x.Id == accountId);
-        Assert(deactivated is not null, "Deactivated account should remain queryable.");
-        Assert(!deactivated!.IsActive, "Deactivated account should be inactive.");
+                await using (var deleteAccount = new NpgsqlCommand(
+                    "DELETE FROM gl_accounts WHERE id = @id;",
+                    connection))
+                {
+                    deleteAccount.Parameters.AddWithValue("id", accountId.Value);
+                    await deleteAccount.ExecuteNonQueryAsync();
+                }
+            }
+        }
     }
 
     private static async Task TestAccountRejectsUnauthorizedActorAsync()

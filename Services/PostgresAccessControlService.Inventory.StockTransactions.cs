@@ -116,11 +116,46 @@ public sealed partial class PostgresAccessControlService
                         await transaction.RollbackAsync(cancellationToken);
                         return new AccessOperationResult(false, $"Gudang asal dan tujuan item {itemLabel} tidak boleh sama.");
                     }
+
+                    var sourceWarehouseValidationMessage = ValidateWarehouseLocationForTransaction(
+                        warehouseMap,
+                        line.WarehouseId,
+                        header.LocationId,
+                        $"Gudang asal item {itemLabel}");
+                    if (!string.IsNullOrWhiteSpace(sourceWarehouseValidationMessage))
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, sourceWarehouseValidationMessage);
+                    }
+
+                    var destinationWarehouseValidationMessage = ValidateWarehouseLocationForTransaction(
+                        warehouseMap,
+                        line.DestinationWarehouseId,
+                        header.LocationId,
+                        $"Gudang tujuan item {itemLabel}");
+                    if (!string.IsNullOrWhiteSpace(destinationWarehouseValidationMessage))
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, destinationWarehouseValidationMessage);
+                    }
                 }
                 else if (!line.WarehouseId.HasValue || line.WarehouseId.Value <= 0)
                 {
                     await transaction.RollbackAsync(cancellationToken);
                     return new AccessOperationResult(false, $"Gudang item {itemLabel} wajib diisi.");
+                }
+                else
+                {
+                    var warehouseValidationMessage = ValidateWarehouseLocationForTransaction(
+                        warehouseMap,
+                        line.WarehouseId,
+                        header.LocationId,
+                        $"Gudang item {itemLabel}");
+                    if (!string.IsNullOrWhiteSpace(warehouseValidationMessage))
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, warehouseValidationMessage);
+                    }
                 }
             }
 
@@ -755,9 +790,108 @@ ORDER BY l.line_no;", connection, transaction))
             return new AccessOperationResult(false, "Detail transaksi tidak ditemukan. Posting dibatalkan.");
         }
 
+        var warehouseIds = lines
+            .SelectMany(line => new[] { line.WarehouseId, line.DestinationWarehouseId })
+            .Where(warehouseId => warehouseId.HasValue && warehouseId.Value > 0)
+            .Select(warehouseId => warehouseId.GetValueOrDefault())
+            .Distinct()
+            .ToArray();
+        var warehouseMap = await LoadActiveWarehouseMapAsync(
+            connection,
+            transaction,
+            header.CompanyId,
+            warehouseIds,
+            cancellationToken);
+        if (warehouseMap.Count != warehouseIds.Length)
+        {
+            return new AccessOperationResult(false, "Terdapat gudang tidak valid atau nonaktif pada detail transaksi.");
+        }
+
         if (string.Equals(header.TransactionType, "TRANSFER", StringComparison.OrdinalIgnoreCase))
         {
-            return new AccessOperationResult(true, "Transfer dicatat tanpa perubahan qty stok pada model lokasi saat ini.", header.Id);
+            foreach (var line in lines)
+            {
+                if (line.Qty <= 0)
+                {
+                    return new AccessOperationResult(false, $"Qty item {line.ItemCode} harus lebih besar dari 0.");
+                }
+
+                if (!line.WarehouseId.HasValue || line.WarehouseId.Value <= 0)
+                {
+                    return new AccessOperationResult(false, $"Gudang asal item {line.ItemCode} wajib diisi.");
+                }
+
+                if (!line.DestinationWarehouseId.HasValue || line.DestinationWarehouseId.Value <= 0)
+                {
+                    return new AccessOperationResult(false, $"Gudang tujuan item {line.ItemCode} wajib diisi.");
+                }
+
+                if (line.WarehouseId.Value == line.DestinationWarehouseId.Value)
+                {
+                    return new AccessOperationResult(false, $"Gudang asal dan tujuan item {line.ItemCode} tidak boleh sama.");
+                }
+
+                var sourceWarehouseValidationMessage = ValidateWarehouseLocationForTransaction(
+                    warehouseMap,
+                    line.WarehouseId,
+                    header.LocationId,
+                    $"Gudang asal item {line.ItemCode}");
+                if (!string.IsNullOrWhiteSpace(sourceWarehouseValidationMessage))
+                {
+                    return new AccessOperationResult(false, sourceWarehouseValidationMessage);
+                }
+
+                var destinationWarehouseValidationMessage = ValidateWarehouseLocationForTransaction(
+                    warehouseMap,
+                    line.DestinationWarehouseId,
+                    header.LocationId,
+                    $"Gudang tujuan item {line.ItemCode}");
+                if (!string.IsNullOrWhiteSpace(destinationWarehouseValidationMessage))
+                {
+                    return new AccessOperationResult(false, destinationWarehouseValidationMessage);
+                }
+
+                var stockBucketState = await LoadWarehouseStockBucketStateAsync(
+                    connection,
+                    transaction,
+                    header.CompanyId,
+                    header.LocationId,
+                    line.ItemId,
+                    line.WarehouseId.Value,
+                    cancellationToken);
+                if (stockBucketState.LegacyQty > 0 && stockBucketState.WarehouseQty < line.Qty)
+                {
+                    return new AccessOperationResult(
+                        false,
+                        $"Stok item {line.ItemCode} masih berada di bucket legacy tanpa gudang. Lakukan rebucket atau stock opname sebelum posting transfer.");
+                }
+
+                var reduced = await ReduceStockQtyAsync(
+                    connection,
+                    transaction,
+                    header.CompanyId,
+                    header.LocationId,
+                    line.ItemId,
+                    line.WarehouseId,
+                    line.Qty,
+                    cancellationToken);
+                if (!reduced)
+                {
+                    return new AccessOperationResult(false, $"Stok item {line.ItemCode} tidak mencukupi untuk posting transfer.");
+                }
+
+                await AddStockQtyAsync(
+                    connection,
+                    transaction,
+                    header.CompanyId,
+                    header.LocationId,
+                    line.ItemId,
+                    line.DestinationWarehouseId,
+                    line.Qty,
+                    cancellationToken);
+            }
+
+            return new AccessOperationResult(true, "Posting transaksi stok berhasil.", header.Id);
         }
 
         var costingSettings = await GetEffectiveInventoryCostingSettingsInternalAsync(
@@ -795,6 +929,21 @@ ORDER BY l.line_no;", connection, transaction))
             if (line.Qty <= 0)
             {
                 return new AccessOperationResult(false, $"Qty item {line.ItemCode} harus lebih besar dari 0.");
+            }
+
+            if (!line.WarehouseId.HasValue || line.WarehouseId.Value <= 0)
+            {
+                return new AccessOperationResult(false, $"Gudang item {line.ItemCode} wajib diisi.");
+            }
+
+            var warehouseValidationMessage = ValidateWarehouseLocationForTransaction(
+                warehouseMap,
+                line.WarehouseId,
+                header.LocationId,
+                $"Gudang item {line.ItemCode}");
+            if (!string.IsNullOrWhiteSpace(warehouseValidationMessage))
+            {
+                return new AccessOperationResult(false, warehouseValidationMessage);
             }
 
             if (string.Equals(header.TransactionType, "STOCK_IN", StringComparison.OrdinalIgnoreCase))
@@ -1091,21 +1240,42 @@ WHERE is_active = TRUE
         return output;
     }
 
-    private static async Task<Dictionary<long, string>> LoadActiveWarehouseMapAsync(
+    private static string? ValidateWarehouseLocationForTransaction(
+        IReadOnlyDictionary<long, WarehouseReference> warehouseMap,
+        long? warehouseId,
+        long locationId,
+        string warehouseLabel)
+    {
+        if (!warehouseId.HasValue || warehouseId.Value <= 0)
+        {
+            return null;
+        }
+
+        if (!warehouseMap.TryGetValue(warehouseId.Value, out var warehouse))
+        {
+            return $"{warehouseLabel} tidak valid atau nonaktif.";
+        }
+
+        return warehouse.LocationId.HasValue && warehouse.LocationId.Value != locationId
+            ? $"{warehouseLabel} tidak terdaftar pada location transaksi."
+            : null;
+    }
+
+    private static async Task<Dictionary<long, WarehouseReference>> LoadActiveWarehouseMapAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         long companyId,
         IReadOnlyCollection<long> warehouseIds,
         CancellationToken cancellationToken)
     {
-        var output = new Dictionary<long, string>();
+        var output = new Dictionary<long, WarehouseReference>();
         if (warehouseIds.Count == 0)
         {
             return output;
         }
 
         await using var command = new NpgsqlCommand(@"
-SELECT id, warehouse_name
+SELECT id, warehouse_name, location_id
 FROM inv_warehouses
 WHERE company_id = @company_id
   AND is_active = TRUE
@@ -1115,7 +1285,11 @@ WHERE company_id = @company_id
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            output[reader.GetInt64(0)] = reader.GetString(1);
+            var warehouseId = reader.GetInt64(0);
+            output[warehouseId] = new WarehouseReference(
+                warehouseId,
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt64(2));
         }
 
         return output;
@@ -1247,6 +1421,8 @@ FOR UPDATE;", connection, transaction);
             Status = reader.GetString(8)
         };
     }
+
+    private readonly record struct WarehouseReference(long Id, string Name, long? LocationId);
 
     private readonly record struct WarehouseStockBucketState(decimal WarehouseQty, decimal LegacyQty);
 }

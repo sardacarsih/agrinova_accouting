@@ -47,7 +47,10 @@ internal static partial class Program
             ("Inventory_MasterCompanyPolicy_SyncAndWriteGuard", TestInventoryMasterCompanyPolicySyncAndWriteGuardAsync),
             ("Inventory_CentralSync_MockUploadDownloadAndLogs", TestInventoryCentralSyncMockUploadDownloadAndLogsAsync),
             ("Inventory_Costing_RecalcCompanyAndLocation", TestInventoryCostingRecalcCompanyAndLocationAsync),
-            ("Inventory_DraftAutoNumbering", TestInventoryDraftAutoNumberingAsync)
+            ("Inventory_DraftAutoNumbering", TestInventoryDraftAutoNumberingAsync),
+            ("Inventory_StockTransaction_RejectsWarehouseLocationMismatch", TestInventoryStockTransactionRejectsWarehouseLocationMismatchAsync),
+            ("Inventory_StockTransaction_AllowsGlobalWarehouse", TestInventoryStockTransactionAllowsGlobalWarehouseAsync),
+            ("Inventory_Transfer_MovesWarehouseBuckets", TestInventoryTransferMovesWarehouseBucketsAsync)
         };
 
         var failed = 0;

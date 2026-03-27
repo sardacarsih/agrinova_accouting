@@ -603,12 +603,16 @@ WHERE details ILIKE @category_code
         var tempCompanyCode = $"ITCOST{Math.Abs(stamp % 1000000):000000}";
         var tempLocationCodeA = $"L1{Math.Abs(stamp % 10000):0000}";
         var tempLocationCodeB = $"L2{Math.Abs((stamp + 17) % 10000):0000}";
+        var warehouseCodeA = $"WA{Math.Abs(stamp % 1000000):000000}";
+        var warehouseCodeB = $"WB{Math.Abs((stamp + 29) % 1000000):000000}";
         var categoryCode = $"ITCCT{Math.Abs(stamp % 1000000):000000}";
         var itemCode = $"ITCIT{Math.Abs(stamp % 1000000):000000}";
 
         long? companyId = null;
         long? locationIdA = null;
         long? locationIdB = null;
+        long? warehouseIdA = null;
+        long? warehouseIdB = null;
         long? categoryId = null;
         long? itemId = null;
         long? stockInTxA = null;
@@ -661,6 +665,21 @@ WHERE details ILIKE @category_code
                 createLocationBResult.IsSuccess && createLocationBResult.EntityId.HasValue,
                 $"Failed to create location B: {createLocationBResult.Message}");
             locationIdB = createLocationBResult.EntityId!.Value;
+
+            warehouseIdA = await CreateWarehouseAsync(
+                service,
+                companyId.Value,
+                warehouseCodeA,
+                $"Warehouse A {stamp}",
+                locationIdA.Value,
+                "admin");
+            warehouseIdB = await CreateWarehouseAsync(
+                service,
+                companyId.Value,
+                warehouseCodeB,
+                $"Warehouse B {stamp}",
+                locationIdB.Value,
+                "admin");
 
             await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.Value.ToString(), "admin");
 
@@ -813,13 +832,15 @@ WHERE details ILIKE @category_code
                     {
                         ItemId = itemId.Value,
                         Qty = 6,
-                        UnitCost = 10
+                        UnitCost = 10,
+                        WarehouseId = warehouseIdA.Value
                     },
                     new ManagedStockTransactionLine
                     {
                         ItemId = itemId.Value,
                         Qty = 4,
-                        UnitCost = 10
+                        UnitCost = 10,
+                        WarehouseId = warehouseIdA.Value
                     }
                 },
                 "admin");
@@ -841,7 +862,8 @@ WHERE details ILIKE @category_code
                     {
                         ItemId = itemId.Value,
                         Qty = 10,
-                        UnitCost = 20
+                        UnitCost = 20,
+                        WarehouseId = warehouseIdA.Value
                     }
                 },
                 "admin");
@@ -864,6 +886,7 @@ WHERE details ILIKE @category_code
                         ItemId = itemId.Value,
                         Qty = 6,
                         UnitCost = 0,
+                        WarehouseId = warehouseIdA.Value,
                         ExpenseAccountCode = cogsAccountCode
                     },
                     new ManagedStockTransactionLine
@@ -871,6 +894,7 @@ WHERE details ILIKE @category_code
                         ItemId = itemId.Value,
                         Qty = 4,
                         UnitCost = 0,
+                        WarehouseId = warehouseIdA.Value,
                         ExpenseAccountCode = cogsAccountCode
                     }
                 },
@@ -913,7 +937,8 @@ WHERE details ILIKE @category_code
                     {
                         ItemId = itemId.Value,
                         Qty = 10,
-                        UnitCost = 10
+                        UnitCost = 10,
+                        WarehouseId = warehouseIdB.Value
                     }
                 },
                 "admin");
@@ -935,7 +960,8 @@ WHERE details ILIKE @category_code
                     {
                         ItemId = itemId.Value,
                         Qty = 10,
-                        UnitCost = 20
+                        UnitCost = 20,
+                        WarehouseId = warehouseIdB.Value
                     }
                 },
                 "admin");
@@ -958,6 +984,7 @@ WHERE details ILIKE @category_code
                         ItemId = itemId.Value,
                         Qty = 10,
                         UnitCost = 0,
+                        WarehouseId = warehouseIdB.Value,
                         ExpenseAccountCode = cogsAccountCode
                     }
                 },
@@ -1289,6 +1316,8 @@ JOIN pulled_journal_ids p ON p.journal_id = le.journal_id;",
                 if (companyId.HasValue)
                 {
                     await CleanupTemporaryInventoryCostingCompanyAsync(companyId.Value);
+                    await using var connection = await OpenConnectionAsync();
+                    await CleanupInventoryArtifactsByCodesAsync(connection, companyId.Value, [categoryCode], [itemCode]);
                 }
             }
             finally
@@ -1313,8 +1342,10 @@ JOIN pulled_journal_ids p ON p.journal_id = le.journal_id;",
 
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var itemCode = $"ITINV{Math.Abs(stamp % 1000000):000000}";
+        var warehouseCode = $"ITWH{Math.Abs((stamp + 11) % 1000000):000000}";
 
         long? itemId = null;
+        long? warehouseId = null;
         long? stockTxId = null;
         long? opnameId = null;
 
@@ -1338,6 +1369,14 @@ JOIN pulled_journal_ids p ON p.journal_id = le.journal_id;",
             Assert(saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue, $"Failed to create test item: {saveItemResult.Message}");
             itemId = saveItemResult.EntityId!.Value;
 
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Integration Warehouse {stamp}",
+                locationId,
+                "admin");
+
             var saveTxResult = await service.SaveStockTransactionDraftAsync(
                 new ManagedStockTransaction
                 {
@@ -1359,6 +1398,7 @@ JOIN pulled_journal_ids p ON p.journal_id = le.journal_id;",
                         ItemId = itemId.Value,
                         Qty = 5,
                         UnitCost = 1000,
+                        WarehouseId = warehouseId.Value,
                         Notes = "ITEST line"
                     }
                 },
@@ -1477,7 +1517,443 @@ WHERE company_id = @company_id
                 }
             }
 
+            if (warehouseId.HasValue)
+            {
+                await using (var deleteWarehouseAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'INV_WAREHOUSE' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteWarehouseAudit.Parameters.AddWithValue("entity_id", warehouseId.Value);
+                    await deleteWarehouseAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteWarehouse = new NpgsqlCommand(
+                    "DELETE FROM inv_warehouses WHERE id = @id;",
+                    connection))
+                {
+                    deleteWarehouse.Parameters.AddWithValue("id", warehouseId.Value);
+                    await deleteWarehouse.ExecuteNonQueryAsync();
+                }
+            }
+
             await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+        }
+    }
+
+    private static async Task TestInventoryStockTransactionRejectsWarehouseLocationMismatchAsync()
+    {
+        var service = CreateService();
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var tempCompanyCode = $"ITWLM{Math.Abs(stamp % 1000000):000000}";
+        var locationCodeA = $"MA{Math.Abs(stamp % 10000):0000}";
+        var locationCodeB = $"MB{Math.Abs((stamp + 13) % 10000):0000}";
+        var warehouseCodeB = $"MWB{Math.Abs(stamp % 1000000):000000}";
+        var itemCode = $"MWI{Math.Abs((stamp + 7) % 1000000):000000}";
+
+        long? companyId = null;
+
+        try
+        {
+            var createCompanyResult = await service.SaveCompanyAsync(
+                new ManagedCompany
+                {
+                    Id = 0,
+                    Code = tempCompanyCode,
+                    Name = $"Warehouse Mismatch Company {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createCompanyResult.IsSuccess && createCompanyResult.EntityId.HasValue,
+                $"Failed to create mismatch company: {createCompanyResult.Message}");
+            companyId = createCompanyResult.EntityId!.Value;
+
+            var createLocationAResult = await service.SaveLocationAsync(
+                new ManagedLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = locationCodeA,
+                    Name = $"Mismatch Location A {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createLocationAResult.IsSuccess && createLocationAResult.EntityId.HasValue,
+                $"Failed to create mismatch location A: {createLocationAResult.Message}");
+            var locationIdA = createLocationAResult.EntityId!.Value;
+
+            var createLocationBResult = await service.SaveLocationAsync(
+                new ManagedLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = locationCodeB,
+                    Name = $"Mismatch Location B {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createLocationBResult.IsSuccess && createLocationBResult.EntityId.HasValue,
+                $"Failed to create mismatch location B: {createLocationBResult.Message}");
+            var locationIdB = createLocationBResult.EntityId!.Value;
+
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.Value.ToString(), "admin");
+
+            var warehouseIdB = await CreateWarehouseAsync(
+                service,
+                companyId.Value,
+                warehouseCodeB,
+                $"Mismatch Warehouse B {stamp}",
+                locationIdB,
+                "admin");
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId.Value,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = itemCode,
+                    Name = $"Mismatch Item {stamp}",
+                    Uom = "PCS",
+                    Category = string.Empty,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue,
+                $"Failed to create mismatch item: {saveItemResult.Message}");
+            var itemId = saveItemResult.EntityId!.Value;
+
+            var saveTxResult = await service.SaveStockTransactionDraftAsync(
+                new ManagedStockTransaction
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    LocationId = locationIdA,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = DateTime.Today,
+                    ReferenceNo = "ITEST-WH-MISMATCH",
+                    Description = "Warehouse mismatch validation"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId,
+                        Qty = 2,
+                        UnitCost = 100,
+                        WarehouseId = warehouseIdB
+                    }
+                },
+                "admin");
+
+            Assert(!saveTxResult.IsSuccess, "Stock transaction save should reject warehouse bound to another location.");
+            Assert(
+                saveTxResult.Message.Contains("tidak terdaftar pada location transaksi", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected warehouse mismatch message: {saveTxResult.Message}");
+        }
+        finally
+        {
+            try
+            {
+                if (companyId.HasValue)
+                {
+                    await CleanupTemporaryInventoryCostingCompanyAsync(companyId.Value);
+                    await using var connection = await OpenConnectionAsync();
+                    await CleanupInventoryArtifactsByCodesAsync(connection, companyId.Value, Array.Empty<string>(), [itemCode]);
+                }
+            }
+            finally
+            {
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryStockTransactionAllowsGlobalWarehouseAsync()
+    {
+        var service = CreateService();
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var tempCompanyCode = $"ITWGL{Math.Abs(stamp % 1000000):000000}";
+        var locationCode = $"GL{Math.Abs(stamp % 10000):0000}";
+        var warehouseCode = $"GW{Math.Abs((stamp + 19) % 1000000):000000}";
+        var itemCode = $"GWI{Math.Abs((stamp + 23) % 1000000):000000}";
+
+        long? companyId = null;
+
+        try
+        {
+            var createCompanyResult = await service.SaveCompanyAsync(
+                new ManagedCompany
+                {
+                    Id = 0,
+                    Code = tempCompanyCode,
+                    Name = $"Global Warehouse Company {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createCompanyResult.IsSuccess && createCompanyResult.EntityId.HasValue,
+                $"Failed to create global warehouse company: {createCompanyResult.Message}");
+            companyId = createCompanyResult.EntityId!.Value;
+
+            var createLocationResult = await service.SaveLocationAsync(
+                new ManagedLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = locationCode,
+                    Name = $"Global Warehouse Location {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createLocationResult.IsSuccess && createLocationResult.EntityId.HasValue,
+                $"Failed to create global warehouse location: {createLocationResult.Message}");
+            var locationId = createLocationResult.EntityId!.Value;
+
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.Value.ToString(), "admin");
+
+            var globalWarehouseId = await CreateWarehouseAsync(
+                service,
+                companyId.Value,
+                warehouseCode,
+                $"Global Warehouse {stamp}",
+                locationId: null,
+                "admin");
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId.Value,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = itemCode,
+                    Name = $"Global Warehouse Item {stamp}",
+                    Uom = "PCS",
+                    Category = string.Empty,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue,
+                $"Failed to create global warehouse item: {saveItemResult.Message}");
+            var itemId = saveItemResult.EntityId!.Value;
+
+            var saveTxResult = await service.SaveStockTransactionDraftAsync(
+                new ManagedStockTransaction
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = DateTime.Today,
+                    ReferenceNo = "ITEST-WH-GLOBAL",
+                    Description = "Global warehouse validation"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId,
+                        Qty = 3,
+                        UnitCost = 125,
+                        WarehouseId = globalWarehouseId
+                    }
+                },
+                "admin");
+
+            Assert(
+                saveTxResult.IsSuccess && saveTxResult.EntityId.HasValue,
+                $"Global warehouse should be accepted for stock transaction save: {saveTxResult.Message}");
+
+            var bundle = await service.GetStockTransactionBundleAsync(saveTxResult.EntityId!.Value);
+            Assert(bundle is not null, "Global warehouse draft should be loadable.");
+            Assert(bundle!.Lines.Count == 1, "Expected one line in global warehouse draft.");
+            Assert(bundle.Lines[0].WarehouseId == globalWarehouseId, "Global warehouse id should persist on saved draft.");
+        }
+        finally
+        {
+            try
+            {
+                if (companyId.HasValue)
+                {
+                    await CleanupTemporaryInventoryCostingCompanyAsync(companyId.Value);
+                    await using var connection = await OpenConnectionAsync();
+                    await CleanupInventoryArtifactsByCodesAsync(connection, companyId.Value, Array.Empty<string>(), [itemCode]);
+                }
+            }
+            finally
+            {
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryTransferMovesWarehouseBucketsAsync()
+    {
+        var service = CreateService();
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var tempCompanyCode = $"ITTRN{Math.Abs(stamp % 1000000):000000}";
+        var locationCode = $"TR{Math.Abs(stamp % 10000):0000}";
+        var sourceWarehouseCode = $"TS{Math.Abs(stamp % 1000000):000000}";
+        var destinationWarehouseCode = $"TD{Math.Abs((stamp + 31) % 1000000):000000}";
+        var itemCode = $"TTI{Math.Abs((stamp + 37) % 1000000):000000}";
+
+        long? companyId = null;
+
+        try
+        {
+            var createCompanyResult = await service.SaveCompanyAsync(
+                new ManagedCompany
+                {
+                    Id = 0,
+                    Code = tempCompanyCode,
+                    Name = $"Transfer Warehouse Company {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createCompanyResult.IsSuccess && createCompanyResult.EntityId.HasValue,
+                $"Failed to create transfer company: {createCompanyResult.Message}");
+            companyId = createCompanyResult.EntityId!.Value;
+
+            var createLocationResult = await service.SaveLocationAsync(
+                new ManagedLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = locationCode,
+                    Name = $"Transfer Location {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createLocationResult.IsSuccess && createLocationResult.EntityId.HasValue,
+                $"Failed to create transfer location: {createLocationResult.Message}");
+            var locationId = createLocationResult.EntityId!.Value;
+
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.Value.ToString(), "admin");
+
+            var sourceWarehouseId = await CreateWarehouseAsync(
+                service,
+                companyId.Value,
+                sourceWarehouseCode,
+                $"Transfer Source Warehouse {stamp}",
+                locationId,
+                "admin");
+            var destinationWarehouseId = await CreateWarehouseAsync(
+                service,
+                companyId.Value,
+                destinationWarehouseCode,
+                $"Transfer Destination Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId.Value,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    Code = itemCode,
+                    Name = $"Transfer Item {stamp}",
+                    Uom = "PCS",
+                    Category = string.Empty,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue,
+                $"Failed to create transfer item: {saveItemResult.Message}");
+            var itemId = saveItemResult.EntityId!.Value;
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using var seedStockCommand = new NpgsqlCommand(
+                    @"INSERT INTO inv_stock (company_id, location_id, item_id, qty, warehouse_id, updated_at)
+VALUES (@company_id, @location_id, @item_id, @qty, @warehouse_id, NOW());",
+                    connection);
+                seedStockCommand.Parameters.AddWithValue("company_id", companyId.Value);
+                seedStockCommand.Parameters.AddWithValue("location_id", locationId);
+                seedStockCommand.Parameters.AddWithValue("item_id", itemId);
+                seedStockCommand.Parameters.AddWithValue("qty", 10m);
+                seedStockCommand.Parameters.AddWithValue("warehouse_id", sourceWarehouseId);
+                await seedStockCommand.ExecuteNonQueryAsync();
+            }
+
+            var saveTxResult = await service.SaveStockTransactionDraftAsync(
+                new ManagedStockTransaction
+                {
+                    Id = 0,
+                    CompanyId = companyId.Value,
+                    LocationId = locationId,
+                    TransactionType = "TRANSFER",
+                    TransactionDate = DateTime.Today,
+                    ReferenceNo = "ITEST-TRANSFER",
+                    Description = "Transfer bucket movement validation"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId,
+                        Qty = 4,
+                        UnitCost = 0,
+                        WarehouseId = sourceWarehouseId,
+                        DestinationWarehouseId = destinationWarehouseId
+                    }
+                },
+                "admin");
+            Assert(
+                saveTxResult.IsSuccess && saveTxResult.EntityId.HasValue,
+                $"Failed to save transfer draft: {saveTxResult.Message}");
+
+            var transactionId = saveTxResult.EntityId!.Value;
+            var submitResult = await service.SubmitStockTransactionAsync(transactionId, "admin");
+            Assert(submitResult.IsSuccess, $"Failed to submit transfer draft: {submitResult.Message}");
+
+            var approveResult = await service.ApproveStockTransactionAsync(transactionId, "admin");
+            Assert(approveResult.IsSuccess, $"Failed to approve transfer draft: {approveResult.Message}");
+
+            var postResult = await service.PostStockTransactionAsync(transactionId, "admin");
+            Assert(postResult.IsSuccess, $"Failed to post transfer draft: {postResult.Message}");
+
+            var bundle = await service.GetStockTransactionBundleAsync(transactionId);
+            Assert(bundle is not null, "Posted transfer should be loadable.");
+            Assert(
+                string.Equals(bundle!.Header.Status, "POSTED", StringComparison.OrdinalIgnoreCase),
+                $"Expected posted transfer status, got {bundle.Header.Status}.");
+
+            var sourceQty = await GetStockQtyAsync(companyId.Value, locationId, itemId, sourceWarehouseId);
+            var destinationQty = await GetStockQtyAsync(companyId.Value, locationId, itemId, destinationWarehouseId);
+            Assert(Math.Abs(sourceQty - 6m) < 0.0001m, $"Expected source warehouse qty 6.0000 after transfer, got {sourceQty:N4}.");
+            Assert(Math.Abs(destinationQty - 4m) < 0.0001m, $"Expected destination warehouse qty 4.0000 after transfer, got {destinationQty:N4}.");
+            Assert(Math.Abs((sourceQty + destinationQty) - 10m) < 0.0001m, "Transfer should preserve total location stock.");
+        }
+        finally
+        {
+            try
+            {
+                if (companyId.HasValue)
+                {
+                    await CleanupTemporaryInventoryCostingCompanyAsync(companyId.Value);
+                    await using var connection = await OpenConnectionAsync();
+                    await CleanupInventoryArtifactsByCodesAsync(connection, companyId.Value, Array.Empty<string>(), [itemCode]);
+                }
+            }
+            finally
+            {
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
         }
     }
 
