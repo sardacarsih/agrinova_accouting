@@ -193,4 +193,79 @@ public sealed class UserManagementData
     public Dictionary<long, HashSet<long>> UserCompanyIdsByUserId { get; init; } = new();
 
     public Dictionary<long, HashSet<long>> UserLocationIdsByUserId { get; init; } = new();
+
+    public Dictionary<long, UserEffectiveAccessDetail> UserEffectiveAccessByUserId { get; init; } = new();
+
+    public Dictionary<long, RoleAuditDetail> RoleAuditByRoleId { get; init; } = new();
+}
+
+public sealed class UserEffectiveAccessActionDetail
+{
+    public long ScopeId { get; init; }
+
+    public string Label { get; init; } = string.Empty;
+
+    public string ActionCode { get; init; } = string.Empty;
+
+    public string GrantedByRole { get; init; } = string.Empty;
+}
+
+public sealed class UserEffectiveAccessSubmoduleDetail
+{
+    public string ModuleCode { get; init; } = string.Empty;
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public string SubmoduleCode { get; init; } = string.Empty;
+
+    public string SubmoduleName { get; init; } = string.Empty;
+
+    public List<UserEffectiveAccessActionDetail> Actions { get; init; } = new();
+}
+
+public sealed class UserEffectiveAccessModuleDetail
+{
+    public string ModuleCode { get; init; } = string.Empty;
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public List<UserEffectiveAccessSubmoduleDetail> Submodules { get; init; } = new();
+}
+
+public sealed class UserEffectiveAccessDetail
+{
+    public long UserId { get; init; }
+
+    public long? RoleId { get; init; }
+
+    public string RoleCode { get; init; } = string.Empty;
+
+    public string RoleName { get; init; } = string.Empty;
+
+    public bool IsSuperRole { get; init; }
+
+    public List<long> CompanyIds { get; init; } = new();
+
+    public List<string> CompanyLabels { get; init; } = new();
+
+    public List<long> LocationIds { get; init; } = new();
+
+    public List<string> LocationLabels { get; init; } = new();
+
+    public List<UserEffectiveAccessModuleDetail> Modules { get; init; } = new();
+}
+
+public sealed class RoleAuditDetail
+{
+    public long RoleId { get; init; }
+
+    public string RoleCode { get; init; } = string.Empty;
+
+    public string RoleName { get; init; } = string.Empty;
+
+    public bool IsSuperRole { get; init; }
+
+    public List<long> PersistedScopeIds { get; init; } = new();
+
+    public List<ManagedUser> AssignedUsers { get; init; } = new();
 }

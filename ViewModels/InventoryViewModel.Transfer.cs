@@ -122,6 +122,7 @@ public sealed partial class InventoryViewModel
         TransferLines.Clear();
         ClearOutboundAutoCostCache();
         AddTransferLine();
+        SelectedTransferTabIndex = 1;
         StatusMessage = "Transaksi transfer baru siap.";
     }
 
@@ -177,6 +178,8 @@ public sealed partial class InventoryViewModel
                 ItemId = l.ItemId,
                 Qty = l.Qty,
                 UnitCost = l.UnitCost,
+                WarehouseId = l.WarehouseId,
+                DestinationWarehouseId = l.DestinationWarehouseId,
                 Notes = l.Notes
             }).ToList();
 

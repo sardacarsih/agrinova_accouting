@@ -291,9 +291,13 @@ public sealed class JournalImportPreviewItem
 {
     public int RowNumber { get; init; }
 
+    public int LineNo { get; init; }
+
     public string JournalNo { get; init; } = string.Empty;
 
     public string AccountCode { get; init; } = string.Empty;
+
+    public string AccountName { get; init; } = string.Empty;
 
     public string Description { get; init; } = string.Empty;
 

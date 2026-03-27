@@ -11,6 +11,8 @@ public sealed class JournalImportCommitResult
     public string Message { get; init; } = string.Empty;
 
     public string StatusMessage { get; init; } = string.Empty;
+
+    public List<string> FailedDetails { get; init; } = new();
 }
 
 public sealed class JournalExportResult
@@ -58,7 +60,7 @@ public sealed class JournalImportExportWorkflow
                 SavedCount = 0,
                 FailedCount = 0,
                 FirstSavedId = 0,
-                Message = "Tidak ada jurnal valid untuk diimport.",
+                Message = "Tidak ada jurnal valid untuk diimport. Jalankan preview lalu lihat kolom Pesan untuk detail kegagalan.",
                 StatusMessage = "Tidak ada jurnal valid untuk diimport."
             };
         }
@@ -101,9 +103,7 @@ public sealed class JournalImportExportWorkflow
             }
         }
 
-        var message = failedCount > 0
-            ? $"Import selesai: {savedCount} jurnal tersimpan, {failedCount} gagal."
-            : $"Import selesai: {savedCount} jurnal tersimpan.";
+        var message = BuildCommitResultMessage(savedCount, failedCount, failedMessages);
         var statusMessage = failedMessages.Count > 0
             ? $"Sebagian import gagal. Contoh: {failedMessages[0]}"
             : message;
@@ -114,8 +114,34 @@ public sealed class JournalImportExportWorkflow
             FailedCount = failedCount,
             FirstSavedId = firstSavedId,
             Message = message,
-            StatusMessage = statusMessage
+            StatusMessage = statusMessage,
+            FailedDetails = failedMessages
         };
+    }
+
+    private static string BuildCommitResultMessage(int savedCount, int failedCount, IReadOnlyList<string> failedMessages)
+    {
+        var summary = failedCount > 0
+            ? $"Import selesai: {savedCount} jurnal tersimpan, {failedCount} gagal."
+            : $"Import selesai: {savedCount} jurnal tersimpan.";
+
+        if (failedMessages.Count == 0)
+        {
+            return summary;
+        }
+
+        const int maxShown = 5;
+        var detailLines = failedMessages
+            .Take(maxShown)
+            .Select((message, index) => $"{index + 1}. {message}")
+            .ToList();
+
+        if (failedMessages.Count > maxShown)
+        {
+            detailLines.Add($"Dan {failedMessages.Count - maxShown} jurnal gagal lainnya.");
+        }
+
+        return $"{summary}{Environment.NewLine}Detail gagal:{Environment.NewLine}{string.Join(Environment.NewLine, detailLines)}";
     }
 
     public void ExportCurrent(string filePath, ManagedJournalHeader header, IReadOnlyCollection<ManagedJournalLine> lines)
@@ -204,8 +230,9 @@ public sealed class JournalImportExportWorkflow
         foreach (var item in source.PreviewItems)
         {
             var normalizedCode = NormalizeAccountCode(item.AccountCode);
+            ManagedAccount? account = null;
             var hasCoaCode = !string.IsNullOrWhiteSpace(normalizedCode) &&
-                             accountLookupByCode.ContainsKey(normalizedCode);
+                             accountLookupByCode.TryGetValue(normalizedCode, out account);
             var isValid = item.IsValid && hasCoaCode;
             var message = item.ValidationMessage;
 
@@ -219,8 +246,10 @@ public sealed class JournalImportExportWorkflow
             rewrittenPreview.Add(new JournalImportPreviewItem
             {
                 RowNumber = item.RowNumber,
+                LineNo = item.LineNo,
                 JournalNo = item.JournalNo,
                 AccountCode = normalizedCode,
+                AccountName = account?.Name ?? string.Empty,
                 Description = item.Description,
                 Debit = item.Debit,
                 Credit = item.Credit,
@@ -318,8 +347,10 @@ public sealed class JournalImportExportWorkflow
                 rewrittenPreview[index] = new JournalImportPreviewItem
                 {
                     RowNumber = current.RowNumber,
+                    LineNo = current.LineNo,
                     JournalNo = current.JournalNo,
                     AccountCode = current.AccountCode,
+                    AccountName = current.AccountName,
                     Description = current.Description,
                     Debit = current.Debit,
                     Credit = current.Credit,

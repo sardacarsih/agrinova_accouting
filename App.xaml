@@ -16,6 +16,7 @@
                 <ResourceDictionary Source="Resources/Styles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/ButtonStyles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/ComponentStyles.xaml" />
+                <ResourceDictionary Source="Resources/Styles/DashboardStyles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/TextBoxStyles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/TextBlockStyles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/LayoutStyles.xaml" />

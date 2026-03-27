@@ -168,6 +168,8 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
             accessContext,
             accessContext.SelectedCompanyId,
             accessContext.SelectedLocationId);
+        AccountingDashboard = new AccountingDashboardViewModel(accessControlService, accessContext);
+        AccountingDashboard.DrillDownRequested += OnDashboardDrillDownRequested;
 
         NavigationItems = BuildNavigation(accessContext);
         var firstLeaf = FindFirstLeaf(NavigationItems) ?? NavigationItems.FirstOrDefault(x => !x.HasChildren);
@@ -228,6 +230,8 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
     public UserManagementViewModel UserManagement { get; }
 
     public MasterDataViewModel MasterData { get; }
+
+    public AccountingDashboardViewModel AccountingDashboard { get; }
 
     public InventoryViewModel Inventory { get; }
 
@@ -312,6 +316,11 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
                 _ = UserManagement.EnsureLoadedAsync();
             }
 
+            if (IsDashboardSelected)
+            {
+                _ = AccountingDashboard.EnsureLoadedAsync();
+            }
+
             if (IsJournalSelected)
             {
                 _ = JournalManagement.EnsureLoadedAsync();
@@ -348,6 +357,8 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
             {
                 _ = RefreshStatusBarAccountingPeriodAsync(force: true);
             }
+
+            AccountingDashboard.SetIsActive(IsDashboardSelected);
         }
     }
 
@@ -508,6 +519,8 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         MasterData.AccountingPeriodStateChanged -= OnAccountingPeriodStateChanged;
+        AccountingDashboard.DrillDownRequested -= OnDashboardDrillDownRequested;
+        AccountingDashboard.Dispose();
         _clockTimer.Stop();
     }
 
@@ -562,20 +575,21 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
     {
         var items = new List<MainShellNavigationItem>();
 
-        if (accessContext.HasSubmodule("accounting", "dashboard"))
-        {
-            items.Add(new MainShellNavigationItem("dashboard", "Dashboard", "\uE80F"));
-        }
-
+        var canAccountingDashboard = accessContext.HasSubmodule("accounting", "dashboard");
         var canAccountingMasterData = accessContext.HasAction("accounting", "master_data", "view");
         var canAccountingTransactions = accessContext.HasAction("accounting", "transactions", "view");
         var canAccountingReports = accessContext.HasAction("accounting", "reports", "view");
         var canAccountingSettings = accessContext.HasAction("accounting", "settings", "view");
-        var canShowGeneralLedger = canAccountingMasterData || canAccountingTransactions || canAccountingReports || canAccountingSettings;
+        var canShowGeneralLedger = canAccountingDashboard || canAccountingMasterData || canAccountingTransactions || canAccountingReports || canAccountingSettings;
 
         if (canShowGeneralLedger)
         {
             var generalLedgerChildren = new List<MainShellNavigationItem>();
+
+            if (canAccountingDashboard)
+            {
+                generalLedgerChildren.Add(new MainShellNavigationItem("dashboard", "Dashboard", "\uE80F"));
+            }
 
             if (canAccountingTransactions)
             {
@@ -755,7 +769,6 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
 
             if (canViewStockOpname)
             {
-                transaksiChildren.Add(new MainShellNavigationItem("inventory", "Penyesuaian Stok", "\uE9CE", subCode: "stock_adjustment"));
                 transaksiChildren.Add(new MainShellNavigationItem("inventory", "Stok Opname", "\uE9D5", subCode: "stock_opname"));
             }
 
@@ -980,6 +993,74 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
         }
 
         SelectedNavigationItem = item;
+    }
+
+    private void OnDashboardDrillDownRequested(DashboardDrillRequest request)
+    {
+        if (request is null)
+        {
+            return;
+        }
+
+        var targetItem = request.TargetModule switch
+        {
+            "transactions" => FindNavigationItem("transactions", request.TargetSubCode) ?? FindNavigationItem("transactions", "jurnal_umum"),
+            "reports" => FindNavigationItem("reports", request.TargetSubCode) ?? FindNavigationItem("reports", "trial_balance"),
+            "inventory" => FindNavigationItem("inventory", request.TargetSubCode) ?? FindNavigationItem("inventory", "dashboard"),
+            _ => null
+        };
+
+        if (targetItem is not null)
+        {
+            SelectedNavigationItem = targetItem;
+        }
+
+        if (string.Equals(request.TargetModule, "transactions", StringComparison.OrdinalIgnoreCase))
+        {
+            JournalManagement.ApplyDashboardDrillDown(request);
+        }
+        else if (string.Equals(request.TargetModule, "reports", StringComparison.OrdinalIgnoreCase))
+        {
+            Reports.ApplyDashboardDrillDown(request);
+        }
+        else if (string.Equals(request.TargetModule, "inventory", StringComparison.OrdinalIgnoreCase) &&
+                 !string.IsNullOrWhiteSpace(request.TargetSubCode))
+        {
+            Inventory.SelectedInventoryTab = request.TargetSubCode;
+        }
+    }
+
+    private MainShellNavigationItem? FindNavigationItem(string scopeCode, string? subCode)
+    {
+        return FindNavigationItemRecursive(NavigationItems, scopeCode, subCode);
+    }
+
+    private static MainShellNavigationItem? FindNavigationItemRecursive(
+        IEnumerable<MainShellNavigationItem> items,
+        string scopeCode,
+        string? subCode)
+    {
+        foreach (var item in items)
+        {
+            if (string.Equals(item.ScopeCode, scopeCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.SubCode ?? string.Empty, subCode ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+            {
+                return item;
+            }
+
+            if (item.Children is null)
+            {
+                continue;
+            }
+
+            var nested = FindNavigationItemRecursive(item.Children, scopeCode, subCode);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsSettingsPeriodSubTab(string? subCode)

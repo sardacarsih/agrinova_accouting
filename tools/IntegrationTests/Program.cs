@@ -31,6 +31,7 @@ internal static partial class Program
             ("InventoryViewModel_TransactionWorkflowStateReflectsDocumentStatus", TestInventoryViewModel_TransactionWorkflowStateReflectsDocumentStatusAsync),
             ("InventoryViewModel_TransactionActionsReflectClosedPeriod", TestInventoryViewModel_TransactionActionsReflectClosedPeriodAsync),
             ("Journal_SaveDraftPostAndLockBehavior", TestJournalDraftPostFlowAsync),
+            ("Journal_AllowsSameNumberAcrossDifferentPeriods", TestJournalAllowsSameNumberAcrossDifferentPeriodsAsync),
             ("Journal_RejectsApprovePostWithoutApproveScope", TestJournalRejectApprovePostWithoutApproveScopeAsync),
             ("Journal_RejectsWhenPeriodClosed", TestJournalRejectWhenPeriodClosedAsync),
             ("AccountingPeriod_OpenCloseApi", TestAccountingPeriodOpenCloseApiAsync),

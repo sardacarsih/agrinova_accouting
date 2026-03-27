@@ -172,7 +172,7 @@ SELECT h.transaction_date AS tx_date,
 FROM inv_stock_transactions h
 JOIN inv_stock_transaction_lines l ON l.transaction_id = h.id
 JOIN inv_items i ON i.id = l.item_id
-LEFT JOIN inv_warehouses w ON w.id = h.destination_warehouse_id
+LEFT JOIN inv_warehouses w ON w.id = l.destination_warehouse_id
 WHERE h.company_id = @company_id
   AND h.location_id = @location_id
   AND h.is_active = TRUE

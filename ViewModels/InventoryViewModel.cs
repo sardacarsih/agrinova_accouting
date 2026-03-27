@@ -47,6 +47,10 @@ public sealed partial class InventoryViewModel : ViewModelBase
     private bool _isBusy;
     private bool _isLoaded;
     private string _selectedInventoryTab = "dashboard";
+    private int _selectedStockInTabIndex;
+    private int _selectedStockOutTabIndex;
+    private int _selectedTransferTabIndex;
+    private int _selectedStockOpnameTabIndex;
     private long? _masterCompanyId;
     private string _masterCompanyLabel = string.Empty;
     private bool _canMaintainMasterInventoryData;
@@ -154,6 +158,8 @@ public sealed partial class InventoryViewModel : ViewModelBase
         StockOutExpenseAccountOptions = new ObservableCollection<ManagedAccount>();
         Units = new ObservableCollection<ManagedInventoryUnit>();
         Warehouses = new ObservableCollection<ManagedWarehouse>();
+        MasterImportErrorPanel = new InventoryImportErrorPanelState("Error Import Master Inventory");
+        OpeningBalanceImportErrorPanel = new InventoryImportErrorPanelState("Error Import Saldo Awal");
         UomOptions = new ObservableCollection<string> { "PCS", "KG", "LTR", "TON", "SET", "BOX" };
 
         RefreshCommand = new RelayCommand(() => _ = LoadDataAsync());
@@ -212,6 +218,10 @@ public sealed partial class InventoryViewModel : ViewModelBase
     public ObservableCollection<ManagedInventoryUnit> Units { get; }
 
     public ObservableCollection<ManagedWarehouse> Warehouses { get; }
+
+    public InventoryImportErrorPanelState MasterImportErrorPanel { get; }
+
+    public InventoryImportErrorPanelState OpeningBalanceImportErrorPanel { get; }
 
     public ObservableCollection<string> UomOptions { get; }
 
@@ -315,6 +325,30 @@ public sealed partial class InventoryViewModel : ViewModelBase
     public bool IsInventoryReportsSelected => ReportBackedTabs.Contains(SelectedInventoryTab);
 
     public bool IsInventoryPlaceholderSelected => PlaceholderTabs.Contains(SelectedInventoryTab);
+
+    public int SelectedStockInTabIndex
+    {
+        get => _selectedStockInTabIndex;
+        set => SetProperty(ref _selectedStockInTabIndex, Math.Clamp(value, 0, 1));
+    }
+
+    public int SelectedStockOutTabIndex
+    {
+        get => _selectedStockOutTabIndex;
+        set => SetProperty(ref _selectedStockOutTabIndex, Math.Clamp(value, 0, 1));
+    }
+
+    public int SelectedTransferTabIndex
+    {
+        get => _selectedTransferTabIndex;
+        set => SetProperty(ref _selectedTransferTabIndex, Math.Clamp(value, 0, 1));
+    }
+
+    public int SelectedStockOpnameTabIndex
+    {
+        get => _selectedStockOpnameTabIndex;
+        set => SetProperty(ref _selectedStockOpnameTabIndex, Math.Clamp(value, 0, 1));
+    }
 
     public string InventoryPlaceholderTitle => SelectedInventoryTab switch
     {
@@ -1643,6 +1677,8 @@ public sealed partial class InventoryViewModel : ViewModelBase
 
     private void ApplyInventoryTabPreset(string tabCode)
     {
+        ResetInventoryTransactionTabSelection(tabCode);
+
         var reportPreset = tabCode switch
         {
             "inquiry_mutation" => "movement",
@@ -1667,5 +1703,24 @@ public sealed partial class InventoryViewModel : ViewModelBase
         }
 
         SelectedReportType = reportPreset;
+    }
+
+    private void ResetInventoryTransactionTabSelection(string tabCode)
+    {
+        switch (tabCode)
+        {
+            case "stock_in":
+                SelectedStockInTabIndex = 0;
+                break;
+            case "stock_out":
+                SelectedStockOutTabIndex = 0;
+                break;
+            case "transfer":
+                SelectedTransferTabIndex = 0;
+                break;
+            case "stock_opname":
+                SelectedStockOpnameTabIndex = 0;
+                break;
+        }
     }
 }

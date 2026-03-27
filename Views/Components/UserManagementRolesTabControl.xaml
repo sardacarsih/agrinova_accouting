@@ -4,277 +4,34 @@
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
     <UserControl.Resources>
-        <DataTemplate x:Key="RoleActionOptionTemplate">
-            <CheckBox Margin="0,0,0,4"
-                      IsChecked="{Binding IsSelected}"
-                      IsEnabled="{Binding IsEnabled}"
-                      Style="{StaticResource CompactCheckBoxStyle}">
-                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Label}" />
-            </CheckBox>
+        <Style x:Key="CenteredCellTextStyle" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <DataTemplate x:Key="RolePermissionMatrixSubmoduleTemplate">
+            <StackPanel Margin="0,2">
+                <TextBlock Text="{Binding SubmoduleName}" FontWeight="SemiBold" />
+                <TextBlock Margin="0,2,0,0"
+                           FontSize="10"
+                           Foreground="{DynamicResource Brush.TextMuted}"
+                           Text="{Binding SelectionSummary}" />
+            </StackPanel>
         </DataTemplate>
-
-        <DataTemplate x:Key="RoleEditorTemplate">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <Border Grid.Row="0" Style="{StaticResource SettingsSectionCardStyle}" Margin="0,0,0,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel>
-                            <TextBlock Text="Editor Role" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                            <TextBlock Margin="0,4,0,0"
-                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}"
-                                       Text="Kelola identitas role dan permission aksi per modul." />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Style="{StaticResource ScopeBadgeStyle}">
-                                <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
-                                    <Run Text="Dipilih: " />
-                                    <Run Text="{Binding SelectedRolePermissionCount, Mode=OneWay}" />
-                                </TextBlock>
-                            </Border>
-                            <Border Style="{StaticResource ScopeBadgeStyle}" Margin="4,0,0,0">
-                                <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
-                                    <Run Text="Tampil: " />
-                                    <Run Text="{Binding VisibleRolePermissionCount, Mode=OneWay}" />
-                                </TextBlock>
-                            </Border>
-                            <Border Style="{StaticResource ScopeBadgeStyle}" Margin="4,0,0,0">
-                                <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
-                                    <Run Text="Pengguna: " />
-                                    <Run Text="{Binding SelectedRoleAssignedUserCount, Mode=OneWay}" />
-                                </TextBlock>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <Grid Grid.Row="1" Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Kode Role" />
-                        <TextBox Margin="0,6,0,0"
-                                 Text="{Binding SelectedRole.Code, UpdateSourceTrigger=PropertyChanged}"
-                                 IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
-                                 Style="{StaticResource InputTextBoxStyle}" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Nama Role" />
-                        <TextBox Margin="0,6,0,0"
-                                 Text="{Binding SelectedRole.Name, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource InputTextBoxStyle}" />
-                    </StackPanel>
-                </Grid>
-
-                <Grid Grid.Row="2">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <StackPanel Grid.Row="0" Orientation="Horizontal">
-                        <CheckBox IsChecked="{Binding SelectedRole.IsSuperRole}"
-                                  IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
-                                  Style="{StaticResource CompactCheckBoxStyle}"
-                                  Content="Super role" />
-                        <CheckBox Margin="14,0,0,0"
-                                  IsChecked="{Binding SelectedRole.IsActive}"
-                                  IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
-                                  Style="{StaticResource CompactCheckBoxStyle}"
-                                  Content="Aktif" />
-                    </StackPanel>
-
-                    <Border Grid.Row="1" Style="{StaticResource SettingsSectionCardStyle}" Margin="0,10,0,0">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <WrapPanel Grid.Row="0">
-                                <TextBox Width="240"
-                                         Text="{Binding RolePermissionSearchText, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource InputTextBoxStyle}" />
-                                <CheckBox Margin="10,0,0,0"
-                                          VerticalAlignment="Center"
-                                          IsChecked="{Binding ShowSelectedRolePermissionsOnly}"
-                                          Style="{StaticResource CompactCheckBoxStyle}"
-                                          Content="Hanya terpilih" />
-                                <Button Margin="10,0,0,0"
-                                        Command="{Binding ExpandAllRolePermissionsCommand}"
-                                        Style="{StaticResource SelectAllLinkStyle}"
-                                        Content="Expand" />
-                                <Button Margin="6,0,0,0"
-                                        Command="{Binding CollapseAllRolePermissionsCommand}"
-                                        Style="{StaticResource SelectAllLinkStyle}"
-                                        Content="Collapse" />
-                                <Button Margin="6,0,0,0"
-                                        Command="{Binding SelectAllScopesCommand}"
-                                        Style="{StaticResource SelectAllLinkStyle}"
-                                        Content="Semua" />
-                                <Button Margin="6,0,0,0"
-                                        Command="{Binding DeselectAllScopesCommand}"
-                                        Style="{StaticResource SelectAllLinkStyle}"
-                                        Content="Kosongkan" />
-                                <Button Margin="6,0,0,0"
-                                        Command="{Binding ClearRolePermissionFilterCommand}"
-                                        IsEnabled="{Binding HasRolePermissionFilter}"
-                                        Style="{StaticResource SelectAllLinkStyle}"
-                                        Content="Reset Filter" />
-                            </WrapPanel>
-
-                            <TextBlock Grid.Row="1"
-                                       Margin="0,6,0,0"
-                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}"
-                                       Text="Cari berdasarkan modul, submodul, nama aksi, atau kode." />
-
-                            <Border Grid.Row="2"
-                                    Margin="0,10,0,0"
-                                    Padding="10,8"
-                                    CornerRadius="8"
-                                    Background="{DynamicResource Brush.SurfaceMuted}"
-                                    BorderBrush="{DynamicResource Brush.BorderSoft}"
-                                    BorderThickness="1">
-                                <TextBlock Foreground="{DynamicResource Brush.TextMuted}" TextWrapping="Wrap">
-                                    <Run Text="Catatan: " />
-                                    <Run Text="submodul API Inv berisi permission sinkronisasi, import template/data, dan integrasi jurnal." />
-                                    <LineBreak />
-                                    <Run Text="Permission ini terpisah dari CRUD master inventory seperti Item, Kategori, Satuan, dan Gudang." />
-                                </TextBlock>
-                            </Border>
-                        </Grid>
-                    </Border>
-
-                    <Border Grid.Row="2" Margin="0,10,0,0" Style="{StaticResource CardBorderStyle}" Padding="10">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <ItemsControl ItemsSource="{Binding RolePermissionModules}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8">
-                                            <Expander.Header>
-                                                <DockPanel>
-                                                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}">
-                                                        <Run Text="{Binding ModuleName, Mode=OneWay}" />
-                                                        <Run Text=" (" />
-                                                        <Run Text="{Binding SelectedActionsCount, Mode=OneWay}" />
-                                                        <Run Text=" dipilih)" />
-                                                    </TextBlock>
-                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                                        <Button Content="Semua"
-                                                                Command="{Binding DataContext.SelectAllModuleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}"
-                                                                Style="{StaticResource SelectAllLinkStyle}" />
-                                                        <Button Margin="6,0,0,0"
-                                                                Content="Kosongkan"
-                                                                Command="{Binding DataContext.DeselectAllModuleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}"
-                                                                Style="{StaticResource SelectAllLinkStyle}" />
-                                                    </StackPanel>
-                                                </DockPanel>
-                                            </Expander.Header>
-
-                                            <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Submodules}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,6">
-                                                            <Expander.Header>
-                                                                <DockPanel>
-                                                                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}">
-                                                                        <Run Text="{Binding SubmoduleName, Mode=OneWay}" />
-                                                                        <Run Text=" (" />
-                                                                        <Run Text="{Binding SelectedActionsCount, Mode=OneWay}" />
-                                                                        <Run Text=" dipilih)" />
-                                                                    </TextBlock>
-                                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                                                        <Button Content="Semua"
-                                                                                Command="{Binding DataContext.SelectAllSubmoduleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                                CommandParameter="{Binding}"
-                                                                                Style="{StaticResource SelectAllLinkStyle}" />
-                                                                        <Button Margin="6,0,0,0"
-                                                                                Content="Kosongkan"
-                                                                                Command="{Binding DataContext.DeselectAllSubmoduleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                                CommandParameter="{Binding}"
-                                                                                Style="{StaticResource SelectAllLinkStyle}" />
-                                                                    </StackPanel>
-                                                                </DockPanel>
-                                                            </Expander.Header>
-
-                                                            <ItemsControl Margin="0,8,0,0"
-                                                                          ItemsSource="{Binding Actions}"
-                                                                          ItemTemplate="{StaticResource RoleActionOptionTemplate}" />
-                                                        </Expander>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </Expander>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Border>
-                </Grid>
-
-                <Border Grid.Row="3"
-                        Margin="0,10,0,0"
-                        Padding="10"
-                        CornerRadius="10"
-                        BorderThickness="1"
-                        Background="{DynamicResource Brush.SurfaceMuted}"
-                        BorderBrush="{DynamicResource Brush.Border}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Grid.Column="0"
-                                   VerticalAlignment="Center"
-                                   Foreground="{DynamicResource Brush.TextSecondary}"
-                                   FontWeight="SemiBold"
-                                   Text="{Binding RoleEditorDirtyMessage}" />
-
-                        <Button Grid.Column="1"
-                                Command="{Binding DiscardRoleChangesCommand}"
-                                IsEnabled="{Binding IsRoleEditorDirty}"
-                                Style="{StaticResource SecondaryPillButtonStyle}"
-                                Content="Batalkan" />
-                        <Button Grid.Column="3"
-                                Command="{Binding SaveRoleCommand}"
-                                Style="{StaticResource PrimaryButtonStyle}"
-                                Content="Simpan Role" />
-                        <Button Grid.Column="5"
-                                Command="{Binding DeleteRoleCommand}"
-                                IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
-                                Style="{StaticResource SecondaryPillButtonStyle}"
-                                Content="Hapus Role" />
-                    </Grid>
-                </Border>
-            </Grid>
+        <DataTemplate x:Key="RolePermissionMatrixBulkTemplate">
+            <WrapPanel>
+                <Button Content="Semua"
+                        Command="{Binding DataContext.SelectAllSubmoduleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CommandParameter="{Binding SourceSubmodule}"
+                        Style="{StaticResource SelectAllLinkStyle}" />
+                <Button Margin="6,0,0,0"
+                        Content="Kosongkan"
+                        Command="{Binding DataContext.DeselectAllSubmoduleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CommandParameter="{Binding SourceSubmodule}"
+                        Style="{StaticResource SelectAllLinkStyle}" />
+            </WrapPanel>
         </DataTemplate>
     </UserControl.Resources>
-
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -285,36 +42,32 @@
             <Border Style="{StaticResource SummaryCardStyle}" Margin="0,0,6,0">
                 <StackPanel>
                     <TextBlock Text="Total Role" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
-                    <TextBlock Text="{Binding TotalRolesCount}" FontSize="22" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding TotalRolesCount}" FontSize="22" FontWeight="SemiBold" Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource SummaryCardStyle}" Margin="3,0,3,0">
                 <StackPanel>
                     <TextBlock Text="Role Aktif" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
-                    <TextBlock Text="{Binding ActiveRolesCount}" FontSize="22" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Brush.Success}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ActiveRolesCount}" FontSize="22" FontWeight="SemiBold" Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource SummaryCardStyle}" Margin="3,0,3,0">
                 <StackPanel>
                     <TextBlock Text="Aksi Permission" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
-                    <TextBlock Text="{Binding TotalScopesCount}" FontSize="22" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding TotalScopesCount}" FontSize="22" FontWeight="SemiBold" Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource SummaryCardStyle}" Margin="6,0,0,0">
                 <StackPanel>
-                    <TextBlock Text="Total Pengguna" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
-                    <TextBlock Text="{Binding TotalUsersCount}" FontSize="22" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0" />
+                    <TextBlock Text="User Terdampak" FontSize="11" Foreground="{DynamicResource Brush.TextMuted}" />
+                    <TextBlock Text="{Binding SelectedRoleAssignedUserCount, Mode=OneWay}" FontSize="22" FontWeight="SemiBold" Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
         </UniformGrid>
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" MinWidth="260" />
+                <ColumnDefinition Width="360" />
                 <ColumnDefinition Width="12" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -328,69 +81,82 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Daftar Role" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                    <TextBox Grid.Row="1"
-                             Margin="0,8,0,0"
-                             Text="{Binding RoleSearchText, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBlock Text="Role &amp; Kebijakan" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                    <TextBlock Grid.Row="1" Margin="0,4,0,0" Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                               Text="Daftar role utama, status aktif, dan ukuran kebijakan tampil dalam format grid." />
+                    <TextBox Grid.Row="1" Margin="0,34,0,0" Text="{Binding RoleSearchText, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource InputTextBoxStyle}" />
 
-                    <ListBox Grid.Row="2"
-                             Margin="0,8,0,0"
-                             ItemsSource="{Binding FilteredRoles}"
-                             SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Padding="8,7" CornerRadius="8" Margin="0,2" BorderThickness="1" BorderBrush="{DynamicResource Brush.Border}">
-                                    <StackPanel>
-                                        <DockPanel>
-                                            <TextBlock Text="{Binding Code}"
-                                                       FontSize="13"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource Brush.TextPrimary}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <Ellipse DockPanel.Dock="Right"
-                                                     Width="8" Height="8"
-                                                     VerticalAlignment="Center"
-                                                     Margin="6,0,0,0">
-                                                <Ellipse.Style>
-                                                    <Style TargetType="Ellipse">
-                                                        <Setter Property="Fill" Value="{DynamicResource Brush.TextMuted}" />
+                    <Grid Grid.Row="2" Margin="0,10,0,0">
+                        <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                                  ItemsSource="{Binding FilteredRoles}"
+                                  SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  CanUserResizeRows="False"
+                                  MinHeight="220">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="110" />
+                                <DataGridTextColumn Header="Nama Role" Binding="{Binding Name}" Width="*" />
+                                <DataGridTemplateColumn Header="Status" Width="92">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="8,2" CornerRadius="8" BorderThickness="1">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                <Setter Property="Fill" Value="{DynamicResource Brush.Success}" />
+                                                                <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </Ellipse.Style>
-                                            </Ellipse>
-                                        </DockPanel>
-                                        <TextBlock Text="{Binding Name}"
-                                                   Margin="0,2,0,0"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource Brush.TextMuted}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <WrapPanel Margin="0,6,0,0">
-                                            <Border Style="{StaticResource ScopeBadgeStyle}">
-                                                <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
-                                                    <Run Text="Pengguna: " />
-                                                    <Run Text="{Binding AssignedUserCount}" />
+                                                </Border.Style>
+                                                <TextBlock HorizontalAlignment="Center" FontSize="11" FontWeight="SemiBold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Nonaktif" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                    <Setter Property="Text" Value="Aktif" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
                                                 </TextBlock>
                                             </Border>
-                                            <Border Style="{StaticResource ScopeBadgeStyle}">
-                                                <TextBlock FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}">
-                                                    <Run Text="Izin: " />
-                                                    <Run Text="{Binding PermissionCount}" />
-                                                </TextBlock>
-                                            </Border>
-                                        </WrapPanel>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="User" Binding="{Binding AssignedUserCount}" Width="74" ElementStyle="{StaticResource CenteredCellTextStyle}" />
+                                <DataGridTextColumn Header="Izin" Binding="{Binding PermissionCount}" Width="74" ElementStyle="{StaticResource CenteredCellTextStyle}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border IsHitTestVisible="False">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding FilteredRoles.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="Belum ada role yang cocok dengan filter."
+                                       FontSize="13"
+                                       Foreground="{DynamicResource Brush.TextMuted}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
 
                     <Grid Grid.Row="3" Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
@@ -398,20 +164,584 @@
                             <ColumnDefinition Width="8" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0"
-                                Command="{Binding NewRoleCommand}"
-                                Style="{StaticResource SecondaryPillButtonStyle}"
-                                Content="Role Baru" />
-                        <Button Grid.Column="2"
-                                Command="{Binding CloneRoleCommand}"
-                                IsEnabled="{Binding CanCloneSelectedRole}"
-                                Style="{StaticResource SecondaryPillButtonStyle}"
-                                Content="Duplikasi" />
+                        <Button Grid.Column="0" Command="{Binding NewRoleCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Role Baru" />
+                        <Button Grid.Column="2" Command="{Binding CloneRoleCommand}" IsEnabled="{Binding CanCloneSelectedRole}"
+                                Style="{StaticResource SecondaryPillButtonStyle}" Content="Duplikasi" />
                     </Grid>
                 </Grid>
             </Border>
 
-            <ContentControl Grid.Column="2" Content="{Binding}" ContentTemplate="{StaticResource RoleEditorTemplate}" />
+            <Grid Grid.Column="2">
+                <Border Style="{StaticResource CardBorderStyle}"
+                        Padding="20"
+                        Visibility="{Binding HasSelectedRole, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Pilih role untuk mulai mengelola kebijakan akses."
+                                   Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                        <TextBlock Margin="0,6,0,0"
+                                   Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                                   Text="Panel ini menampilkan editor role, permission grid per modul, dampak ke pengguna, dan perbandingan antar role." />
+                    </StackPanel>
+                </Border>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="{Binding HasSelectedRole, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel>
+                        <Border Style="{StaticResource SettingsSectionCardStyle}" Margin="0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingsSectionTitleTextStyle}">
+                                        <Run Text="{Binding SelectedRole.Code, Mode=OneWay, TargetNullValue=-}" />
+                                        <Run Text=" • " />
+                                        <Run Text="{Binding SelectedRole.Name, Mode=OneWay, TargetNullValue=Pilih role}" />
+                                    </TextBlock>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                                               Text="Editor role dipertahankan sebagai form, sedangkan kebijakan, dampak, dan perbandingan ditampilkan dalam grid." />
+                                </StackPanel>
+                                <WrapPanel Grid.Column="1">
+                                    <Border Style="{StaticResource ScopeBadgeStyle}">
+                                        <TextBlock FontSize="11"><Run Text="Dipilih: " /><Run Text="{Binding SelectedRolePermissionCount, Mode=OneWay}" /></TextBlock>
+                                    </Border>
+                                    <Border Style="{StaticResource ScopeBadgeStyle}">
+                                        <TextBlock FontSize="11"><Run Text="Tampil: " /><Run Text="{Binding VisibleRolePermissionCount, Mode=OneWay}" /></TextBlock>
+                                    </Border>
+                                    <Border Style="{StaticResource ScopeBadgeStyle}">
+                                        <TextBlock FontSize="11"><Run Text="User: " /><Run Text="{Binding SelectedRoleAssignedUserCount, Mode=OneWay}" /></TextBlock>
+                                    </Border>
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource SettingsSectionCardStyle}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Kode Role" />
+                                        <TextBox Margin="0,6,0,0"
+                                                 Text="{Binding SelectedRole.Code, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
+                                                 Style="{StaticResource InputTextBoxStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Nama Role" />
+                                        <TextBox Margin="0,6,0,0"
+                                                 Text="{Binding SelectedRole.Name, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource InputTextBoxStyle}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <WrapPanel Margin="0,12,0,0">
+                                    <CheckBox IsChecked="{Binding SelectedRole.IsSuperRole}"
+                                              IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              Content="Super role" />
+                                    <CheckBox Margin="14,0,0,0"
+                                              IsChecked="{Binding SelectedRole.IsActive}"
+                                              IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              Content="Aktif" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TabControl Margin="0,10,0,0">
+                            <TabItem Header="Permissions">
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <Border Style="{StaticResource SettingsSectionCardStyle}">
+                                        <StackPanel>
+                                            <WrapPanel>
+                                                <TextBox Width="220"
+                                                         Text="{Binding RolePermissionSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                                         Style="{StaticResource InputTextBoxStyle}" />
+                                                <CheckBox Margin="10,0,0,0"
+                                                          VerticalAlignment="Center"
+                                                          IsChecked="{Binding ShowSelectedRolePermissionsOnly}"
+                                                          Style="{StaticResource CompactCheckBoxStyle}"
+                                                          Content="Hanya terpilih" />
+                                                <Button Margin="10,0,0,0" Command="{Binding ExpandAllRolePermissionsCommand}" Style="{StaticResource SelectAllLinkStyle}" Content="Expand" />
+                                                <Button Margin="6,0,0,0" Command="{Binding CollapseAllRolePermissionsCommand}" Style="{StaticResource SelectAllLinkStyle}" Content="Collapse" />
+                                                <Button Margin="6,0,0,0" Command="{Binding SelectAllScopesCommand}" Style="{StaticResource SelectAllLinkStyle}" Content="Semua" />
+                                                <Button Margin="6,0,0,0" Command="{Binding DeselectAllScopesCommand}" Style="{StaticResource SelectAllLinkStyle}" Content="Kosongkan" />
+                                                <Button Margin="6,0,0,0" Command="{Binding ClearRolePermissionFilterCommand}" IsEnabled="{Binding HasRolePermissionFilter}" Style="{StaticResource SelectAllLinkStyle}" Content="Reset" />
+                                            </WrapPanel>
+                                            <Border Style="{StaticResource SettingsHintCardStyle}">
+                                                <TextBlock Text="Setiap modul tetap dikelompokkan, tetapi action di dalam submodul kini tampil sebagai grid agar lebih cepat dipindai dan diubah. Kolom kiri dibekukan, header action otomatis berubah ke compact atau ultra-compact saat kolom makin banyak, dan warna kolom membantu mengelompokkan keluarga action."
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource Brush.TextMuted}" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Grid Grid.Row="1" Margin="0,10,0,0">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                            <ItemsControl ItemsSource="{Binding RolePermissionModules}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Expander Margin="0,0,0,10" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
+                                                            <Expander.Header>
+                                                                <DockPanel>
+                                                                    <TextBlock FontWeight="SemiBold">
+                                                                        <Run Text="{Binding ModuleName, Mode=OneWay}" />
+                                                                        <Run Text=" (" />
+                                                                        <Run Text="{Binding SelectedActionsCount, Mode=OneWay}" />
+                                                                        <Run Text=" dipilih)" />
+                                                                    </TextBlock>
+                                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                                        <Button Content="Semua"
+                                                                                Command="{Binding DataContext.SelectAllModuleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                Style="{StaticResource SelectAllLinkStyle}" />
+                                                                        <Button Margin="6,0,0,0"
+                                                                                Content="Kosongkan"
+                                                                                Command="{Binding DataContext.DeselectAllModuleActionsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                Style="{StaticResource SelectAllLinkStyle}" />
+                                                                    </StackPanel>
+                                                                </DockPanel>
+                                                            </Expander.Header>
+
+                                                            <Grid Margin="0,10,0,0">
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="*" />
+                                                                </Grid.RowDefinitions>
+
+                                                                <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                                                                    <TextBlock FontSize="10"
+                                                                               Foreground="{DynamicResource Brush.TextMuted}"
+                                                                               Text="Submodul dan bulk action tetap terlihat di kiri." />
+                                                                    <TextBlock DockPanel.Dock="Right"
+                                                                               FontSize="10"
+                                                                               Foreground="{DynamicResource Brush.TextMuted}"
+                                                                               Text="Geser horizontal untuk action lainnya." />
+                                                                </DockPanel>
+
+                                                                <Grid Grid.Row="1">
+                                                                    <DataGrid Margin="0"
+                                                                              Tag="{Binding}"
+                                                                              Style="{StaticResource EnterpriseDataGridStyle}"
+                                                                              ItemsSource="{Binding MatrixRows}"
+                                                                              AutoGenerateColumns="False"
+                                                                              CanUserAddRows="False"
+                                                                              CanUserDeleteRows="False"
+                                                                              CanUserResizeRows="False"
+                                                                              FrozenColumnCount="2"
+                                                                              MaxHeight="320"
+                                                                              Loaded="PermissionMatrixGrid_OnLoaded"
+                                                                              DataContextChanged="PermissionMatrixGrid_OnDataContextChanged">
+                                                                        <DataGrid.Columns>
+                                                                            <DataGridTemplateColumn Header="Submodul"
+                                                                                                    CellTemplate="{StaticResource RolePermissionMatrixSubmoduleTemplate}"
+                                                                                                    Width="220" />
+                                                                            <DataGridTemplateColumn Header="Bulk"
+                                                                                                    CellTemplate="{StaticResource RolePermissionMatrixBulkTemplate}"
+                                                                                                    Width="140" />
+                                                                        </DataGrid.Columns>
+                                                                    </DataGrid>
+
+                                                                    <Border IsHitTestVisible="False">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding MatrixRows.Count}" Value="0">
+                                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <TextBlock Text="Tidak ada submodul yang cocok untuk matrix ini."
+                                                                                   FontSize="12"
+                                                                                   Foreground="{DynamicResource Brush.TextMuted}"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   VerticalAlignment="Center" />
+                                                                    </Border>
+                                                                </Grid>
+                                                            </Grid>
+                                                        </Expander>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+
+                                        <Border IsHitTestVisible="False">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding RolePermissionModules.Count}" Value="0">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="Tidak ada permission yang cocok dengan filter saat ini."
+                                                       FontSize="13"
+                                                       Foreground="{DynamicResource Brush.TextMuted}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
+                                </Grid>
+                            </TabItem>
+                            <TabItem Header="Dampak">
+                                <StackPanel Margin="0,10,0,0">
+                                    <Border Style="{StaticResource SettingsSectionCardStyle}" Margin="0">
+                                        <StackPanel>
+                                            <TextBlock Text="Audit Dampak Role" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                                                       Text="{Binding RoleImpactSummary, Mode=OneWay}" />
+                                            <WrapPanel Margin="0,10,0,0">
+                                                <Border Style="{StaticResource InlineMetricBadgeStyle}">
+                                                    <TextBlock FontSize="11"><Run Text="Tambah: " /><Run Text="{Binding RoleImpactAddedPermissionCount, Mode=OneWay}" /></TextBlock>
+                                                </Border>
+                                                <Border Style="{StaticResource InlineMetricBadgeStyle}">
+                                                    <TextBlock FontSize="11"><Run Text="Cabut: " /><Run Text="{Binding RoleImpactRemovedPermissionCount, Mode=OneWay}" /></TextBlock>
+                                                </Border>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource SettingsSectionCardStyle}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Pengguna Yang Memakai Role Ini" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                                            <Grid Grid.Row="1" Margin="0,10,0,0">
+                                                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                                                          ItemsSource="{Binding SelectedRoleAssignedUsers}"
+                                                          AutoGenerateColumns="False"
+                                                          IsReadOnly="True"
+                                                          CanUserAddRows="False"
+                                                          CanUserDeleteRows="False"
+                                                          MinHeight="160"
+                                                          MaxHeight="220">
+                                                    <DataGrid.Columns>
+                                                        <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="140" />
+                                                        <DataGridTextColumn Header="Nama Lengkap" Binding="{Binding FullName}" Width="*" />
+                                                        <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="220" />
+                                                        <DataGridTemplateColumn Header="Status" Width="92">
+                                                            <DataGridTemplateColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Padding="8,2" CornerRadius="8" BorderThickness="1">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
+                                                                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                        <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+                                                                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" FontWeight="SemiBold">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="Text" Value="Nonaktif" />
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                            <Setter Property="Text" Value="Aktif" />
+                                                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                        </TextBlock>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </DataGridTemplateColumn.CellTemplate>
+                                                        </DataGridTemplateColumn>
+                                                    </DataGrid.Columns>
+                                                </DataGrid>
+
+                                                <Border IsHitTestVisible="False">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedRoleAssignedUsers.Count}" Value="0">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="Belum ada pengguna yang memakai role ini."
+                                                               FontSize="13"
+                                                               Foreground="{DynamicResource Brush.TextMuted}"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Style="{StaticResource SettingsSectionCardStyle}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Preview Perubahan Permission" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                                            <Grid Grid.Row="1" Margin="0,10,0,0">
+                                                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                                                          ItemsSource="{Binding RoleImpactPreviewItems}"
+                                                          AutoGenerateColumns="False"
+                                                          IsReadOnly="True"
+                                                          CanUserAddRows="False"
+                                                          CanUserDeleteRows="False"
+                                                          MinHeight="180"
+                                                          MaxHeight="280">
+                                                    <DataGrid.Columns>
+                                                        <DataGridTemplateColumn Header="Aksi" Width="110">
+                                                            <DataGridTemplateColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Padding="8,2" CornerRadius="8" BorderThickness="1">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
+                                                                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsAdded}" Value="True">
+                                                                                        <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+                                                                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <TextBlock HorizontalAlignment="Center" FontSize="11" FontWeight="SemiBold">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="Text" Value="Dicabut" />
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsAdded}" Value="True">
+                                                                                            <Setter Property="Text" Value="Tambah" />
+                                                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                        </TextBlock>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </DataGridTemplateColumn.CellTemplate>
+                                                        </DataGridTemplateColumn>
+                                                        <DataGridTextColumn Header="Modul" Binding="{Binding ModuleName}" Width="140" />
+                                                        <DataGridTextColumn Header="Submodul" Binding="{Binding SubmoduleName}" Width="160" />
+                                                        <DataGridTextColumn Header="Kode" Binding="{Binding ActionCode}" Width="120" />
+                                                        <DataGridTextColumn Header="Permission" Binding="{Binding ActionName}" Width="*" />
+                                                        <DataGridTextColumn Header="Dampak" Binding="{Binding ImpactSummary}" Width="220" />
+                                                    </DataGrid.Columns>
+                                                </DataGrid>
+
+                                                <Border IsHitTestVisible="False">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding RoleImpactPreviewItems.Count}" Value="0">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="Belum ada perubahan permission yang perlu diaudit."
+                                                               FontSize="13"
+                                                               Foreground="{DynamicResource Brush.TextMuted}"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </TabItem>
+                            <TabItem Header="Perbandingan">
+                                <StackPanel Margin="0,10,0,0">
+                                    <Border Style="{StaticResource SettingsSectionCardStyle}" Margin="0">
+                                        <StackPanel>
+                                            <TextBlock Text="Bandingkan Role" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                                                       Text="{Binding RoleComparisonSummary, Mode=OneWay}" />
+                                            <ComboBox Margin="0,10,0,0"
+                                                      Style="{StaticResource InputComboBoxStyle}"
+                                                      ItemsSource="{Binding RoleComparisonOptions}"
+                                                      SelectedValuePath="Id"
+                                                      SelectedValue="{Binding SelectedComparisonRoleId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <WrapPanel Margin="0,10,0,0">
+                                                <Border Style="{StaticResource InlineMetricBadgeStyle}">
+                                                    <TextBlock FontSize="11"><Run Text="Aktif saja: " /><Run Text="{Binding RoleComparisonSelectedOnlyCount, Mode=OneWay}" /></TextBlock>
+                                                </Border>
+                                                <Border Style="{StaticResource InlineMetricBadgeStyle}">
+                                                    <TextBlock FontSize="11"><Run Text="Pembanding saja: " /><Run Text="{Binding RoleComparisonReferenceOnlyCount, Mode=OneWay}" /></TextBlock>
+                                                </Border>
+                                                <Border Style="{StaticResource InlineMetricBadgeStyle}">
+                                                    <TextBlock FontSize="11"><Run Text="Sama: " /><Run Text="{Binding RoleComparisonSharedCount, Mode=OneWay}" /></TextBlock>
+                                                </Border>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                                                  ItemsSource="{Binding RoleComparisonRows}"
+                                                  AutoGenerateColumns="False"
+                                                  IsReadOnly="True"
+                                                  CanUserAddRows="False"
+                                                  CanUserDeleteRows="False"
+                                                  MinHeight="260">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Modul" Binding="{Binding ModuleName}" Width="140" />
+                                                <DataGridTextColumn Header="Submodul" Binding="{Binding SubmoduleName}" Width="160" />
+                                                <DataGridTextColumn Header="Kode" Binding="{Binding ActionCode}" Width="120" />
+                                                <DataGridTextColumn Header="Permission" Binding="{Binding ActionName}" Width="*" />
+                                                <DataGridTemplateColumn Header="Status" Width="170">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Border Padding="8,2" CornerRadius="8" BorderThickness="1">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceAlt}" />
+                                                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Status}" Value="Hanya role aktif">
+                                                                                <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+                                                                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Status}" Value="Hanya role pembanding">
+                                                                                <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
+                                                                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <TextBlock HorizontalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding Status}">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Status}" Value="Hanya role aktif">
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding Status}" Value="Hanya role pembanding">
+                                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <Border IsHitTestVisible="False">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasSelectedComparisonRole}" Value="False">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding HasSelectedComparisonRole}" Value="True" />
+                                                                <Condition Binding="{Binding RoleComparisonRows.Count}" Value="0" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock FontSize="13"
+                                                       Foreground="{DynamicResource Brush.TextMuted}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Pilih role pembanding untuk melihat grid perbedaan permission." />
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding HasSelectedComparisonRole}" Value="True" />
+                                                                    <Condition Binding="{Binding RoleComparisonRows.Count}" Value="0" />
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Text" Value="Belum ada data perbandingan yang bisa ditampilkan." />
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </TabItem>
+                        </TabControl>
+
+                        <Border Style="{StaticResource StickyActionBarStyle}" Margin="0,10,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock VerticalAlignment="Center"
+                                           Text="{Binding RoleEditorDirtyMessage}"
+                                           Foreground="{DynamicResource Brush.TextSecondary}"
+                                           FontWeight="SemiBold" />
+                                <Button Grid.Column="1"
+                                        Command="{Binding DiscardRoleChangesCommand}"
+                                        IsEnabled="{Binding IsRoleEditorDirty}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Batalkan" />
+                                <Button Grid.Column="3"
+                                        Command="{Binding SaveRoleCommand}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="Simpan Role" />
+                                <Button Grid.Column="5"
+                                        Command="{Binding DeleteRoleCommand}"
+                                        IsEnabled="{Binding IsSelectedRoleProtected, Converter={StaticResource InverseBooleanConverter}}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Hapus Role" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

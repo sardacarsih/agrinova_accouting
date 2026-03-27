@@ -30,6 +30,8 @@
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
                     <Setter Property="Background" Value="#FFFFFFFF" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryDark}" />
+                    <Setter Property="CaretBrush" Value="{DynamicResource Brush.PrimaryDark}" />
                     <Setter Property="Effect">
                         <Setter.Value>
                             <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.2" Color="{DynamicResource Color.Focus}" />
@@ -45,52 +47,44 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-        <Style TargetType="{x:Type DatePicker}">
+        <Style x:Key="JournalEditorDatePickerStyle" TargetType="{x:Type DatePicker}">
             <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
             <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
             <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
             <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryDark}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
+                    <Setter Property="Background" Value="#FFFFFFFF" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="JournalEditorComboBoxStyle"
+               TargetType="{x:Type ComboBox}"
+               BasedOn="{StaticResource InputComboBoxStyle}">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryDark}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="JournalLinesGridCellStyle"
                TargetType="{x:Type DataGridCell}"
-               BasedOn="{StaticResource EnterpriseDataGridCellStyle}">
-            <Setter Property="Padding" Value="8,2" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource Brush.Selection}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.SelectionBorder}" />
-                    <Setter Property="BorderThickness" Value="1" />
-                    <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
-                </Trigger>
-                <MultiTrigger>
-                    <MultiTrigger.Conditions>
-                        <Condition Property="IsSelected" Value="True" />
-                        <Condition Property="IsKeyboardFocusWithin" Value="True" />
-                    </MultiTrigger.Conditions>
-                    <Setter Property="Background" Value="{DynamicResource Brush.PrimarySubtle}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
-                </MultiTrigger>
-            </Style.Triggers>
-        </Style>
+               BasedOn="{StaticResource JournalLikeDataGridCellStyle}" />
         <Style x:Key="JournalLinesGridEditingTextBoxStyle"
                TargetType="{x:Type TextBox}"
-               BasedOn="{StaticResource InputTextBoxStyle}">
-            <Setter Property="Height" Value="24" />
-            <Setter Property="Padding" Value="6,2" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
-            <Setter Property="Background" Value="#FFFFFFFF" />
-        </Style>
+               BasedOn="{StaticResource JournalLikeDataGridEditingTextBoxStyle}" />
+        <Style x:Key="JournalLinesGridNumericTextStyle"
+               TargetType="{x:Type TextBlock}"
+               BasedOn="{StaticResource JournalLikeDataGridNumericTextStyle}" />
+        <Style x:Key="JournalLinesGridNumericEditingTextBoxStyle"
+               TargetType="{x:Type TextBox}"
+               BasedOn="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
         <Style x:Key="JournalLinesGridStyle"
                TargetType="{x:Type DataGrid}"
-               BasedOn="{StaticResource EnterpriseDataGridStyle}">
-            <Setter Property="RowHeight" Value="30" />
-            <Setter Property="CellStyle" Value="{StaticResource JournalLinesGridCellStyle}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
-            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Brush.BorderSoft}" />
-            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Brush.BorderSoft}" />
-            <Setter Property="AlternatingRowBackground" Value="{DynamicResource Brush.SurfaceAlt}" />
-        </Style>
+               BasedOn="{StaticResource JournalLikeDataGridStyle}" />
     </UserControl.Resources>
 
     <UserControl.InputBindings>
@@ -159,16 +153,22 @@
                             x:Name="JournalDatePickerDesktop"
                             TabIndex="20"
                             SelectedDate="{Binding JournalDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            Style="{StaticResource JournalEditorDatePickerStyle}"
                             Height="34" />
             </StackPanel>
             <StackPanel Grid.Column="4">
                 <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Periode Akuntansi" />
-                <DatePicker Margin="0,6,0,0"
-                            x:Name="JournalPeriodPickerDesktop"
-                            TabIndex="25"
-                            Style="{StaticResource MonthYearDatePickerStyle}"
-                            SelectedDate="{Binding JournalPeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            Height="34" />
+                <ComboBox Margin="0,6,0,0"
+                          x:Name="JournalPeriodPickerDesktop"
+                          TabIndex="25"
+                          Style="{StaticResource JournalEditorComboBoxStyle}"
+                          IsEditable="True"
+                          IsTextSearchEnabled="False"
+                          StaysOpenOnEdit="True"
+                          ItemsSource="{Binding AccountingPeriodOptions}"
+                          SelectedItem="{Binding SelectedJournalAccountingPeriodOption, Mode=TwoWay}"
+                          Text="{Binding JournalPeriodText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Height="34" />
             </StackPanel>
             <StackPanel Grid.Column="6">
                 <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Referensi" />
@@ -217,16 +217,22 @@
                             x:Name="JournalDatePickerCompact"
                             TabIndex="20"
                             SelectedDate="{Binding JournalDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            Style="{StaticResource JournalEditorDatePickerStyle}"
                             Height="34" />
             </StackPanel>
             <StackPanel Grid.Row="1" Grid.Column="0">
                 <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Periode Akuntansi" />
-                <DatePicker Margin="0,6,0,0"
-                            x:Name="JournalPeriodPickerCompact"
-                            TabIndex="25"
-                            Style="{StaticResource MonthYearDatePickerStyle}"
-                            SelectedDate="{Binding JournalPeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            Height="34" />
+                <ComboBox Margin="0,6,0,0"
+                          x:Name="JournalPeriodPickerCompact"
+                          TabIndex="25"
+                          Style="{StaticResource JournalEditorComboBoxStyle}"
+                          IsEditable="True"
+                          IsTextSearchEnabled="False"
+                          StaysOpenOnEdit="True"
+                          ItemsSource="{Binding AccountingPeriodOptions}"
+                          SelectedItem="{Binding SelectedJournalAccountingPeriodOption, Mode=TwoWay}"
+                          Text="{Binding JournalPeriodText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Height="34" />
             </StackPanel>
             <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,10,0,0">
                 <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Referensi" />
@@ -391,8 +397,8 @@
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Nama Perkiraan" Binding="{Binding AccountName}" Width="*" MinWidth="200" IsReadOnly="True" />
                 <DataGridTextColumn x:Name="DescriptionColumn" Header="Keterangan" Binding="{Binding Description, UpdateSourceTrigger=PropertyChanged}" Width="*" MinWidth="240" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
-                <DataGridTextColumn x:Name="DebitColumn" Header="Debit" Binding="{Binding Debit, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="120" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
-                <DataGridTextColumn x:Name="CreditColumn" Header="Kredit" Binding="{Binding Credit, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="120" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
+                <DataGridTextColumn x:Name="DebitColumn" Header="Debit" Binding="{Binding Debit, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="120" ElementStyle="{StaticResource JournalLinesGridNumericTextStyle}" EditingElementStyle="{StaticResource JournalLinesGridNumericEditingTextBoxStyle}" />
+                <DataGridTextColumn x:Name="CreditColumn" Header="Kredit" Binding="{Binding Credit, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="120" ElementStyle="{StaticResource JournalLinesGridNumericTextStyle}" EditingElementStyle="{StaticResource JournalLinesGridNumericEditingTextBoxStyle}" />
                 <DataGridTextColumn x:Name="DepartmentColumn" Header="Departemen" Binding="{Binding DepartmentCode, UpdateSourceTrigger=PropertyChanged}" Width="120" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
                 <DataGridTextColumn x:Name="ProjectColumn" Header="Proyek" Binding="{Binding ProjectCode, UpdateSourceTrigger=PropertyChanged}" Width="120" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
                 <DataGridTextColumn x:Name="CostCenterColumn" Header="Cost Center" Binding="{Binding CostCenterCode, UpdateSourceTrigger=PropertyChanged}" Width="130" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
@@ -550,3 +556,4 @@
         </StackPanel>
     </Grid>
 </UserControl>
+

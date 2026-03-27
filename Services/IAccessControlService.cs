@@ -6,6 +6,15 @@ public interface IAccessControlService
 
     Task<LoginAccessOptions?> GetLoginAccessOptionsAsync(string username, CancellationToken cancellationToken = default);
 
+    Task<DashboardFilterOptions> GetDashboardFilterOptionsAsync(
+        long userId,
+        long roleId,
+        CancellationToken cancellationToken = default);
+
+    Task<AccountingDashboardData> GetAccountingDashboardDataAsync(
+        AccountingDashboardRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<UserManagementData> GetUserManagementDataAsync(CancellationToken cancellationToken = default);
 
     Task<AccessOperationResult> SaveUserAsync(

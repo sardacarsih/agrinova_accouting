@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using Microsoft.Win32;
 using Accounting.Infrastructure.Logging;
@@ -37,11 +38,27 @@ public sealed partial class JournalManagementViewModel
     private void RefreshPeriodCache(IEnumerable<ManagedAccountingPeriod> periods)
     {
         _periodOpenByMonthKey.Clear();
-        foreach (var period in periods)
-        {
-            var key = GetPeriodKey(period.PeriodMonth);
-            _periodOpenByMonthKey[key] = period.IsOpen;
-        }
+
+        var options = periods
+            .Where(period => period.PeriodMonth != default)
+            .GroupBy(period => GetPeriodKey(period.PeriodMonth))
+            .Select(group => group
+                .OrderByDescending(period => period.PeriodMonth)
+                .First())
+            .Select(period =>
+            {
+                var normalized = new DateTime(period.PeriodMonth.Year, period.PeriodMonth.Month, 1);
+                var key = GetPeriodKey(normalized);
+                _periodOpenByMonthKey[key] = period.IsOpen;
+                return new JournalAccountingPeriodOption(normalized, period.IsOpen);
+            })
+            .OrderByDescending(option => option.PeriodMonth)
+            .ToList();
+
+        ReplaceCollection(AccountingPeriodOptions, options);
+        SyncJournalPeriodPickerState();
+        SyncSearchPeriodPickerState();
+        SyncInventoryPullPeriodPickerState();
     }
 
 
@@ -61,5 +78,176 @@ public sealed partial class JournalManagementViewModel
         return $"{date.Year:D4}-{date.Month:D2}";
     }
 
+    private void SyncJournalPeriodPickerState()
+    {
+        SyncPeriodPickerState(
+            JournalPeriodMonth,
+            nameof(JournalPeriodText),
+            nameof(SelectedJournalAccountingPeriodOption),
+            ref _journalPeriodText,
+            ref _selectedJournalAccountingPeriodOption);
+    }
+
+    private void SyncSearchPeriodPickerState()
+    {
+        SyncPeriodPickerState(
+            SearchPeriodMonth,
+            nameof(SearchPeriodText),
+            nameof(SelectedSearchAccountingPeriodOption),
+            ref _searchPeriodText,
+            ref _selectedSearchAccountingPeriodOption);
+        SyncSearchPeriodCalendarState();
+        OnPropertyChanged(nameof(SearchAccountingPeriodDisplayText));
+    }
+
+    private void SyncInventoryPullPeriodPickerState()
+    {
+        SyncPeriodPickerState(
+            InventoryPullPeriodMonth,
+            nameof(InventoryPullPeriodText),
+            nameof(SelectedInventoryPullAccountingPeriodOption),
+            ref _inventoryPullPeriodText,
+            ref _selectedInventoryPullAccountingPeriodOption);
+    }
+
+    private void SyncPeriodPickerState(
+        DateTime periodMonth,
+        string textPropertyName,
+        string selectedOptionPropertyName,
+        ref string textField,
+        ref JournalAccountingPeriodOption? selectedOptionField)
+    {
+        _isSynchronizingPeriodPickerState = true;
+        try
+        {
+            var normalized = new DateTime(periodMonth.Year, periodMonth.Month, 1);
+            var matchingOption = AccountingPeriodOptions.FirstOrDefault(option => option.PeriodMonth.Date == normalized.Date);
+            var normalizedText = normalized.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+
+            if (!string.Equals(textField, normalizedText, StringComparison.Ordinal))
+            {
+                textField = normalizedText;
+                OnPropertyChanged(textPropertyName);
+            }
+
+            if (!ReferenceEquals(selectedOptionField, matchingOption))
+            {
+                selectedOptionField = matchingOption;
+                OnPropertyChanged(selectedOptionPropertyName);
+            }
+        }
+        finally
+        {
+            _isSynchronizingPeriodPickerState = false;
+        }
+    }
+
+    private void ApplyJournalPeriodText(string value)
+    {
+        if (_isSynchronizingPeriodPickerState)
+        {
+            return;
+        }
+
+        ApplyPeriodText(value, JournalPeriodMonth, month => JournalPeriodMonth = month, ref _selectedJournalAccountingPeriodOption, nameof(SelectedJournalAccountingPeriodOption));
+    }
+
+    private void ApplySearchPeriodText(string value)
+    {
+        if (_isSynchronizingPeriodPickerState)
+        {
+            return;
+        }
+
+        ApplyPeriodText(value, SearchPeriodMonth, month => SearchPeriodMonth = month, ref _selectedSearchAccountingPeriodOption, nameof(SelectedSearchAccountingPeriodOption));
+    }
+
+    private void ApplyInventoryPullPeriodText(string value)
+    {
+        if (_isSynchronizingPeriodPickerState)
+        {
+            return;
+        }
+
+        ApplyPeriodText(value, InventoryPullPeriodMonth, month => InventoryPullPeriodMonth = month, ref _selectedInventoryPullAccountingPeriodOption, nameof(SelectedInventoryPullAccountingPeriodOption));
+    }
+
+    private void ApplyPeriodText(
+        string value,
+        DateTime currentMonth,
+        Action<DateTime> assignMonth,
+        ref JournalAccountingPeriodOption? selectedOptionField,
+        string selectedOptionPropertyName)
+    {
+        if (!TryParsePeriodMonthText(value, out var parsedMonth))
+        {
+            if (selectedOptionField is not null)
+            {
+                _isSynchronizingPeriodPickerState = true;
+                try
+                {
+                    selectedOptionField = null;
+                    OnPropertyChanged(selectedOptionPropertyName);
+                }
+                finally
+                {
+                    _isSynchronizingPeriodPickerState = false;
+                }
+            }
+
+            return;
+        }
+
+        if (parsedMonth != currentMonth)
+        {
+            assignMonth(parsedMonth);
+            return;
+        }
+
+        if (selectedOptionField is not null && selectedOptionField.PeriodMonth.Date != parsedMonth.Date)
+        {
+            _isSynchronizingPeriodPickerState = true;
+            try
+            {
+                selectedOptionField = null;
+                OnPropertyChanged(selectedOptionPropertyName);
+            }
+            finally
+            {
+                _isSynchronizingPeriodPickerState = false;
+            }
+        }
+    }
+
+    private static bool TryParsePeriodMonthText(string value, out DateTime periodMonth)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        var formats = new[]
+        {
+            "MM/yyyy",
+            "M/yyyy",
+            "MM-yyyy",
+            "M-yyyy",
+            "yyyy-MM",
+            "yyyy/M",
+            "yyyy/MM"
+        };
+
+        if (DateTime.TryParseExact(
+            normalized,
+            formats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed))
+        {
+            periodMonth = new DateTime(parsed.Year, parsed.Month, 1);
+            return true;
+        }
+
+        periodMonth = default;
+        return false;
+    }
+
 
 }
+

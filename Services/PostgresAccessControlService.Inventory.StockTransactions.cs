@@ -36,6 +36,8 @@ public sealed partial class PostgresAccessControlService
                 ItemId = line.ItemId,
                 Qty = line.Qty,
                 UnitCost = line.UnitCost,
+                WarehouseId = line.WarehouseId.HasValue && line.WarehouseId.Value > 0 ? line.WarehouseId.Value : null,
+                DestinationWarehouseId = line.DestinationWarehouseId.HasValue && line.DestinationWarehouseId.Value > 0 ? line.DestinationWarehouseId.Value : null,
                 ExpenseAccountCode = (line.ExpenseAccountCode ?? string.Empty).Trim().ToUpperInvariant(),
                 Notes = (line.Notes ?? string.Empty).Trim()
             })
@@ -78,6 +80,50 @@ public sealed partial class PostgresAccessControlService
                 return new AccessOperationResult(false, "Terdapat item tidak valid atau nonaktif pada detail transaksi.");
             }
 
+            var warehouseIds = normalizedLines
+                .SelectMany(line => new[] { line.WarehouseId, line.DestinationWarehouseId })
+                .Where(warehouseId => warehouseId.HasValue && warehouseId.Value > 0)
+                .Select(warehouseId => warehouseId.GetValueOrDefault())
+                .Distinct()
+                .ToArray();
+            var warehouseMap = await LoadActiveWarehouseMapAsync(connection, transaction, header.CompanyId, warehouseIds, cancellationToken);
+            if (warehouseMap.Count != warehouseIds.Length)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AccessOperationResult(false, "Terdapat gudang tidak valid atau nonaktif pada detail transaksi.");
+            }
+
+            foreach (var line in normalizedLines)
+            {
+                var itemLabel = itemMap.TryGetValue(line.ItemId, out var itemInfo) ? itemInfo.Code : $"#{line.ItemId}";
+
+                if (string.Equals(transactionType, "TRANSFER", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!line.WarehouseId.HasValue || line.WarehouseId.Value <= 0)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Gudang asal item {itemLabel} wajib diisi.");
+                    }
+
+                    if (!line.DestinationWarehouseId.HasValue || line.DestinationWarehouseId.Value <= 0)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Gudang tujuan item {itemLabel} wajib diisi.");
+                    }
+
+                    if (line.WarehouseId.Value == line.DestinationWarehouseId.Value)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Gudang asal dan tujuan item {itemLabel} tidak boleh sama.");
+                    }
+                }
+                else if (!line.WarehouseId.HasValue || line.WarehouseId.Value <= 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(false, $"Gudang item {itemLabel} wajib diisi.");
+                }
+            }
+
             if (string.Equals(transactionType, "STOCK_OUT", StringComparison.OrdinalIgnoreCase))
             {
                 var expenseAccountCodeSet = await LoadExpensePostingAccountCodeSetAsync(
@@ -110,12 +156,8 @@ public sealed partial class PostgresAccessControlService
             var transactionDate = header.TransactionDate.Date;
             var referenceNo = (header.ReferenceNo ?? string.Empty).Trim();
             var description = (header.Description ?? string.Empty).Trim();
-            object warehouseIdParam = header.WarehouseId.HasValue && header.WarehouseId.Value > 0
-                ? header.WarehouseId.Value
-                : DBNull.Value;
-            object destinationWarehouseIdParam = header.DestinationWarehouseId.HasValue && header.DestinationWarehouseId.Value > 0
-                ? header.DestinationWarehouseId.Value
-                : DBNull.Value;
+            object warehouseIdParam = DBNull.Value;
+            object destinationWarehouseIdParam = DBNull.Value;
 
             long transactionId;
             if (header.Id <= 0)
@@ -272,6 +314,8 @@ INSERT INTO inv_stock_transaction_lines (
     item_id,
     qty,
     unit_cost,
+    warehouse_id,
+    destination_warehouse_id,
     expense_account_code,
     notes,
     created_at)
@@ -281,6 +325,8 @@ VALUES (
     @item_id,
     @qty,
     @unit_cost,
+    @warehouse_id,
+    @destination_warehouse_id,
     @expense_account_code,
     @notes,
     NOW());", connection, transaction);
@@ -289,6 +335,8 @@ VALUES (
                 insertLine.Parameters.AddWithValue("item_id", line.ItemId);
                 insertLine.Parameters.AddWithValue("qty", line.Qty);
                 insertLine.Parameters.AddWithValue("unit_cost", line.UnitCost);
+                insertLine.Parameters.Add(new NpgsqlParameter("warehouse_id", NpgsqlDbType.Bigint) { Value = line.WarehouseId.HasValue ? line.WarehouseId.Value : DBNull.Value });
+                insertLine.Parameters.Add(new NpgsqlParameter("destination_warehouse_id", NpgsqlDbType.Bigint) { Value = line.DestinationWarehouseId.HasValue ? line.DestinationWarehouseId.Value : DBNull.Value });
                 insertLine.Parameters.AddWithValue("expense_account_code", line.ExpenseAccountCode ?? string.Empty);
                 insertLine.Parameters.AddWithValue("notes", line.Notes ?? string.Empty);
                 await insertLine.ExecuteNonQueryAsync(cancellationToken);
@@ -348,13 +396,34 @@ SELECT h.id,
        h.transaction_no,
        h.transaction_type,
        h.transaction_date,
-       COALESCE(w.warehouse_name, '') AS warehouse_name,
+       COALESCE(warehouse_summary.warehouse_name, '') AS warehouse_name,
        h.reference_no,
        h.status,
        COALESCE(SUM(l.qty), 0) AS total_qty
 FROM inv_stock_transactions h
-LEFT JOIN inv_warehouses w ON w.id = h.warehouse_id
 LEFT JOIN inv_stock_transaction_lines l ON l.transaction_id = h.id
+LEFT JOIN LATERAL (
+    SELECT CASE
+               WHEN COUNT(DISTINCT x.display_name) > 1 THEN 'Multi Gudang'
+               ELSE COALESCE(MAX(x.display_name), '')
+           END AS warehouse_name,
+           COALESCE(string_agg(DISTINCT x.search_text, ' '), '') AS warehouse_search
+    FROM (
+        SELECT COALESCE(NULLIF(trim(w.warehouse_name), ''), trim(COALESCE(w.warehouse_code, ''))) AS display_name,
+               trim(concat_ws(' ', COALESCE(w.warehouse_name, ''), COALESCE(w.warehouse_code, ''))) AS search_text
+        FROM inv_stock_transaction_lines line
+        LEFT JOIN inv_warehouses w ON w.id = line.warehouse_id
+        WHERE line.transaction_id = h.id
+          AND line.warehouse_id IS NOT NULL
+        UNION
+        SELECT COALESCE(NULLIF(trim(dw.warehouse_name), ''), trim(COALESCE(dw.warehouse_code, ''))) AS display_name,
+               trim(concat_ws(' ', COALESCE(dw.warehouse_name, ''), COALESCE(dw.warehouse_code, ''))) AS search_text
+        FROM inv_stock_transaction_lines line
+        LEFT JOIN inv_warehouses dw ON dw.id = line.destination_warehouse_id
+        WHERE line.transaction_id = h.id
+          AND line.destination_warehouse_id IS NOT NULL
+    ) x
+) warehouse_summary ON TRUE
 WHERE h.company_id = @company_id
   AND h.location_id = @location_id
   AND h.is_active = TRUE
@@ -367,8 +436,9 @@ WHERE h.company_id = @company_id
         OR h.transaction_no ILIKE @keyword_like
         OR h.reference_no ILIKE @keyword_like
         OR h.description ILIKE @keyword_like
+        OR warehouse_summary.warehouse_search ILIKE @keyword_like
       )
-GROUP BY h.id, h.transaction_no, h.transaction_type, h.transaction_date, w.warehouse_name, h.reference_no, h.status
+GROUP BY h.id, h.transaction_no, h.transaction_type, h.transaction_date, warehouse_summary.warehouse_name, h.reference_no, h.status
 ORDER BY h.transaction_date DESC, h.id DESC
 LIMIT 300;", connection);
         command.Parameters.AddWithValue("company_id", companyId);
@@ -474,10 +544,16 @@ SELECT l.id,
        i.uom,
        l.qty,
        l.unit_cost,
+       l.warehouse_id,
+       COALESCE(w.warehouse_name, '') AS warehouse_name,
+       l.destination_warehouse_id,
+       COALESCE(dw.warehouse_name, '') AS destination_warehouse_name,
        COALESCE(l.expense_account_code, ''),
        COALESCE(l.notes, '')
 FROM inv_stock_transaction_lines l
 JOIN inv_items i ON i.id = l.item_id
+LEFT JOIN inv_warehouses w ON w.id = l.warehouse_id
+LEFT JOIN inv_warehouses dw ON dw.id = l.destination_warehouse_id
 WHERE l.transaction_id = @transaction_id
 ORDER BY l.line_no;", connection))
         {
@@ -496,8 +572,12 @@ ORDER BY l.line_no;", connection))
                     Uom = reader.GetString(6),
                     Qty = reader.GetDecimal(7),
                     UnitCost = reader.GetDecimal(8),
-                    ExpenseAccountCode = reader.GetString(9),
-                    Notes = reader.GetString(10)
+                    WarehouseId = reader.IsDBNull(9) ? null : reader.GetInt64(9),
+                    WarehouseName = reader.GetString(10),
+                    DestinationWarehouseId = reader.IsDBNull(11) ? null : reader.GetInt64(11),
+                    DestinationWarehouseName = reader.GetString(12),
+                    ExpenseAccountCode = reader.GetString(13),
+                    Notes = reader.GetString(14)
                 });
             }
         }
@@ -636,13 +716,15 @@ WHERE id = @id;", connection, transaction))
         string actor,
         CancellationToken cancellationToken)
     {
-        var lines = new List<(long LineId, long ItemId, string ItemCode, decimal Qty, decimal UnitCost, string InventoryAccountCode, string ExpenseAccountCode)>();
+        var lines = new List<(long LineId, long ItemId, string ItemCode, decimal Qty, decimal UnitCost, long? WarehouseId, long? DestinationWarehouseId, string InventoryAccountCode, string ExpenseAccountCode)>();
         await using (var lineCommand = new NpgsqlCommand(@"
 SELECT l.id,
        l.item_id,
        i.item_code,
        l.qty,
        l.unit_cost,
+       l.warehouse_id,
+       l.destination_warehouse_id,
        COALESCE(NULLIF(trim(c.account_code), ''), '') AS inventory_account_code,
        COALESCE(NULLIF(trim(l.expense_account_code), ''), '') AS expense_account_code
 FROM inv_stock_transaction_lines l
@@ -661,8 +743,10 @@ ORDER BY l.line_no;", connection, transaction))
                     reader.GetString(2),
                     reader.GetDecimal(3),
                     reader.GetDecimal(4),
-                    reader.GetString(5),
-                    reader.GetString(6)));
+                    reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                    reader.IsDBNull(6) ? null : reader.GetInt64(6),
+                    reader.GetString(7),
+                    reader.GetString(8)));
             }
         }
 
@@ -728,7 +812,7 @@ ORDER BY l.line_no;", connection, transaction))
                     header.CompanyId,
                     header.LocationId,
                     line.ItemId,
-                    header.WarehouseId,
+                    line.WarehouseId,
                     line.Qty,
                     cancellationToken);
 
@@ -809,13 +893,31 @@ ORDER BY l.line_no;", connection, transaction))
                         $"Costing stok item {line.ItemCode} gagal: {costConsumption.Message}");
                 }
 
+                if (line.WarehouseId.HasValue && line.WarehouseId.Value > 0)
+                {
+                    var stockBucketState = await LoadWarehouseStockBucketStateAsync(
+                        connection,
+                        transaction,
+                        header.CompanyId,
+                        header.LocationId,
+                        line.ItemId,
+                        line.WarehouseId.Value,
+                        cancellationToken);
+                    if (stockBucketState.LegacyQty > 0 && stockBucketState.WarehouseQty < line.Qty)
+                    {
+                        return new AccessOperationResult(
+                            false,
+                            $"Stok item {line.ItemCode} masih berada di bucket legacy tanpa gudang. Lakukan rebucket atau stock opname sebelum posting transaksi keluar.");
+                    }
+                }
+
                 var reduced = await ReduceStockQtyAsync(
                     connection,
                     transaction,
                     header.CompanyId,
                     header.LocationId,
                     line.ItemId,
-                    header.WarehouseId,
+                    line.WarehouseId,
                     line.Qty,
                     cancellationToken);
                 if (!reduced)
@@ -878,10 +980,9 @@ WHERE id = @id;", connection, transaction))
         await using var command = new NpgsqlCommand(@"
 INSERT INTO inv_stock (company_id, location_id, item_id, qty, warehouse_id, updated_at)
 VALUES (@company_id, @location_id, @item_id, @qty, @warehouse_id, NOW())
-ON CONFLICT (company_id, location_id, item_id)
+ON CONFLICT (company_id, location_id, item_id, warehouse_id)
 DO UPDATE
 SET qty = inv_stock.qty + EXCLUDED.qty,
-    warehouse_id = COALESCE(EXCLUDED.warehouse_id, inv_stock.warehouse_id),
     updated_at = NOW();", connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
@@ -908,11 +1009,11 @@ SET qty = inv_stock.qty + EXCLUDED.qty,
         await using var command = new NpgsqlCommand(@"
 UPDATE inv_stock
 SET qty = qty - @qty,
-    warehouse_id = COALESCE(@warehouse_id, warehouse_id),
     updated_at = NOW()
 WHERE company_id = @company_id
   AND location_id = @location_id
   AND item_id = @item_id
+  AND warehouse_id IS NOT DISTINCT FROM @warehouse_id
   AND qty >= @qty;", connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
@@ -921,6 +1022,45 @@ WHERE company_id = @company_id
         command.Parameters.Add(new NpgsqlParameter("warehouse_id", NpgsqlDbType.Bigint) { Value = warehouseIdParam });
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;
+    }
+
+    private static async Task<WarehouseStockBucketState> LoadWarehouseStockBucketStateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        long locationId,
+        long itemId,
+        long warehouseId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(@"
+SELECT COALESCE(SUM(CASE
+                        WHEN warehouse_id IS NOT DISTINCT FROM @warehouse_id THEN qty
+                        ELSE 0
+                    END), 0) AS warehouse_qty,
+       COALESCE(SUM(CASE
+                        WHEN warehouse_id IS NULL THEN qty
+                        ELSE 0
+                    END), 0) AS legacy_qty
+FROM inv_stock
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND item_id = @item_id
+  AND (warehouse_id IS NULL OR warehouse_id IS NOT DISTINCT FROM @warehouse_id);", connection, transaction);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("item_id", itemId);
+        command.Parameters.AddWithValue("warehouse_id", warehouseId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return default;
+        }
+
+        return new WarehouseStockBucketState(
+            reader.IsDBNull(0) ? 0m : reader.GetDecimal(0),
+            reader.IsDBNull(1) ? 0m : reader.GetDecimal(1));
     }
 
     private static async Task<Dictionary<long, (string Code, string Name, string Uom)>> LoadActiveItemMapAsync(
@@ -946,6 +1086,36 @@ WHERE is_active = TRUE
         while (await reader.ReadAsync(cancellationToken))
         {
             output[reader.GetInt64(0)] = (reader.GetString(1), reader.GetString(2), reader.GetString(3));
+        }
+
+        return output;
+    }
+
+    private static async Task<Dictionary<long, string>> LoadActiveWarehouseMapAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        IReadOnlyCollection<long> warehouseIds,
+        CancellationToken cancellationToken)
+    {
+        var output = new Dictionary<long, string>();
+        if (warehouseIds.Count == 0)
+        {
+            return output;
+        }
+
+        await using var command = new NpgsqlCommand(@"
+SELECT id, warehouse_name
+FROM inv_warehouses
+WHERE company_id = @company_id
+  AND is_active = TRUE
+  AND id = ANY(@warehouse_ids);", connection, transaction);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("warehouse_ids", warehouseIds.ToArray());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            output[reader.GetInt64(0)] = reader.GetString(1);
         }
 
         return output;
@@ -1077,6 +1247,8 @@ FOR UPDATE;", connection, transaction);
             Status = reader.GetString(8)
         };
     }
+
+    private readonly record struct WarehouseStockBucketState(decimal WarehouseQty, decimal LegacyQty);
 }
 
 

@@ -154,6 +154,26 @@ public sealed partial class PostgresAccessControlService
                 return new AccessOperationResult(false, "COA posting account tidak ditemukan untuk company ini.");
             }
             var expenseAccountCodeSet = await LoadExpensePostingAccountCodeSetAsync(connection, transaction, companyId, cancellationToken);
+            var periodOpenByLocationId = new Dictionary<long, bool>();
+
+            if (locationId.HasValue)
+            {
+                var isPeriodOpen = await IsInventoryPullPeriodOpenAsync(
+                    connection,
+                    transaction,
+                    companyId,
+                    locationId.Value,
+                    periodStart,
+                    periodOpenByLocationId,
+                    cancellationToken);
+                if (!isPeriodOpen)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(
+                        false,
+                        $"Periode akuntansi {periodStart:yyyy-MM} pada lokasi {locationId.Value} sudah ditutup. Pull jurnal inventory dibatalkan.");
+                }
+            }
 
             var createdJournalNos = new List<string>();
             var processedDocumentCount = 0;
@@ -167,6 +187,22 @@ public sealed partial class PostgresAccessControlService
                 cancellationToken);
             foreach (var doc in outboundDocs)
             {
+                var isPeriodOpen = await IsInventoryPullPeriodOpenAsync(
+                    connection,
+                    transaction,
+                    companyId,
+                    doc.LocationId,
+                    periodStart,
+                    periodOpenByLocationId,
+                    cancellationToken);
+                if (!isPeriodOpen)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(
+                        false,
+                        $"Periode akuntansi {periodStart:yyyy-MM} pada lokasi {doc.LocationId} sudah ditutup. Pull jurnal inventory dibatalkan.");
+                }
+
                 var eventLines = await LoadPendingOutboundEventLinesAsync(
                     connection,
                     transaction,
@@ -286,6 +322,7 @@ public sealed partial class PostgresAccessControlService
                     transaction,
                     companyId,
                     doc.LocationId,
+                    periodStart,
                     doc.EventDate.Date,
                     doc.DocumentNo,
                     lineDescription,
@@ -328,6 +365,22 @@ public sealed partial class PostgresAccessControlService
                 cancellationToken);
             foreach (var doc in adjustmentDocs)
             {
+                var isPeriodOpen = await IsInventoryPullPeriodOpenAsync(
+                    connection,
+                    transaction,
+                    companyId,
+                    doc.LocationId,
+                    periodStart,
+                    periodOpenByLocationId,
+                    cancellationToken);
+                if (!isPeriodOpen)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(
+                        false,
+                        $"Periode akuntansi {periodStart:yyyy-MM} pada lokasi {doc.LocationId} sudah ditutup. Pull jurnal inventory dibatalkan.");
+                }
+
                 if (string.IsNullOrWhiteSpace(doc.CogsAccountCode))
                 {
                     await transaction.RollbackAsync(cancellationToken);
@@ -399,6 +452,7 @@ public sealed partial class PostgresAccessControlService
                     transaction,
                     companyId,
                     doc.LocationId,
+                    periodStart,
                     doc.EventDate.Date,
                     doc.SourceRefNo,
                     $"Penyesuaian valuasi inventory metode {doc.ValuationMethod}",
@@ -459,6 +513,33 @@ public sealed partial class PostgresAccessControlService
             return new AccessOperationResult(false, $"Gagal menarik jurnal inventory periode {periodEnd:yyyy-MM}: {ex.Message}");
         }
     }
+
+    private static async Task<bool> IsInventoryPullPeriodOpenAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        long locationId,
+        DateTime periodMonth,
+        IDictionary<long, bool> periodOpenByLocationId,
+        CancellationToken cancellationToken)
+    {
+        if (periodOpenByLocationId.TryGetValue(locationId, out var isOpen))
+        {
+            return isOpen;
+        }
+
+        isOpen = await IsAccountingPeriodOpenAsync(
+            connection,
+            transaction,
+            companyId,
+            locationId,
+            periodMonth,
+            forUpdate: true,
+            cancellationToken);
+        periodOpenByLocationId[locationId] = isOpen;
+        return isOpen;
+    }
+
     private async Task<InventoryAdjustmentEventSaveResult> SaveInventoryValuationAdjustmentEventsAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -592,6 +673,7 @@ SET source_ref_no = EXCLUDED.source_ref_no,
         NpgsqlTransaction transaction,
         long companyId,
         long locationId,
+        DateTime periodMonth,
         DateTime journalDate,
         string referenceNo,
         string description,
@@ -603,6 +685,7 @@ SET source_ref_no = EXCLUDED.source_ref_no,
         CancellationToken cancellationToken)
     {
         var normalizedLines = NormalizeDraftJournalLines(rawLines);
+        var normalizedPeriodMonth = GetPeriodMonthStart(periodMonth);
         if (normalizedLines.Count == 0)
         {
             return InventoryDraftAutoJournalResult.SuccessNoJournal("Tidak ada nilai jurnal inventory yang perlu ditarik.");
@@ -661,7 +744,7 @@ RETURNING id;", connection, transaction))
             insertHeader.Parameters.AddWithValue("location_id", locationId);
             insertHeader.Parameters.AddWithValue("journal_no", journalNo);
             insertHeader.Parameters.AddWithValue("journal_date", journalDate.Date);
-            insertHeader.Parameters.AddWithValue("period_month", new DateTime(journalDate.Year, journalDate.Month, 1));
+            insertHeader.Parameters.AddWithValue("period_month", normalizedPeriodMonth);
             insertHeader.Parameters.AddWithValue("reference_no", (referenceNo ?? string.Empty).Trim());
             insertHeader.Parameters.AddWithValue("description", (description ?? string.Empty).Trim());
             insertHeader.Parameters.AddWithValue("actor", actor);

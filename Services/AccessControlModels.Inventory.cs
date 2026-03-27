@@ -67,6 +67,10 @@ public sealed class ManagedStockEntry
 
     public string LocationName { get; set; } = string.Empty;
 
+    public long? WarehouseId { get; set; }
+
+    public string WarehouseName { get; set; } = string.Empty;
+
     public decimal Qty { get; set; }
 }
 
@@ -168,6 +172,14 @@ public sealed class ManagedStockTransactionLine
     public decimal Qty { get; set; }
 
     public decimal UnitCost { get; set; }
+
+    public long? WarehouseId { get; set; }
+
+    public string WarehouseName { get; set; } = string.Empty;
+
+    public long? DestinationWarehouseId { get; set; }
+
+    public string DestinationWarehouseName { get; set; } = string.Empty;
 
     public string ExpenseAccountCode { get; set; } = string.Empty;
 

@@ -188,8 +188,189 @@ ORDER BY c.code, l.code;", connection))
         await FillMapAsync(connection, "SELECT role_id, action_id FROM sec_role_action_access;", data.RoleScopeIdsByRoleId, cancellationToken);
         await FillMapAsync(connection, "SELECT user_id, company_id FROM sec_user_company_access;", data.UserCompanyIdsByUserId, cancellationToken);
         await FillMapAsync(connection, "SELECT user_id, location_id FROM sec_user_location_access;", data.UserLocationIdsByUserId, cancellationToken);
+        PopulateUserEffectiveAccessReadModel(data);
+        PopulateRoleAuditReadModel(data);
 
         return data;
+    }
+
+    private static void PopulateUserEffectiveAccessReadModel(UserManagementData data)
+    {
+        data.UserEffectiveAccessByUserId.Clear();
+
+        var roleMap = data.Roles.ToDictionary(x => x.Id);
+        var scopeMap = data.AccessScopes.ToDictionary(x => x.Id);
+        var companyMap = data.Companies.ToDictionary(x => x.Id);
+        var locationMap = data.Locations.ToDictionary(x => x.Id);
+        var activeCompanyLabels = data.Companies
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(x => $"{x.Code} - {x.Name}")
+            .ToList();
+        var activeLocationLabels = data.Locations
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.CompanyCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(x => $"{x.CompanyCode} • {x.Code} - {x.Name}")
+            .ToList();
+        var activeCompanyIds = data.Companies
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Id)
+            .ToList();
+        var activeLocationIds = data.Locations
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.CompanyCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Id)
+            .ToList();
+
+        foreach (var user in data.Users)
+        {
+            var roleId = data.UserRoleIdsByUserId.TryGetValue(user.Id, out var roleIds)
+                ? roleIds.FirstOrDefault()
+                : 0;
+
+            roleMap.TryGetValue(roleId, out var role);
+            var isSuperRole = role?.IsSuperRole == true;
+            var companyIds = isSuperRole
+                ? activeCompanyIds
+                : data.UserCompanyIdsByUserId.TryGetValue(user.Id, out var userCompanyIds)
+                    ? userCompanyIds
+                        .Where(companyMap.ContainsKey)
+                        .OrderBy(id => companyMap[id].Code, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                    : new List<long>();
+            var locationIds = isSuperRole
+                ? activeLocationIds
+                : data.UserLocationIdsByUserId.TryGetValue(user.Id, out var userLocationIds)
+                    ? userLocationIds
+                        .Where(locationMap.ContainsKey)
+                        .OrderBy(id => locationMap[id].CompanyCode, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(id => locationMap[id].Code, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                    : new List<long>();
+            var effectiveScopeIds = role is null
+                ? new HashSet<long>()
+                : role.IsSuperRole
+                    ? data.AccessScopes.Select(x => x.Id).ToHashSet()
+                    : data.RoleScopeIdsByRoleId.TryGetValue(role.Id, out var scopeIds)
+                        ? new HashSet<long>(scopeIds)
+                        : new HashSet<long>();
+            var roleLabel = role is null ? "-" : $"{role.Code} - {role.Name}";
+
+            var modules = effectiveScopeIds
+                .Where(scopeMap.ContainsKey)
+                .Select(id => scopeMap[id])
+                .OrderBy(scope => scope.Id)
+                .GroupBy(scope => $"{scope.ModuleCode}|{scope.ModuleName}", StringComparer.OrdinalIgnoreCase)
+                .Select(moduleGroup =>
+                {
+                    var firstModule = moduleGroup.First();
+                    return new UserEffectiveAccessModuleDetail
+                    {
+                        ModuleCode = firstModule.ModuleCode,
+                        ModuleName = firstModule.ModuleName,
+                        Submodules = moduleGroup
+                            .GroupBy(scope => $"{scope.SubmoduleCode}|{scope.SubmoduleName}", StringComparer.OrdinalIgnoreCase)
+                            .Select(submoduleGroup =>
+                            {
+                                var firstSubmodule = submoduleGroup.First();
+                                return new UserEffectiveAccessSubmoduleDetail
+                                {
+                                    ModuleCode = firstSubmodule.ModuleCode,
+                                    ModuleName = firstSubmodule.ModuleName,
+                                    SubmoduleCode = firstSubmodule.SubmoduleCode,
+                                    SubmoduleName = firstSubmodule.SubmoduleName,
+                                    Actions = submoduleGroup
+                                        .OrderBy(scope => scope.Id)
+                                        .Select(scope => new UserEffectiveAccessActionDetail
+                                        {
+                                            ScopeId = scope.Id,
+                                            Label = string.IsNullOrWhiteSpace(scope.Name) ? scope.ActionCode : scope.Name,
+                                            ActionCode = scope.ActionCode,
+                                            GrantedByRole = roleLabel
+                                        })
+                                        .ToList()
+                                };
+                            })
+                            .ToList()
+                    };
+                })
+                .ToList();
+
+            data.UserEffectiveAccessByUserId[user.Id] = new UserEffectiveAccessDetail
+            {
+                UserId = user.Id,
+                RoleId = role?.Id,
+                RoleCode = role?.Code ?? string.Empty,
+                RoleName = role?.Name ?? string.Empty,
+                IsSuperRole = isSuperRole,
+                CompanyIds = companyIds,
+                CompanyLabels = isSuperRole
+                    ? activeCompanyLabels
+                    : companyIds.Select(id => $"{companyMap[id].Code} - {companyMap[id].Name}").ToList(),
+                LocationIds = locationIds,
+                LocationLabels = isSuperRole
+                    ? activeLocationLabels
+                    : locationIds.Select(id => $"{locationMap[id].CompanyCode} • {locationMap[id].Code} - {locationMap[id].Name}").ToList(),
+                Modules = modules
+            };
+        }
+    }
+
+    private static void PopulateRoleAuditReadModel(UserManagementData data)
+    {
+        data.RoleAuditByRoleId.Clear();
+
+        var usersByRoleId = data.Users
+            .Where(user => data.UserRoleIdsByUserId.TryGetValue(user.Id, out var roleIds) && roleIds.Count > 0)
+            .Select(user => new
+            {
+                User = user,
+                RoleId = data.UserRoleIdsByUserId[user.Id].First()
+            })
+            .GroupBy(entry => entry.RoleId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(entry => entry.User.Username, StringComparer.OrdinalIgnoreCase)
+                    .Select(entry => new ManagedUser
+                    {
+                        Id = entry.User.Id,
+                        Username = entry.User.Username,
+                        FullName = entry.User.FullName,
+                        Email = entry.User.Email,
+                        IsActive = entry.User.IsActive,
+                        RoleDisplay = entry.User.RoleDisplay,
+                        ModuleDisplay = entry.User.ModuleDisplay,
+                        DefaultCompanyId = entry.User.DefaultCompanyId,
+                        DefaultLocationId = entry.User.DefaultLocationId,
+                        DefaultCompanyDisplay = entry.User.DefaultCompanyDisplay,
+                        DefaultLocationDisplay = entry.User.DefaultLocationDisplay
+                    })
+                    .ToList());
+
+        foreach (var role in data.Roles)
+        {
+            var persistedScopeIds = role.IsSuperRole
+                ? data.AccessScopes.Select(scope => scope.Id).ToList()
+                : data.RoleScopeIdsByRoleId.TryGetValue(role.Id, out var scopeIds)
+                    ? scopeIds.OrderBy(id => id).ToList()
+                    : new List<long>();
+
+            data.RoleAuditByRoleId[role.Id] = new RoleAuditDetail
+            {
+                RoleId = role.Id,
+                RoleCode = role.Code,
+                RoleName = role.Name,
+                IsSuperRole = role.IsSuperRole,
+                PersistedScopeIds = persistedScopeIds,
+                AssignedUsers = usersByRoleId.TryGetValue(role.Id, out var assignedUsers)
+                    ? assignedUsers
+                    : new List<ManagedUser>()
+            };
+        }
     }
 
     public async Task<AccessOperationResult> SaveUserAsync(

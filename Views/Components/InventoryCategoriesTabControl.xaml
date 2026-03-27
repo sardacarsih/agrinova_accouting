@@ -84,6 +84,11 @@
                         Content="{Binding SyncActionLabel}" />
                 <Button Margin="8,0,0,0" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
             </WrapPanel>
+            <ContentControl DockPanel.Dock="Top"
+                            Margin="0,8,0,0"
+                            Content="{Binding MasterImportErrorPanel}"
+                            ContentTemplate="{StaticResource InventoryImportErrorPanelTemplate}"
+                            Visibility="{Binding MasterImportErrorPanel.HasErrors, Converter={StaticResource BoolToVisibilityConverter}}" />
             <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
                       Margin="0,8,0,0"
                       ItemsSource="{Binding Categories}"

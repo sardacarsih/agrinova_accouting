@@ -595,17 +595,35 @@ SELECT h.id,
        h.transaction_no,
        h.transaction_type,
        h.transaction_date,
-       COALESCE(w.warehouse_name, '') AS warehouse_name,
+       COALESCE(warehouse_summary.warehouse_name, '') AS warehouse_name,
        h.reference_no,
        h.status,
        COALESCE(SUM(l.qty), 0) AS total_qty
 FROM inv_stock_transactions h
-LEFT JOIN inv_warehouses w ON w.id = h.warehouse_id
 LEFT JOIN inv_stock_transaction_lines l ON l.transaction_id = h.id
+LEFT JOIN LATERAL (
+    SELECT CASE
+               WHEN COUNT(DISTINCT x.display_name) > 1 THEN 'Multi Gudang'
+               ELSE COALESCE(MAX(x.display_name), '')
+           END AS warehouse_name
+    FROM (
+        SELECT COALESCE(NULLIF(trim(w.warehouse_name), ''), trim(COALESCE(w.warehouse_code, ''))) AS display_name
+        FROM inv_stock_transaction_lines line
+        LEFT JOIN inv_warehouses w ON w.id = line.warehouse_id
+        WHERE line.transaction_id = h.id
+          AND line.warehouse_id IS NOT NULL
+        UNION
+        SELECT COALESCE(NULLIF(trim(dw.warehouse_name), ''), trim(COALESCE(dw.warehouse_code, ''))) AS display_name
+        FROM inv_stock_transaction_lines line
+        LEFT JOIN inv_warehouses dw ON dw.id = line.destination_warehouse_id
+        WHERE line.transaction_id = h.id
+          AND line.destination_warehouse_id IS NOT NULL
+    ) x
+) warehouse_summary ON TRUE
 WHERE h.company_id = @company_id
   AND h.location_id = @location_id
   AND h.is_active = TRUE
-GROUP BY h.id, h.transaction_no, h.transaction_type, h.transaction_date, w.warehouse_name, h.reference_no, h.status
+GROUP BY h.id, h.transaction_no, h.transaction_type, h.transaction_date, warehouse_summary.warehouse_name, h.reference_no, h.status
 ORDER BY h.transaction_date DESC, h.id DESC
 LIMIT 12;", connection))
         {
@@ -1136,6 +1154,24 @@ ORDER BY l.line_no;", connection, transaction))
                         $"Costing opname item {line.ItemCode} gagal: {costConsumption.Message}");
                 }
 
+                if (header.WarehouseId.HasValue && header.WarehouseId.Value > 0)
+                {
+                    var stockBucketState = await LoadWarehouseStockBucketStateAsync(
+                        connection,
+                        transaction,
+                        header.CompanyId,
+                        header.LocationId,
+                        line.ItemId,
+                        header.WarehouseId.Value,
+                        cancellationToken);
+                    if (stockBucketState.LegacyQty > 0 && stockBucketState.WarehouseQty < qtyOut)
+                    {
+                        return new AccessOperationResult(
+                            false,
+                            $"Stok item {line.ItemCode} masih berada di bucket legacy tanpa gudang. Lakukan rebucket atau stock opname sebelum posting penyesuaian opname.");
+                    }
+                }
+
                 var reduced = await ReduceStockQtyAsync(
                     connection,
                     transaction,
@@ -1316,6 +1352,8 @@ LIMIT 1;", connection, transaction);
 
         public string LocationCode { get; init; } = string.Empty;
 
+        public string WarehouseCode { get; init; } = string.Empty;
+
         public string ItemCode { get; init; } = string.Empty;
 
         public decimal Qty { get; init; }
@@ -1334,6 +1372,10 @@ LIMIT 1;", connection, transaction);
         public int RowNumber { get; init; }
 
         public long LocationId { get; init; }
+
+        public long WarehouseId { get; init; }
+
+        public string WarehouseCode { get; init; } = string.Empty;
 
         public long ItemId { get; init; }
 

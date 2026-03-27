@@ -137,6 +137,7 @@ internal static partial class Program
 
     private static async Task TestMainShellViewModel_GeneralLedgerNavigationRequiresViewActionsAsync()
     {
+        var service = CreateService();
         var exportOnlyContext = await BuildTestAccessContextAsync("accounting.reports.export");
         var exportOnlyNavigation = BuildMainShellNavigation(exportOnlyContext);
         Assert(
@@ -160,6 +161,49 @@ internal static partial class Program
         Assert(
             ContainsNavigationLabel(reportsViewNavigation, "Laporan"),
             "Report navigation should be visible when reports.view exists.");
+
+        var dashboardOnlyContext = await BuildTestAccessContextAsync("accounting.dashboard.view");
+        var dashboardOnlyNavigation = BuildMainShellNavigation(dashboardOnlyContext);
+        Assert(
+            ContainsNavigationLabel(dashboardOnlyNavigation, "General Ledger"),
+            "General Ledger navigation should be visible when accounting.dashboard exists.");
+        Assert(
+            !ContainsRootNavigationLabel(dashboardOnlyNavigation, "Dashboard"),
+            "Dashboard should no longer appear as a root navigation item.");
+
+        var generalLedgerRoot = FindNavigationItemByLabel(dashboardOnlyNavigation, "General Ledger");
+        Assert(generalLedgerRoot is not null, "General Ledger root item should be present.");
+        Assert(generalLedgerRoot!.Children is { Count: > 0 }, "General Ledger should expose child navigation items.");
+        Assert(
+            string.Equals(generalLedgerRoot.Children![0].Label, "Dashboard", StringComparison.Ordinal),
+            "Dashboard should be the first child under General Ledger.");
+
+        var dashboardShell = CreateMainShellViewModel(dashboardOnlyContext, service);
+        try
+        {
+            Assert(
+                string.Equals(dashboardShell.SelectedNavigationItem?.Label, "Dashboard", StringComparison.Ordinal),
+                "Dashboard should be the default selected leaf for accounting dashboard access.");
+            Assert(dashboardShell.IsDashboardSelected, "Dashboard leaf should activate dashboard workspace.");
+            Assert(!dashboardShell.IsScopePlaceholderSelected, "Dashboard leaf should not activate placeholder workspace.");
+        }
+        finally
+        {
+            dashboardShell.Dispose();
+        }
+
+        var reportsOnlyShell = CreateMainShellViewModel(reportsViewContext, service);
+        try
+        {
+            Assert(
+                !string.Equals(reportsOnlyShell.SelectedNavigationItem?.Label, "Dashboard", StringComparison.Ordinal),
+                "Dashboard should not be auto-selected when dashboard permission is missing.");
+            Assert(!reportsOnlyShell.IsDashboardSelected, "Reports-only access should not activate dashboard workspace.");
+        }
+        finally
+        {
+            reportsOnlyShell.Dispose();
+        }
     }
 
     private static async Task TestJournalManagementViewModel_ImportExportRequireDedicatedActionsAsync()
@@ -478,6 +522,21 @@ internal static partial class Program
 
         var company = accessOptions.Companies[0];
         var location = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == company.Id) ?? accessOptions.Locations[0];
+        var actionCodeSet = new HashSet<string>(actionCodes, StringComparer.OrdinalIgnoreCase);
+        var moduleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var submoduleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var actionCode in actionCodeSet)
+        {
+            var parts = actionCode.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length < 3)
+            {
+                continue;
+            }
+
+            moduleCodes.Add(parts[0]);
+            submoduleCodes.Add($"{parts[0]}.{parts[1]}");
+        }
 
         return new UserAccessContext
         {
@@ -496,7 +555,10 @@ internal static partial class Program
             AllowedLocationIds = new HashSet<long> { location.Id },
             CompanyIds = new HashSet<long> { company.Id },
             LocationIds = new HashSet<long> { location.Id },
-            ActionCodes = new HashSet<string>(actionCodes, StringComparer.OrdinalIgnoreCase)
+            ModuleCodes = moduleCodes,
+            SubmoduleCodes = submoduleCodes,
+            ScopeCodes = new HashSet<string>(submoduleCodes, StringComparer.OrdinalIgnoreCase),
+            ActionCodes = actionCodeSet
         };
     }
 
@@ -508,6 +570,21 @@ internal static partial class Program
         var result = method!.Invoke(null, new object?[] { accessContext }) as ObservableCollection<MainShellNavigationItem>;
         Assert(result is not null, "MainShell navigation result was null.");
         return result!;
+    }
+
+    private static MainShellViewModel CreateMainShellViewModel(UserAccessContext accessContext, IAccessControlService service)
+    {
+        return new MainShellViewModel(
+            accessContext,
+            "IntegrationTest",
+            service,
+            () => { },
+            () => { });
+    }
+
+    private static bool ContainsRootNavigationLabel(IEnumerable<MainShellNavigationItem> items, string label)
+    {
+        return items.Any(item => string.Equals(item.Label, label, StringComparison.Ordinal));
     }
 
     private static bool ContainsNavigationLabel(IEnumerable<MainShellNavigationItem> items, string label)
@@ -526,6 +603,30 @@ internal static partial class Program
         }
 
         return false;
+    }
+
+    private static MainShellNavigationItem? FindNavigationItemByLabel(IEnumerable<MainShellNavigationItem> items, string label)
+    {
+        foreach (var item in items)
+        {
+            if (string.Equals(item.Label, label, StringComparison.Ordinal))
+            {
+                return item;
+            }
+
+            if (item.Children is null)
+            {
+                continue;
+            }
+
+            var child = FindNavigationItemByLabel(item.Children, label);
+            if (child is not null)
+            {
+                return child;
+            }
+        }
+
+        return null;
     }
 
     private static void SetJournalImportBundles(JournalManagementViewModel viewModel, IReadOnlyCollection<JournalImportBundleResult> bundles)

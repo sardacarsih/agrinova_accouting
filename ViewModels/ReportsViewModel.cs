@@ -24,7 +24,7 @@ public sealed class BalanceSheetTreeNode : ViewModelBase
     public ObservableCollection<BalanceSheetTreeNode> Children { get; } = new();
 }
 
-public sealed class ReportsViewModel : ViewModelBase
+public sealed partial class ReportsViewModel : ViewModelBase
 {
     private readonly IAccessControlService _accessControlService;
     private readonly FinancialReportXlsxService _xlsxService;
@@ -61,6 +61,8 @@ public sealed class ReportsViewModel : ViewModelBase
     private decimal _accountMutationTotalEnding;
     private int _selectedReportTabIndex;
     private string _selectedReportSubCode = "trial_balance";
+    private long? _dashboardCompanyId;
+    private long? _dashboardLocationId;
 
     public ReportsViewModel(
         IAccessControlService accessControlService,
@@ -229,6 +231,10 @@ public sealed class ReportsViewModel : ViewModelBase
 
     public bool CanExportReports => !IsBusy && _canExportReports;
 
+    private long EffectiveCompanyId => _dashboardCompanyId ?? _companyId;
+
+    private long EffectiveLocationId => _dashboardLocationId ?? _locationId;
+
     public string ExportTooltip =>
         IsBusy
             ? "Sedang memproses data. Tunggu hingga selesai."
@@ -370,6 +376,9 @@ public sealed class ReportsViewModel : ViewModelBase
 
     public void NavigateToReportSubmenu(string? subCode)
     {
+        _dashboardCompanyId = null;
+        _dashboardLocationId = null;
+
         var normalized = string.IsNullOrWhiteSpace(subCode)
             ? "trial_balance"
             : subCode.Trim().ToLowerInvariant();
@@ -422,35 +431,35 @@ public sealed class ReportsViewModel : ViewModelBase
             IsBusy = true;
             StatusMessage = "Memuat laporan keuangan...";
 
-            var trialBalanceTask = _accessControlService.GetTrialBalanceAsync(_companyId, _locationId, PeriodMonth);
-            var profitLossTask = _accessControlService.GetProfitLossAsync(_companyId, _locationId, PeriodMonth);
-            var balanceSheetTask = _accessControlService.GetBalanceSheetAsync(_companyId, _locationId, PeriodMonth);
+            var trialBalanceTask = _accessControlService.GetTrialBalanceAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth);
+            var profitLossTask = _accessControlService.GetProfitLossAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth);
+            var balanceSheetTask = _accessControlService.GetBalanceSheetAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth);
             var accountOptionsTask = IsInquiryFilterMode
-                ? _accessControlService.GetAccountsAsync(_companyId)
+                ? _accessControlService.GetAccountsAsync(EffectiveCompanyId)
                 : Task.FromResult(new List<ManagedAccount>());
             var generalLedgerTask = IsGeneralLedgerMode
                 ? _accessControlService.GetGeneralLedgerAsync(
-                    _companyId,
-                    _locationId,
+                    EffectiveCompanyId,
+                    EffectiveLocationId,
                     PeriodMonth,
                     SelectedGeneralLedgerAccountCode,
                     GeneralLedgerKeyword)
                 : Task.FromResult(new List<ManagedGeneralLedgerRow>());
             var subLedgerTask = IsSubLedgerMode
                 ? _accessControlService.GetSubLedgerAsync(
-                    _companyId,
-                    _locationId,
+                    EffectiveCompanyId,
+                    EffectiveLocationId,
                     PeriodMonth,
                     SelectedGeneralLedgerAccountCode,
                     GeneralLedgerKeyword)
                 : Task.FromResult(new List<ManagedSubLedgerRow>());
             var cashFlowTask = IsCashFlowMode
-                ? _accessControlService.GetCashFlowAsync(_companyId, _locationId, PeriodMonth)
+                ? _accessControlService.GetCashFlowAsync(EffectiveCompanyId, EffectiveLocationId, PeriodMonth)
                 : Task.FromResult(new List<ManagedCashFlowRow>());
             var accountMutationTask = IsAccountMutationMode
                 ? _accessControlService.GetAccountMutationAsync(
-                    _companyId,
-                    _locationId,
+                    EffectiveCompanyId,
+                    EffectiveLocationId,
                     PeriodMonth,
                     SelectedGeneralLedgerAccountCode,
                     GeneralLedgerKeyword)
@@ -799,7 +808,7 @@ public sealed class ReportsViewModel : ViewModelBase
         GeneralLedgerAccountOptions.Add(new ManagedAccount
         {
             Id = 0,
-            CompanyId = _companyId,
+            CompanyId = EffectiveCompanyId,
             Code = string.Empty,
             Name = "Semua Akun",
             IsPosting = true,

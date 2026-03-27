@@ -34,20 +34,24 @@ public sealed partial class JournalManagementViewModel
             RefreshPeriodCache(periodTask.Result);
             UpdatePeriodStatusFromCache(JournalPeriodMonth);
 
+            var browseResult = await _accessControlService.SearchJournalsAsync(
+                EffectiveSearchCompanyId,
+                EffectiveSearchLocationId,
+                BuildBrowseSearchFilter());
+            ApplyBrowseSearchResult(browseResult);
+
             if (selectedJournalId.HasValue)
             {
                 SelectedJournal = JournalList.FirstOrDefault(x => x.Id == selectedJournalId.Value);
-                if (!IsBrowseSearchActive)
-                {
-                    SelectedBrowseJournal = SelectedJournal;
-                }
+                SelectedBrowseJournal = SearchResults.FirstOrDefault(x => x.Id == selectedJournalId.Value);
             }
 
             _isLoaded = true;
-            StatusMessage = "Data jurnal siap digunakan.";
+            StatusMessage = $"Data jurnal siap digunakan untuk periode {SearchPeriodMonth:MM/yyyy}.";
         }
         catch (Exception ex)
         {
+            ClearBrowseSearchResult();
             AppServices.Logger.LogError(
                 nameof(JournalManagementViewModel),
                 "LoadWorkspaceFailed",
@@ -300,7 +304,7 @@ public sealed partial class JournalManagementViewModel
         try
         {
             IsBusy = true;
-            var result = await _journalLifecycleWorkflow.OpenAsync(journalId, _companyId, _locationId);
+            var result = await _journalLifecycleWorkflow.OpenAsync(journalId, EffectiveSearchCompanyId, EffectiveSearchLocationId);
             StatusMessage = result.Message;
             if (!result.IsSuccess || result.Bundle is null)
             {
@@ -314,7 +318,7 @@ public sealed partial class JournalManagementViewModel
             AppServices.Logger.LogError(
                 nameof(JournalManagementViewModel),
                 "OpenJournalFailed",
-                $"action=open_journal journal_id={journalId} company_id={_companyId} location_id={_locationId}",
+                $"action=open_journal journal_id={journalId} company_id={EffectiveSearchCompanyId} location_id={EffectiveSearchLocationId}",
                 ex);
             StatusMessage = "Gagal memuat detail jurnal.";
         }
@@ -360,30 +364,22 @@ public sealed partial class JournalManagementViewModel
         {
             IsBusy = true;
             var result = await _accessControlService.SearchJournalsAsync(
-                _companyId,
-                _locationId,
-                new JournalSearchFilter
-                {
-                    PeriodMonth = SearchPeriodMonth,
-                    DateFrom = SearchDateFrom,
-                    DateTo = SearchDateTo,
-                    Keyword = SearchKeyword,
-                    Status = SearchStatus
-                });
+                EffectiveSearchCompanyId,
+                EffectiveSearchLocationId,
+                BuildBrowseSearchFilter());
 
-            SelectedBrowseJournal = null;
-            ReplaceCollection(SearchResults, result);
-            IsBrowseSearchActive = true;
+            ApplyBrowseSearchResult(result);
             SelectedJournalTabIndex = 1;
-            RaiseBrowseStateChanged();
             StatusMessage = $"Hasil pencarian: {SearchResults.Count} jurnal.";
         }
         catch (Exception ex)
         {
+            ClearBrowseSearchResult();
+            SelectedJournalTabIndex = 1;
             AppServices.Logger.LogError(
                 nameof(JournalManagementViewModel),
                 "SearchJournalsFailed",
-                $"action=search_journal company_id={_companyId} location_id={_locationId} status={SearchStatus}",
+                $"action=search_journal company_id={EffectiveSearchCompanyId} location_id={EffectiveSearchLocationId} status={SearchStatus}",
                 ex);
             StatusMessage = "Gagal melakukan pencarian jurnal.";
         }
@@ -431,11 +427,7 @@ public sealed partial class JournalManagementViewModel
 
         if (silent)
         {
-            SelectedBrowseJournal = null;
-            SearchResults.Clear();
-            IsBrowseSearchActive = false;
-            _openSelectedJournalCommand.RaiseCanExecuteChanged();
-            RaiseBrowseStateChanged();
+            ClearBrowseSearchResult();
             return;
         }
 
@@ -453,4 +445,34 @@ public sealed partial class JournalManagementViewModel
         OnPropertyChanged(nameof(BrowseEmptyStateDescription));
     }
 
+    private JournalSearchFilter BuildBrowseSearchFilter()
+    {
+        return new JournalSearchFilter
+        {
+            PeriodMonth = SearchPeriodMonth,
+            DateFrom = SearchDateFrom,
+            DateTo = SearchDateTo,
+            Keyword = SearchKeyword,
+            Status = SearchStatus
+        };
+    }
+
+    private void ApplyBrowseSearchResult(IEnumerable<ManagedJournalSummary> result)
+    {
+        SelectedBrowseJournal = null;
+        ReplaceCollection(SearchResults, result);
+        IsBrowseSearchActive = true;
+        RaiseBrowseStateChanged();
+    }
+
+    private void ClearBrowseSearchResult()
+    {
+        SelectedBrowseJournal = null;
+        SearchResults.Clear();
+        IsBrowseSearchActive = true;
+        _openSelectedJournalCommand.RaiseCanExecuteChanged();
+        RaiseBrowseStateChanged();
+    }
+
 }
+

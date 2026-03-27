@@ -64,6 +64,8 @@ public sealed class InventoryImportExecutionResult
     public int ImportedCategoryCount { get; init; }
 
     public int ImportedItemCount { get; init; }
+
+    public List<InventoryImportError> Errors { get; init; } = new();
 }
 
 public sealed class InventoryOpeningBalanceRow
@@ -73,6 +75,8 @@ public sealed class InventoryOpeningBalanceRow
     public string CompanyCode { get; init; } = string.Empty;
 
     public string LocationCode { get; init; } = string.Empty;
+
+    public string WarehouseCode { get; init; } = string.Empty;
 
     public string ItemCode { get; init; } = string.Empty;
 

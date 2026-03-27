@@ -1,0 +1,82 @@
+<UserControl x:Class="Accounting.Views.Components.Dashboard.DashboardKpiView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <ItemsControl ItemsSource="{Binding Kpi.Items}">
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <WrapPanel />
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <Border Style="{StaticResource DashboardKpiCardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="0"
+                                   Text="{Binding Source.Label}"
+                                   Style="{StaticResource FieldLabelTextStyle}" />
+                        <TextBlock Grid.Row="0"
+                                   Grid.Column="1"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="20"
+                                   Foreground="{DynamicResource Brush.Info}"
+                                   Text="{Binding Source.IconGlyph}" />
+
+                        <TextBlock Grid.Row="1"
+                                   Grid.ColumnSpan="2"
+                                   Margin="0,10,0,0"
+                                   Style="{StaticResource DashboardMetricValueTextStyle}"
+                                   Text="{Binding PrimaryValueText}" />
+
+                        <StackPanel Grid.Row="2"
+                                    Grid.ColumnSpan="2"
+                                    Margin="0,12,0,0">
+                            <Border Style="{StaticResource DashboardDeltaBadgeStyle}">
+                                <TextBlock Text="{Binding DeltaText}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource MetaCaptionTextStyle}">
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPositive}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Success}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsNegative}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+                            <TextBlock Text="{Binding SecondaryValueText}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource MetaCaptionTextStyle}">
+                                        <Setter Property="Margin" Value="0,8,0,0" />
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasSecondaryValue}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>

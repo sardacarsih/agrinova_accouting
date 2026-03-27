@@ -314,6 +314,142 @@ public sealed class FinancialReportXlsxService
         WriteEntry(archive, "xl/worksheets/sheet1.xml", BuildWorksheetXml(rows));
     }
 
+    public void ExportDashboard(
+        string filePath,
+        AccountingDashboardRequest request,
+        AccountingDashboardData data)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new InvalidOperationException("Path export tidak valid.");
+        }
+
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+
+        var periodLabel = request.PeriodStart == default
+            ? DateTime.Today.ToString("yyyy-MM", CultureInfo.InvariantCulture)
+            : request.PeriodStart.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        var sheetNames = new[] { "Summary", "Trend", "ExpenseTop10", "GLSnapshot", "CashBank", "Inventory", "Alerts" };
+
+        var summaryRows = new List<List<object?>>
+        {
+            new() { "Company", data.HeaderContext.CompanyDisplayName },
+            new() { "Location", data.HeaderContext.LocationDisplayName },
+            new() { "Period", periodLabel },
+            new() { "Currency", data.HeaderContext.CurrencyCode },
+            new() { "LastUpdated", data.LastUpdatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) },
+            new() { "KPI", "Primary", "Secondary", "DeltaPercent" }
+        };
+        foreach (var kpi in data.Kpis)
+        {
+            summaryRows.Add(new List<object?> { kpi.Label, kpi.PrimaryValue, kpi.SecondaryValue, kpi.DeltaPercent });
+        }
+
+        var trendRows = new List<List<object?>>
+        {
+            new() { "Period", "Revenue", "Expense" }
+        };
+        foreach (var point in data.RevenueExpenseTrend)
+        {
+            trendRows.Add(new List<object?> { point.Label, point.Revenue, point.Expense });
+        }
+
+        var expenseRows = new List<List<object?>>
+        {
+            new() { "AccountCode", "AccountName", "Amount" }
+        };
+        foreach (var point in data.TopExpenseAccounts)
+        {
+            expenseRows.Add(new List<object?> { point.AccountCode, point.AccountName, point.Amount });
+        }
+
+        var glRows = new List<List<object?>>
+        {
+            new() { "DraftCount", data.GlSnapshot.DraftCount },
+            new() { "PostedCount", data.GlSnapshot.PostedCount },
+            new() { "PendingPostingCount", data.GlSnapshot.PendingPostingCount },
+            new() { "JournalNo", "JournalDate", "ReferenceNo", "Description", "Status", "TotalAmount" }
+        };
+        foreach (var journal in data.GlSnapshot.RecentTransactions)
+        {
+            glRows.Add(new List<object?>
+            {
+                journal.JournalNo,
+                journal.JournalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                journal.ReferenceNo,
+                journal.Description,
+                journal.Status,
+                journal.TotalAmount
+            });
+        }
+
+        var cashRows = new List<List<object?>>
+        {
+            new() { "TotalBalance", data.CashBank.TotalBalance },
+            new() { "TodayInflow", data.CashBank.TodayInflow },
+            new() { "TodayOutflow", data.CashBank.TodayOutflow },
+            new() { "PeriodInflow", data.CashBank.PeriodInflow },
+            new() { "PeriodOutflow", data.CashBank.PeriodOutflow },
+            new() { "AccountCode", "AccountName", "EndingBalance" }
+        };
+        foreach (var item in data.CashBank.Accounts)
+        {
+            cashRows.Add(new List<object?> { item.AccountCode, item.AccountName, item.EndingBalance });
+        }
+
+        var inventoryRows = new List<List<object?>>
+        {
+            new() { "TotalValue", data.Inventory.TotalValue },
+            new() { "LowStockCount", data.Inventory.LowStockCount },
+            new() { "TopMovingItem", "Name", "Uom", "Qty" }
+        };
+        foreach (var item in data.Inventory.TopMovingItems)
+        {
+            inventoryRows.Add(new List<object?> { item.ItemCode, item.ItemName, item.Uom, item.Qty });
+        }
+
+        inventoryRows.Add(new List<object?> { "LowStockItem", "Name", "Location", "Qty" });
+        foreach (var item in data.Inventory.LowStockItems)
+        {
+            inventoryRows.Add(new List<object?> { item.ItemCode, item.ItemName, item.LocationName, item.Qty });
+        }
+
+        var alertRows = new List<List<object?>>
+        {
+            new() { "Title", "Severity", "Count", "Message", "ActionLabel" }
+        };
+        foreach (var alert in data.Alerts)
+        {
+            alertRows.Add(new List<object?> { alert.Title, alert.Severity.ToString(), alert.Count, alert.Message, alert.ActionLabel });
+        }
+
+        var sheetRows = new[]
+        {
+            summaryRows,
+            trendRows,
+            expenseRows,
+            glRows,
+            cashRows,
+            inventoryRows,
+            alertRows
+        };
+
+        using var archive = ZipFile.Open(filePath, ZipArchiveMode.Create);
+        WriteEntry(archive, "[Content_Types].xml", BuildContentTypesXml(sheetNames.Length));
+        WriteEntry(archive, "_rels/.rels", BuildRootRelsXml());
+        WriteEntry(archive, "xl/workbook.xml", BuildWorkbookXml(sheetNames));
+        WriteEntry(archive, "xl/_rels/workbook.xml.rels", BuildWorkbookRelsXml(sheetNames.Length));
+        WriteEntry(archive, "xl/styles.xml", BuildStylesXml());
+
+        for (var index = 0; index < sheetRows.Length; index++)
+        {
+            WriteEntry(archive, $"xl/worksheets/sheet{index + 1}.xml", BuildWorksheetXml(sheetRows[index]));
+        }
+    }
+
     private static void WriteEntry(ZipArchive archive, string path, XDocument document)
     {
         var entry = archive.CreateEntry(path, CompressionLevel.Fastest);
@@ -323,52 +459,64 @@ public sealed class FinancialReportXlsxService
 
     private static XDocument BuildContentTypesXml()
     {
+        return BuildContentTypesXml(3);
+    }
+
+    private static XDocument BuildContentTypesXml(int sheetCount)
+    {
         XNamespace typesNs = "http://schemas.openxmlformats.org/package/2006/content-types";
-        return new XDocument(
-            new XElement(typesNs + "Types",
-                new XElement(typesNs + "Default",
-                    new XAttribute("Extension", "rels"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-package.relationships+xml")),
-                new XElement(typesNs + "Default",
-                    new XAttribute("Extension", "xml"),
-                    new XAttribute("ContentType", "application/xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/workbook.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/worksheets/sheet1.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/worksheets/sheet2.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/worksheets/sheet3.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/styles.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"))));
+        var types = new XElement(typesNs + "Types",
+            new XElement(typesNs + "Default",
+                new XAttribute("Extension", "rels"),
+                new XAttribute("ContentType", "application/vnd.openxmlformats-package.relationships+xml")),
+            new XElement(typesNs + "Default",
+                new XAttribute("Extension", "xml"),
+                new XAttribute("ContentType", "application/xml")),
+            new XElement(typesNs + "Override",
+                new XAttribute("PartName", "/xl/workbook.xml"),
+                new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")));
+
+        for (var index = 1; index <= sheetCount; index++)
+        {
+            types.Add(new XElement(typesNs + "Override",
+                new XAttribute("PartName", $"/xl/worksheets/sheet{index}.xml"),
+                new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")));
+        }
+
+        types.Add(new XElement(typesNs + "Override",
+            new XAttribute("PartName", "/xl/styles.xml"),
+            new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml")));
+
+        return new XDocument(types);
     }
 
     private static XDocument BuildContentTypesXmlSingleSheet()
     {
-        XNamespace typesNs = "http://schemas.openxmlformats.org/package/2006/content-types";
+        return BuildContentTypesXml(1);
+    }
+
+    private static XDocument BuildWorkbookXml()
+    {
+        return BuildWorkbookXml(["NeracaSaldo", "LabaRugi", "Neraca"]);
+    }
+
+    private static XDocument BuildWorkbookXml(IEnumerable<string> sheetNames)
+    {
+        var sheetElements = new List<XElement>();
+        var index = 1;
+        foreach (var sheetName in sheetNames)
+        {
+            sheetElements.Add(new XElement(SpreadsheetNs + "sheet",
+                new XAttribute("name", string.IsNullOrWhiteSpace(sheetName) ? $"Sheet{index}" : sheetName.Trim()),
+                new XAttribute("sheetId", index.ToString(CultureInfo.InvariantCulture)),
+                new XAttribute(RelNs + "id", $"rId{index}")));
+            index++;
+        }
+
         return new XDocument(
-            new XElement(typesNs + "Types",
-                new XElement(typesNs + "Default",
-                    new XAttribute("Extension", "rels"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-package.relationships+xml")),
-                new XElement(typesNs + "Default",
-                    new XAttribute("Extension", "xml"),
-                    new XAttribute("ContentType", "application/xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/workbook.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/worksheets/sheet1.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")),
-                new XElement(typesNs + "Override",
-                    new XAttribute("PartName", "/xl/styles.xml"),
-                    new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"))));
+            new XElement(SpreadsheetNs + "workbook",
+                new XAttribute(XNamespace.Xmlns + "r", RelNs),
+                new XElement(SpreadsheetNs + "sheets", sheetElements)));
     }
 
     private static XDocument BuildRootRelsXml()
@@ -381,73 +529,38 @@ public sealed class FinancialReportXlsxService
                     new XAttribute("Target", "xl/workbook.xml"))));
     }
 
-    private static XDocument BuildWorkbookXml()
-    {
-        return new XDocument(
-            new XElement(SpreadsheetNs + "workbook",
-                new XAttribute(XNamespace.Xmlns + "r", RelNs),
-                new XElement(SpreadsheetNs + "sheets",
-                    new XElement(SpreadsheetNs + "sheet",
-                        new XAttribute("name", "NeracaSaldo"),
-                        new XAttribute("sheetId", "1"),
-                        new XAttribute(RelNs + "id", "rId1")),
-                    new XElement(SpreadsheetNs + "sheet",
-                        new XAttribute("name", "LabaRugi"),
-                        new XAttribute("sheetId", "2"),
-                        new XAttribute(RelNs + "id", "rId2")),
-                    new XElement(SpreadsheetNs + "sheet",
-                        new XAttribute("name", "Neraca"),
-                        new XAttribute("sheetId", "3"),
-                        new XAttribute(RelNs + "id", "rId3")))));
-    }
-
     private static XDocument BuildWorkbookXmlSingleSheet(string sheetName)
     {
         var normalizedSheetName = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName.Trim();
-        return new XDocument(
-            new XElement(SpreadsheetNs + "workbook",
-                new XAttribute(XNamespace.Xmlns + "r", RelNs),
-                new XElement(SpreadsheetNs + "sheets",
-                    new XElement(SpreadsheetNs + "sheet",
-                        new XAttribute("name", normalizedSheetName),
-                        new XAttribute("sheetId", "1"),
-                        new XAttribute(RelNs + "id", "rId1")))));
+        return BuildWorkbookXml([normalizedSheetName]);
     }
 
     private static XDocument BuildWorkbookRelsXml()
     {
-        return new XDocument(
-            new XElement(PackageRelNs + "Relationships",
-                new XElement(PackageRelNs + "Relationship",
-                    new XAttribute("Id", "rId1"),
-                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
-                    new XAttribute("Target", "worksheets/sheet1.xml")),
-                new XElement(PackageRelNs + "Relationship",
-                    new XAttribute("Id", "rId2"),
-                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
-                    new XAttribute("Target", "worksheets/sheet2.xml")),
-                new XElement(PackageRelNs + "Relationship",
-                    new XAttribute("Id", "rId3"),
-                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
-                    new XAttribute("Target", "worksheets/sheet3.xml")),
-                new XElement(PackageRelNs + "Relationship",
-                    new XAttribute("Id", "rId4"),
-                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"),
-                    new XAttribute("Target", "styles.xml"))));
+        return BuildWorkbookRelsXml(3);
+    }
+
+    private static XDocument BuildWorkbookRelsXml(int sheetCount)
+    {
+        var relationships = new XElement(PackageRelNs + "Relationships");
+        for (var index = 1; index <= sheetCount; index++)
+        {
+            relationships.Add(new XElement(PackageRelNs + "Relationship",
+                new XAttribute("Id", $"rId{index}"),
+                new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
+                new XAttribute("Target", $"worksheets/sheet{index}.xml")));
+        }
+
+        relationships.Add(new XElement(PackageRelNs + "Relationship",
+            new XAttribute("Id", $"rId{sheetCount + 1}"),
+            new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"),
+            new XAttribute("Target", "styles.xml")));
+        return new XDocument(relationships);
     }
 
     private static XDocument BuildWorkbookRelsXmlSingleSheet()
     {
-        return new XDocument(
-            new XElement(PackageRelNs + "Relationships",
-                new XElement(PackageRelNs + "Relationship",
-                    new XAttribute("Id", "rId1"),
-                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
-                    new XAttribute("Target", "worksheets/sheet1.xml")),
-                new XElement(PackageRelNs + "Relationship",
-                    new XAttribute("Id", "rId2"),
-                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"),
-                    new XAttribute("Target", "styles.xml"))));
+        return BuildWorkbookRelsXml(1);
     }
 
     private static XDocument BuildStylesXml()

@@ -28,6 +28,7 @@
                 <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
                 <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
                 <DataGridTextColumn Header="Lokasi" Binding="{Binding LocationName}" Width="150" />
+                <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="160" />
                 <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N4}" Width="120" />
             </DataGrid.Columns>
         </DataGrid>

@@ -125,6 +125,7 @@ public sealed partial class InventoryViewModel
         };
         StockInLines.Clear();
         AddTransactionLine(StockInLines);
+        SelectedStockInTabIndex = 1;
         StatusMessage = "Transaksi barang masuk baru siap.";
     }
 
@@ -181,12 +182,25 @@ public sealed partial class InventoryViewModel
         try
         {
             IsBusy = true;
+            ClearOpeningBalanceImportErrors();
             StatusMessage = "Memvalidasi file saldo awal...";
 
             var parseResult = _inventoryOpeningBalanceXlsxService.Parse(dialog.FileName);
             if (!parseResult.IsSuccess)
             {
-                StatusMessage = parseResult.Message;
+                SetOpeningBalanceImportErrors(parseResult.Errors, parseResult.Message);
+                StatusMessage = BuildImportFailureStatusMessage(
+                    "Validasi file saldo awal gagal.",
+                    parseResult.Errors,
+                    HasWarehouseOpeningBalanceError(parseResult.Errors) ? "Periksa kolom WarehouseCode." : null);
+                ShowImportErrors(
+                    "Validasi Template Saldo Awal",
+                    parseResult.Message,
+                    parseResult.Errors,
+                    HasWarehouseOpeningBalanceError(parseResult.Errors)
+                        ? "Petunjuk gudang: gunakan kolom WarehouseCode dengan kode gudang aktif yang sesuai location baris."
+                        : null,
+                    includeSheetName: false);
                 return;
             }
 
@@ -198,7 +212,19 @@ public sealed partial class InventoryViewModel
                 replaceExistingBatch: true);
             if (!validationResult.IsSuccess)
             {
-                StatusMessage = validationResult.Message;
+                SetOpeningBalanceImportErrors(validationResult.Errors, validationResult.Message);
+                StatusMessage = BuildImportFailureStatusMessage(
+                    "Validasi saldo awal gagal.",
+                    validationResult.Errors,
+                    HasWarehouseOpeningBalanceError(validationResult.Errors) ? "Periksa kolom WarehouseCode." : null);
+                ShowImportErrors(
+                    "Validasi Saldo Awal Inventory",
+                    validationResult.Message,
+                    validationResult.Errors,
+                    HasWarehouseOpeningBalanceError(validationResult.Errors)
+                        ? "Petunjuk gudang: gunakan kolom WarehouseCode dengan kode gudang aktif yang sesuai location baris."
+                        : null,
+                    includeSheetName: false);
                 return;
             }
 
@@ -212,8 +238,13 @@ public sealed partial class InventoryViewModel
             StatusMessage = importResult.Message;
             if (importResult.IsSuccess)
             {
+                ClearOpeningBalanceImportErrors();
                 await RefreshWorkspaceAfterMutationAsync();
                 await SearchStockInAsync();
+            }
+            else
+            {
+                SetOpeningBalanceImportErrors(importResult.Errors, importResult.Message);
             }
         }
         catch (Exception ex)
@@ -223,7 +254,14 @@ public sealed partial class InventoryViewModel
                 "ImportOpeningBalanceFailed",
                 $"action=import_opening_balance company_id={_companyId} file_path={dialog.FileName}",
                 ex);
-            StatusMessage = "Import saldo awal gagal diproses.";
+            var fallbackErrors = new[] { BuildGenericImportError("Terjadi kesalahan saat memproses saldo awal inventory.", "OpeningBalance") };
+            SetOpeningBalanceImportErrors(fallbackErrors, "Import saldo awal gagal diproses.");
+            StatusMessage = BuildImportFailureStatusMessage("Import saldo awal gagal diproses.", fallbackErrors);
+            ShowImportErrors(
+                "Import Saldo Awal Inventory",
+                "Import saldo awal gagal diproses.",
+                fallbackErrors,
+                includeSheetName: false);
         }
         finally
         {
@@ -233,6 +271,42 @@ public sealed partial class InventoryViewModel
 
     private static string BuildOpeningBalanceAdminOnlyMessage() =>
         "Operasional saldo awal inventory hanya untuk role SUPER_ADMIN.";
+
+    private void SetOpeningBalanceImportErrors(
+        IReadOnlyCollection<InventoryImportError>? errors,
+        string summaryMessage)
+    {
+        OpeningBalanceImportErrorPanel.SetErrors(
+            errors ?? Array.Empty<InventoryImportError>(),
+            BuildOpeningBalanceImportPanelSummary(summaryMessage, errors ?? Array.Empty<InventoryImportError>()));
+    }
+
+    private void ClearOpeningBalanceImportErrors()
+    {
+        OpeningBalanceImportErrorPanel.Clear();
+    }
+
+    private static string BuildOpeningBalanceImportPanelSummary(
+        string summaryMessage,
+        IReadOnlyCollection<InventoryImportError> errors)
+    {
+        if (errors.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var prefix = HasWarehouseOpeningBalanceError(errors)
+            ? "Periksa kolom WarehouseCode dan mapping gudang ke location."
+            : "Perbaiki baris yang gagal lalu impor ulang.";
+        return $"{summaryMessage} {prefix}";
+    }
+
+    private static bool HasWarehouseOpeningBalanceError(IReadOnlyCollection<InventoryImportError> errors)
+    {
+        return errors.Any(error =>
+            error.Message.Contains("WarehouseCode", StringComparison.OrdinalIgnoreCase) ||
+            error.Message.Contains("gudang", StringComparison.OrdinalIgnoreCase));
+    }
 
     private async Task SaveStockInDraftAsync()
     {
@@ -267,6 +341,7 @@ public sealed partial class InventoryViewModel
                 ItemId = l.ItemId,
                 Qty = l.Qty,
                 UnitCost = l.UnitCost,
+                WarehouseId = l.WarehouseId,
                 Notes = l.Notes
             }).ToList();
 
@@ -345,6 +420,18 @@ public sealed partial class InventoryViewModel
             }
 
             EnsureStockItemLookupContains(bundle.Lines.Select(x => x.ItemId));
+            switch (expectedType)
+            {
+                case "STOCK_IN":
+                    SelectedStockInTabIndex = 1;
+                    break;
+                case "STOCK_OUT":
+                    SelectedStockOutTabIndex = 1;
+                    break;
+                case "TRANSFER":
+                    SelectedTransferTabIndex = 1;
+                    break;
+            }
 
             StatusMessage = $"Transaksi {bundle.Header.TransactionNo} dimuat.";
         }
@@ -476,18 +563,44 @@ public sealed partial class InventoryViewModel
         target.Clear();
         foreach (var line in source)
         {
-            target.Add(new StockTransactionLineEditor
+            var editor = new StockTransactionLineEditor
             {
                 LineNo = line.LineNo,
-                ItemId = line.ItemId,
-                ItemCode = line.ItemCode,
-                ItemName = line.ItemName,
-                Uom = line.Uom,
                 Qty = line.Qty,
                 UnitCost = line.UnitCost,
-                ExpenseAccountCode = line.ExpenseAccountCode,
                 Notes = line.Notes
-            });
+            };
+
+            if (line.ItemId > 0 || !string.IsNullOrWhiteSpace(line.ItemCode))
+            {
+                editor.ItemId = line.ItemId;
+                editor.ItemCode = line.ItemCode;
+                editor.ItemName = line.ItemName;
+                editor.Uom = line.Uom;
+                editor.ItemLookupText = line.ItemCode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(line.ExpenseAccountCode))
+            {
+                editor.ExpenseAccountCode = line.ExpenseAccountCode;
+                editor.ExpenseAccountLookupText = line.ExpenseAccountCode;
+            }
+
+            if (line.WarehouseId.HasValue && line.WarehouseId.Value > 0)
+            {
+                editor.WarehouseId = line.WarehouseId;
+                editor.WarehouseName = line.WarehouseName;
+                editor.WarehouseLookupText = line.WarehouseName;
+            }
+
+            if (line.DestinationWarehouseId.HasValue && line.DestinationWarehouseId.Value > 0)
+            {
+                editor.DestinationWarehouseId = line.DestinationWarehouseId;
+                editor.DestinationWarehouseName = line.DestinationWarehouseName;
+                editor.DestinationWarehouseLookupText = line.DestinationWarehouseName;
+            }
+
+            target.Add(editor);
         }
     }
 }

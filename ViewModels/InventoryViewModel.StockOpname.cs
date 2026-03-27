@@ -201,6 +201,7 @@ public sealed partial class InventoryViewModel
             Status = "DRAFT"
         };
         StockOpnameLines.Clear();
+        SelectedStockOpnameTabIndex = 1;
         StatusMessage = "Stock opname baru siap.";
     }
 
@@ -412,6 +413,7 @@ public sealed partial class InventoryViewModel
                 });
             }
 
+            SelectedStockOpnameTabIndex = 1;
             StatusMessage = $"Stock opname {bundle.Header.OpnameNo} dimuat.";
         }
         finally

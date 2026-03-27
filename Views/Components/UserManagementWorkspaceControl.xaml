@@ -14,7 +14,7 @@
         <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
             <StackPanel>
                 <TextBlock Text="Manajemen Pengguna" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                <TextBlock Text="Kelola pengguna, role, permission, serta struktur organisasi."
+                <TextBlock Text="Audit akses pengguna, kelola kebijakan role, dan atur struktur organisasi untuk RBAC."
                            Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
             </StackPanel>
         </Border>
@@ -22,10 +22,10 @@
         <TabControl x:Name="UserManagementTabControl"
                     Grid.Row="1"
                     SelectionChanged="UserManagementTabControl_OnSelectionChanged">
-            <TabItem Header="Pengguna">
+            <TabItem Header="Audit Akses">
                 <comp:UserManagementUsersTabControl />
             </TabItem>
-            <TabItem Header="Role &amp; Akses">
+            <TabItem Header="Role &amp; Kebijakan">
                 <comp:UserManagementRolesTabControl />
             </TabItem>
             <TabItem Header="Organisasi">

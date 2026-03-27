@@ -1,0 +1,46 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style x:Key="DashboardSectionCardStyle" TargetType="Border" BasedOn="{StaticResource ElevatedCardBorderStyle}">
+        <Setter Property="Padding" Value="18" />
+        <Setter Property="Margin" Value="0,0,0,14" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+    </Style>
+
+    <Style x:Key="DashboardSectionTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource SectionHeaderTextStyle}">
+        <Setter Property="FontSize" Value="17" />
+    </Style>
+
+    <Style x:Key="DashboardSectionSubtitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MetaCaptionTextStyle}">
+        <Setter Property="Margin" Value="0,4,0,0" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="DashboardKpiCardStyle" TargetType="Border" BasedOn="{StaticResource DashboardSectionCardStyle}">
+        <Setter Property="MinWidth" Value="230" />
+        <Setter Property="Margin" Value="0,0,12,12" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <Style x:Key="DashboardMetricValueTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+    </Style>
+
+    <Style x:Key="DashboardDeltaBadgeStyle" TargetType="Border">
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+    </Style>
+
+    <Style x:Key="DashboardAlertCardStyle" TargetType="Border" BasedOn="{StaticResource DashboardSectionCardStyle}">
+        <Setter Property="Padding" Value="14" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+
+    <Style x:Key="DashboardMiniValueTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+    </Style>
+</ResourceDictionary>

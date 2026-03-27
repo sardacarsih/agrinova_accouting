@@ -77,7 +77,7 @@ public sealed partial class JournalManagementViewModel
 
         if (_stagedImportBundles.Count == 0)
         {
-            ImportMessage = "Tidak ada jurnal valid untuk diimport. Jalankan preview terlebih dahulu.";
+            ImportMessage = "Tidak ada jurnal valid untuk diimport. Jalankan preview lalu lihat kolom Pesan untuk detail kegagalan.";
             return;
         }
 

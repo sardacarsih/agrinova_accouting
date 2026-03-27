@@ -3,54 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
-    <Grid Margin="10" x:Name="TransferResponsiveGrid">
-        <Grid.Resources>
-            <Style x:Key="TransferListPaneStyle" TargetType="DockPanel">
-                <Setter Property="Grid.Row" Value="0" />
-                <Setter Property="Grid.Column" Value="0" />
-                <Setter Property="Grid.RowSpan" Value="3" />
-                <Setter Property="Grid.ColumnSpan" Value="1" />
-                <Style.Triggers>
-                    <DataTrigger Binding="{Binding ElementName=TransferResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1220}"
-                                 Value="True">
-                        <Setter Property="Grid.Row" Value="0" />
-                        <Setter Property="Grid.Column" Value="0" />
-                        <Setter Property="Grid.RowSpan" Value="1" />
-                        <Setter Property="Grid.ColumnSpan" Value="3" />
-                    </DataTrigger>
-                </Style.Triggers>
-            </Style>
-            <Style x:Key="TransferEditorPaneStyle" TargetType="Grid">
-                <Setter Property="Grid.Row" Value="0" />
-                <Setter Property="Grid.Column" Value="2" />
-                <Setter Property="Grid.RowSpan" Value="3" />
-                <Setter Property="Grid.ColumnSpan" Value="1" />
-                <Setter Property="Margin" Value="0" />
-                <Style.Triggers>
-                    <DataTrigger Binding="{Binding ElementName=TransferResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1220}"
-                                 Value="True">
-                        <Setter Property="Grid.Row" Value="2" />
-                        <Setter Property="Grid.Column" Value="0" />
-                        <Setter Property="Grid.RowSpan" Value="1" />
-                        <Setter Property="Grid.ColumnSpan" Value="3" />
-                        <Setter Property="Margin" Value="0,10,0,0" />
-                    </DataTrigger>
-                </Style.Triggers>
-            </Style>
-        </Grid.Resources>
-
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="10" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.1*" />
-            <ColumnDefinition Width="10" />
-            <ColumnDefinition Width="1.5*" />
-        </Grid.ColumnDefinitions>
-
-        <DockPanel Style="{StaticResource TransferListPaneStyle}">
+    <Grid Margin="10">
+        <TabControl SelectedIndex="{Binding SelectedTransferTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+            <TabItem Header="Daftar">
+                <DockPanel Margin="0,8,0,0">
             <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
                 <StackPanel>
                     <TextBlock Text="Transfer Antar Gudang" Style="{StaticResource SettingsSectionTitleTextStyle}" />
@@ -92,6 +48,7 @@
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="No." Binding="{Binding TransactionNo}" Width="120" />
                     <DataGridTextColumn Header="Tanggal" Binding="{Binding TransactionDate, StringFormat=dd/MM/yyyy}" Width="100" />
+                    <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="150" />
                     <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
                     <DataGridTextColumn Header="Qty" Binding="{Binding TotalQty, StringFormat=N2}" Width="90" />
                     <DataGridTemplateColumn Header="Aksi" Width="90">
@@ -106,12 +63,15 @@
                     </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
-        </DockPanel>
+                </DockPanel>
+            </TabItem>
 
-        <Grid Style="{StaticResource TransferEditorPaneStyle}"
-              IsEnabled="{Binding CanOperateCurrentPeriodTransactions}"
-              ToolTip="{Binding InventoryPeriodActionTooltip}">
+            <TabItem Header="Input">
+                <Grid Margin="0,8,0,0"
+                      IsEnabled="{Binding CanOperateCurrentPeriodTransactions}"
+                      ToolTip="{Binding InventoryPeriodActionTooltip}">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -146,36 +106,41 @@
                     <ColumnDefinition Width="10" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="No. Transaksi" />
+                        <TextBox Margin="0,6,0,0" Text="{Binding TransferHeader.TransactionNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal" />
+                        <DatePicker Margin="0,6,0,0" SelectedDate="{Binding TransferHeader.TransactionDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="38" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="No. Transaksi" />
-                    <TextBox Margin="0,6,0,0" Text="{Binding TransferHeader.TransactionNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal" />
-                    <DatePicker Margin="0,6,0,0" SelectedDate="{Binding TransferHeader.TransactionDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="38" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Gudang Asal" />
-                    <ComboBox Margin="0,6,0,0"
-                              Style="{StaticResource InputComboBoxStyle}"
-                              ItemsSource="{Binding Warehouses}"
-                              SelectedValuePath="Id"
-                              DisplayMemberPath="Name"
-                              SelectedValue="{Binding TransferHeader.WarehouseId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Referensi" />
+                    <TextBox Margin="0,6,0,0" Text="{Binding TransferHeader.ReferenceNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
                 </StackPanel>
                 <StackPanel Grid.Column="2">
-                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Gudang Tujuan" />
-                    <ComboBox Margin="0,6,0,0"
-                              Style="{StaticResource InputComboBoxStyle}"
-                              ItemsSource="{Binding Warehouses}"
-                              SelectedValuePath="Id"
-                              DisplayMemberPath="Name"
-                              SelectedValue="{Binding TransferHeader.DestinationWarehouseId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Referensi" />
-                    <TextBox Margin="0,6,0,0" Text="{Binding TransferHeader.ReferenceNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Status" />
-                    <TextBox Margin="0,6,0,0" Text="{Binding TransferHeader.Status}" IsReadOnly="True" Style="{StaticResource InputTextBoxStyle}" />
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Keterangan" />
+                    <TextBox Margin="0,6,0,0" Text="{Binding TransferHeader.Description, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
                 </StackPanel>
             </Grid>
 
-            <DataGrid Grid.Row="2"
-                      Style="{StaticResource EnterpriseDataGridStyle}"
+            <DataGrid Grid.Row="3"
+                      Style="{StaticResource JournalLikeDataGridStyle}"
                       Margin="0,8,0,0"
                       ItemsSource="{Binding TransferLines}"
                       AutoGenerateColumns="False"
@@ -183,35 +148,184 @@
                       CanUserAddRows="False">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="No" Binding="{Binding LineNo}" Width="50" IsReadOnly="True" />
-                    <DataGridTemplateColumn Header="Item" Width="220">
+                    <DataGridTemplateColumn Header="Kode Item" Width="160">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <ComboBox ItemsSource="{Binding DataContext.StockItemLookupOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                          SelectedValuePath="Id"
-                                          SelectedValue="{Binding ItemId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          IsEditable="True"
-                                          IsTextSearchEnabled="True"
-                                          TextSearch.TextPath="Name"
-                                          Height="30"
-                                          MinHeight="30"
-                                          VerticalAlignment="Center"
-                                          Style="{StaticResource InputComboBoxStyle}">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock>
-                                                <Run Text="{Binding Code}" />
-                                                <Run Text=" - " />
-                                                <Run Text="{Binding Name}" />
-                                            </TextBlock>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
+                                <Grid>
+                                    <TextBox x:Name="ItemLookupTextBox"
+                                             Text="{Binding ItemLookupText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource JournalLikeDataGridEditingTextBoxStyle}"
+                                             VerticalAlignment="Center"
+                                             PreviewKeyDown="LookupTextBox_OnPreviewKeyDown"
+                                             PreviewLostKeyboardFocus="LookupTextBox_OnPreviewLostKeyboardFocus"
+                                             Tag="ItemLookup" />
+                                    <Popup IsOpen="{Binding IsItemLookupPopupOpen, Mode=TwoWay}"
+                                           Placement="Bottom"
+                                           PlacementTarget="{Binding ElementName=ItemLookupTextBox}"
+                                           AllowsTransparency="True"
+                                           StaysOpen="False"
+                                           PopupAnimation="Fade">
+                                        <Border Style="{StaticResource InventoryLookupPopupBorderStyle}"
+                                                MinWidth="{Binding ElementName=ItemLookupTextBox, Path=ActualWidth}"
+                                                MaxWidth="360"
+                                                MaxHeight="240">
+                                            <ListBox ItemsSource="{Binding ItemLookupSuggestions}"
+                                                     SelectedItem="{Binding SelectedItemLookupSuggestion, Mode=TwoWay}"
+                                                     Style="{StaticResource InventoryLookupListBoxStyle}"
+                                                     ItemContainerStyle="{StaticResource InventoryLookupListBoxItemStyle}"
+                                                     PreviewKeyDown="LookupListBox_OnPreviewKeyDown"
+                                                     MouseLeftButtonUp="LookupListBox_OnMouseLeftButtonUp"
+                                                     MouseDoubleClick="LookupListBox_OnMouseDoubleClick"
+                                                     Tag="ItemLookup">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="120" />
+                                                                <ColumnDefinition Width="8" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource Brush.TextPrimary}"
+                                                                       Text="{Binding Code}" />
+                                                            <TextBlock Grid.Column="2"
+                                                                       Foreground="{DynamicResource Brush.TextSecondary}"
+                                                                       Text="{Binding Name}" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Qty" Binding="{Binding Qty, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="90" />
-                    <DataGridTextColumn Header="Harga" Binding="{Binding UnitCost, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="100" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Catatan" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                    <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="220" IsReadOnly="True" />
+                    <DataGridTemplateColumn Header="Gudang Asal" Width="180">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <TextBox x:Name="WarehouseLookupTextBox"
+                                             Text="{Binding WarehouseLookupText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource JournalLikeDataGridEditingTextBoxStyle}"
+                                             VerticalAlignment="Center"
+                                             PreviewKeyDown="LookupTextBox_OnPreviewKeyDown"
+                                             PreviewLostKeyboardFocus="LookupTextBox_OnPreviewLostKeyboardFocus"
+                                             Tag="WarehouseLookup" />
+                                    <Popup IsOpen="{Binding IsWarehouseLookupPopupOpen, Mode=TwoWay}"
+                                           Placement="Bottom"
+                                           PlacementTarget="{Binding ElementName=WarehouseLookupTextBox}"
+                                           AllowsTransparency="True"
+                                           StaysOpen="False"
+                                           PopupAnimation="Fade">
+                                        <Border Style="{StaticResource InventoryLookupPopupBorderStyle}"
+                                                MinWidth="{Binding ElementName=WarehouseLookupTextBox, Path=ActualWidth}"
+                                                MaxWidth="360"
+                                                MaxHeight="240">
+                                            <ListBox ItemsSource="{Binding WarehouseLookupSuggestions}"
+                                                     SelectedItem="{Binding SelectedWarehouseLookupSuggestion, Mode=TwoWay}"
+                                                     Style="{StaticResource InventoryLookupListBoxStyle}"
+                                                     ItemContainerStyle="{StaticResource InventoryLookupListBoxItemStyle}"
+                                                     PreviewKeyDown="LookupListBox_OnPreviewKeyDown"
+                                                     MouseLeftButtonUp="LookupListBox_OnMouseLeftButtonUp"
+                                                     MouseDoubleClick="LookupListBox_OnMouseDoubleClick"
+                                                     Tag="WarehouseLookup">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="120" />
+                                                                <ColumnDefinition Width="8" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource Brush.TextPrimary}"
+                                                                       Text="{Binding Code}" />
+                                                            <TextBlock Grid.Column="2"
+                                                                       Foreground="{DynamicResource Brush.TextSecondary}"
+                                                                       Text="{Binding Name}" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Gudang Tujuan" Width="180">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <TextBox x:Name="DestinationWarehouseLookupTextBox"
+                                             Text="{Binding DestinationWarehouseLookupText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource JournalLikeDataGridEditingTextBoxStyle}"
+                                             VerticalAlignment="Center"
+                                             PreviewKeyDown="LookupTextBox_OnPreviewKeyDown"
+                                             PreviewLostKeyboardFocus="LookupTextBox_OnPreviewLostKeyboardFocus"
+                                             Tag="DestinationWarehouseLookup" />
+                                    <Popup IsOpen="{Binding IsDestinationWarehouseLookupPopupOpen, Mode=TwoWay}"
+                                           Placement="Bottom"
+                                           PlacementTarget="{Binding ElementName=DestinationWarehouseLookupTextBox}"
+                                           AllowsTransparency="True"
+                                           StaysOpen="False"
+                                           PopupAnimation="Fade">
+                                        <Border Style="{StaticResource InventoryLookupPopupBorderStyle}"
+                                                MinWidth="{Binding ElementName=DestinationWarehouseLookupTextBox, Path=ActualWidth}"
+                                                MaxWidth="360"
+                                                MaxHeight="240">
+                                            <ListBox ItemsSource="{Binding DestinationWarehouseLookupSuggestions}"
+                                                     SelectedItem="{Binding SelectedDestinationWarehouseLookupSuggestion, Mode=TwoWay}"
+                                                     Style="{StaticResource InventoryLookupListBoxStyle}"
+                                                     ItemContainerStyle="{StaticResource InventoryLookupListBoxItemStyle}"
+                                                     PreviewKeyDown="LookupListBox_OnPreviewKeyDown"
+                                                     MouseLeftButtonUp="LookupListBox_OnMouseLeftButtonUp"
+                                                     MouseDoubleClick="LookupListBox_OnMouseDoubleClick"
+                                                     Tag="DestinationWarehouseLookup">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="120" />
+                                                                <ColumnDefinition Width="8" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource Brush.TextPrimary}"
+                                                                       Text="{Binding Code}" />
+                                                            <TextBlock Grid.Column="2"
+                                                                       Foreground="{DynamicResource Brush.TextSecondary}"
+                                                                       Text="{Binding Name}" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Qty"
+                                        Binding="{Binding Qty, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}"
+                                        Width="90"
+                                        ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                    <DataGridTextColumn Header="Harga"
+                                        Binding="{Binding UnitCost, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}"
+                                        Width="100"
+                                        IsReadOnly="True"
+                                        ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                    <DataGridTextColumn Header="Catatan"
+                                        Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="*"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridEditingTextBoxStyle}" />
                     <DataGridTemplateColumn Header="Aksi" Width="80">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
@@ -225,7 +339,7 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Border Grid.Row="3" Margin="0,10,0,0" Style="{StaticResource StickyActionBarStyle}">
+            <Border Grid.Row="4" Margin="0,10,0,0" Style="{StaticResource StickyActionBarStyle}">
                 <WrapPanel>
                     <Button Command="{Binding AddTransferLineCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Tambah Baris" />
                     <Button Margin="8,0,0,0" Command="{Binding SaveTransferDraftCommand}" IsEnabled="{Binding CanSaveTransferDraft}" ToolTip="{Binding SaveTransferDraftTooltip}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Draft" />
@@ -234,6 +348,8 @@
                     <Button Margin="8,0,0,0" Command="{Binding PostTransferCommand}" IsEnabled="{Binding CanPostTransfer}" ToolTip="{Binding PostTransferTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Posting" />
                 </WrapPanel>
             </Border>
-        </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>

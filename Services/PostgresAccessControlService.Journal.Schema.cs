@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS gl_journal_headers (
     created_by VARCHAR(100) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_gl_journal_company_location_no UNIQUE (company_id, location_id, journal_no),
+    CONSTRAINT uq_gl_journal_company_location_period_no UNIQUE (company_id, location_id, period_month, journal_no),
     CONSTRAINT chk_gl_journal_status CHECK (status IN ('DRAFT','SUBMITTED','APPROVED','POSTED'))
 );
 
@@ -272,6 +272,27 @@ ALTER TABLE gl_journal_headers
 
 DO $$
 BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uq_gl_journal_company_location_no'
+          AND conrelid = 'gl_journal_headers'::regclass
+    ) THEN
+        ALTER TABLE gl_journal_headers
+            DROP CONSTRAINT uq_gl_journal_company_location_no;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uq_gl_journal_company_location_period_no'
+          AND conrelid = 'gl_journal_headers'::regclass
+    ) THEN
+        ALTER TABLE gl_journal_headers
+            ADD CONSTRAINT uq_gl_journal_company_location_period_no
+            UNIQUE (company_id, location_id, period_month, journal_no);
+    END IF;
+
     IF EXISTS (
         SELECT 1
         FROM pg_constraint

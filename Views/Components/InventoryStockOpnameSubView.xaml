@@ -3,54 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
-    <Grid Margin="10" x:Name="StockOpnameResponsiveGrid">
-        <Grid.Resources>
-            <Style x:Key="StockOpnameListPaneStyle" TargetType="DockPanel">
-                <Setter Property="Grid.Row" Value="0" />
-                <Setter Property="Grid.Column" Value="0" />
-                <Setter Property="Grid.RowSpan" Value="3" />
-                <Setter Property="Grid.ColumnSpan" Value="1" />
-                <Style.Triggers>
-                    <DataTrigger Binding="{Binding ElementName=StockOpnameResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1220}"
-                                 Value="True">
-                        <Setter Property="Grid.Row" Value="0" />
-                        <Setter Property="Grid.Column" Value="0" />
-                        <Setter Property="Grid.RowSpan" Value="1" />
-                        <Setter Property="Grid.ColumnSpan" Value="3" />
-                    </DataTrigger>
-                </Style.Triggers>
-            </Style>
-            <Style x:Key="StockOpnameEditorPaneStyle" TargetType="Grid">
-                <Setter Property="Grid.Row" Value="0" />
-                <Setter Property="Grid.Column" Value="2" />
-                <Setter Property="Grid.RowSpan" Value="3" />
-                <Setter Property="Grid.ColumnSpan" Value="1" />
-                <Setter Property="Margin" Value="0" />
-                <Style.Triggers>
-                    <DataTrigger Binding="{Binding ElementName=StockOpnameResponsiveGrid, Path=ActualWidth, Converter={StaticResource WidthLessThanConverter}, ConverterParameter=1220}"
-                                 Value="True">
-                        <Setter Property="Grid.Row" Value="2" />
-                        <Setter Property="Grid.Column" Value="0" />
-                        <Setter Property="Grid.RowSpan" Value="1" />
-                        <Setter Property="Grid.ColumnSpan" Value="3" />
-                        <Setter Property="Margin" Value="0,10,0,0" />
-                    </DataTrigger>
-                </Style.Triggers>
-            </Style>
-        </Grid.Resources>
-
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="10" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.1*" />
-            <ColumnDefinition Width="10" />
-            <ColumnDefinition Width="1.5*" />
-        </Grid.ColumnDefinitions>
-
-        <DockPanel Style="{StaticResource StockOpnameListPaneStyle}">
+    <Grid Margin="10">
+        <TabControl SelectedIndex="{Binding SelectedStockOpnameTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+            <TabItem Header="Daftar">
+                <DockPanel Margin="0,8,0,0">
             <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
                 <StackPanel>
                     <TextBlock Text="Stock Opname" Style="{StaticResource SettingsSectionTitleTextStyle}" />
@@ -106,12 +62,15 @@
                     </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
-        </DockPanel>
+                </DockPanel>
+            </TabItem>
 
-        <Grid Style="{StaticResource StockOpnameEditorPaneStyle}"
-              IsEnabled="{Binding CanOperateCurrentPeriodTransactions}"
-              ToolTip="{Binding InventoryPeriodActionTooltip}">
+            <TabItem Header="Input">
+                <Grid Margin="0,8,0,0"
+                      IsEnabled="{Binding CanOperateCurrentPeriodTransactions}"
+                      ToolTip="{Binding InventoryPeriodActionTooltip}">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -146,12 +105,31 @@
                     <ColumnDefinition Width="10" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="No. Opname" />
+                        <TextBox Margin="0,6,0,0" Text="{Binding StockOpnameHeader.OpnameNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal" />
+                        <DatePicker Margin="0,6,0,0" SelectedDate="{Binding StockOpnameHeader.OpnameDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="38" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="No. Opname" />
-                    <TextBox Margin="0,6,0,0" Text="{Binding StockOpnameHeader.OpnameNo, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal" />
-                    <DatePicker Margin="0,6,0,0" SelectedDate="{Binding StockOpnameHeader.OpnameDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="38" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Gudang" />
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Gudang" />
                     <ComboBox Margin="0,6,0,0"
                               Style="{StaticResource InputComboBoxStyle}"
                               ItemsSource="{Binding Warehouses}"
@@ -162,13 +140,11 @@
                 <StackPanel Grid.Column="2">
                     <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Keterangan" />
                     <TextBox Margin="0,6,0,0" Text="{Binding StockOpnameHeader.Description, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}" />
-                    <TextBlock Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Status" />
-                    <TextBox Margin="0,6,0,0" Text="{Binding StockOpnameHeader.Status}" IsReadOnly="True" Style="{StaticResource InputTextBoxStyle}" />
                 </StackPanel>
             </Grid>
 
-            <DataGrid Grid.Row="2"
-                      Style="{StaticResource EnterpriseDataGridStyle}"
+            <DataGrid Grid.Row="3"
+                      Style="{StaticResource JournalLikeDataGridStyle}"
                       Margin="0,8,0,0"
                       ItemsSource="{Binding StockOpnameLines}"
                       AutoGenerateColumns="False"
@@ -179,14 +155,31 @@
                     <DataGridTextColumn Header="Kode" Binding="{Binding ItemCode}" Width="110" IsReadOnly="True" />
                     <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="*" IsReadOnly="True" />
                     <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="70" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Qty Sistem" Binding="{Binding SystemQty, StringFormat=N2}" Width="90" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Qty Aktual" Binding="{Binding ActualQty, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="90" />
-                    <DataGridTextColumn Header="Selisih" Binding="{Binding DifferenceQty, StringFormat=N2}" Width="90" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Catatan" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="140" />
+                    <DataGridTextColumn Header="Qty Sistem"
+                                        Binding="{Binding SystemQty, StringFormat=N2}"
+                                        Width="90"
+                                        IsReadOnly="True"
+                                        ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                    <DataGridTextColumn Header="Qty Aktual"
+                                        Binding="{Binding ActualQty, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}"
+                                        Width="90"
+                                        ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                    <DataGridTextColumn Header="Selisih"
+                                        Binding="{Binding DifferenceQty, StringFormat=N2}"
+                                        Width="90"
+                                        IsReadOnly="True"
+                                        ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                    <DataGridTextColumn Header="Catatan"
+                                        Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="140"
+                                        EditingElementStyle="{StaticResource JournalLikeDataGridEditingTextBoxStyle}" />
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Border Grid.Row="3" Margin="0,10,0,0" Style="{StaticResource StickyActionBarStyle}">
+            <Border Grid.Row="4" Margin="0,10,0,0" Style="{StaticResource StickyActionBarStyle}">
                 <WrapPanel>
                     <Button Command="{Binding GenerateOpnameLinesCommand}" IsEnabled="{Binding CanGenerateStockOpnameLines}" ToolTip="{Binding GenerateStockOpnameLinesTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Generate Baris" />
                     <Button Margin="8,0,0,0" Command="{Binding SaveStockOpnameDraftCommand}" IsEnabled="{Binding CanSaveStockOpnameDraft}" ToolTip="{Binding SaveStockOpnameDraftTooltip}" Style="{StaticResource PrimaryButtonStyle}" Content="Simpan Draft" />
@@ -195,6 +188,8 @@
                     <Button Margin="8,0,0,0" Command="{Binding PostStockOpnameCommand}" IsEnabled="{Binding CanPostStockOpname}" ToolTip="{Binding PostStockOpnameTooltip}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Posting" />
                 </WrapPanel>
             </Border>
-        </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>

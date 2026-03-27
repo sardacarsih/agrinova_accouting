@@ -306,6 +306,15 @@ public sealed class JournalXlsxService
 
             var debit = ParseDecimal(GetCell(row, debitCol));
             var credit = ParseDecimal(GetCell(row, creditCol));
+            var lineNo = ParseInt(GetCell(row, lineNoCol));
+            if (lineNo <= 0 && groups.TryGetValue(journalNo, out var existingGroup))
+            {
+                lineNo = existingGroup.Lines.Count + 1;
+            }
+            else if (lineNo <= 0)
+            {
+                lineNo = 1;
+            }
 
             var isValid = true;
             var message = string.Empty;
@@ -328,6 +337,7 @@ public sealed class JournalXlsxService
             var previewRow = new JournalImportPreviewBuffer
             {
                 RowNumber = rowNumber,
+                LineNo = lineNo,
                 JournalNo = journalNo,
                 AccountCode = accountCode,
                 Description = lineDescription,
@@ -383,10 +393,9 @@ public sealed class JournalXlsxService
                 groups[journalNo] = group;
             }
 
-            var lineNo = ParseInt(GetCell(row, lineNoCol));
             group.Lines.Add(new ManagedJournalLine
             {
-                LineNo = lineNo > 0 ? lineNo : group.Lines.Count + 1,
+                LineNo = lineNo,
                 AccountCode = accountCode.ToUpperInvariant(),
                 Description = lineDescription,
                 Debit = debit,
@@ -468,8 +477,10 @@ public sealed class JournalXlsxService
             .Select(x => new JournalImportPreviewItem
             {
                 RowNumber = x.RowNumber,
+                LineNo = x.LineNo,
                 JournalNo = x.JournalNo,
                 AccountCode = x.AccountCode,
+                AccountName = string.Empty,
                 Description = x.Description,
                 Debit = x.Debit,
                 Credit = x.Credit,
@@ -923,6 +934,8 @@ public sealed class JournalXlsxService
     private sealed class JournalImportPreviewBuffer
     {
         public int RowNumber { get; init; }
+
+        public int LineNo { get; init; }
 
         public string JournalNo { get; init; } = string.Empty;
 

@@ -815,6 +815,153 @@ WHERE company_id = @company_id
         }
     }
 
+    private static async Task TestJournalAllowsSameNumberAcrossDifferentPeriodsAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+
+        var currentMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var nextMonth = currentMonth.AddMonths(1);
+        var previousCurrent = await GetAccountingPeriodStateAsync(companyId, locationId, currentMonth);
+        var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
+
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
+        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
+
+        var debitAccount = workspace.Accounts[0];
+        var creditAccount = workspace.Accounts[1];
+        var sharedJournalNo = $"ITEST-PERIOD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        var lines = new[]
+        {
+            new ManagedJournalLine
+            {
+                LineNo = 1,
+                AccountCode = debitAccount.Code,
+                Description = "Debit line",
+                Debit = 25000m,
+                Credit = 0m
+            },
+            new ManagedJournalLine
+            {
+                LineNo = 2,
+                AccountCode = creditAccount.Code,
+                Description = "Credit line",
+                Debit = 0m,
+                Credit = 25000m
+            }
+        };
+
+        long? currentJournalId = null;
+        long? nextJournalId = null;
+
+        try
+        {
+            await SetAccountingPeriodStateAsync(companyId, locationId, currentMonth, isOpen: true, note: "ITEST_OPEN_CURRENT");
+            await SetAccountingPeriodStateAsync(companyId, locationId, nextMonth, isOpen: true, note: "ITEST_OPEN_NEXT");
+
+            var currentResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = sharedJournalNo,
+                    JournalDate = currentMonth.AddDays(1),
+                    PeriodMonth = currentMonth,
+                    ReferenceNo = "ITEST-CURRENT",
+                    Description = "Duplicate number different period current"
+                },
+                lines,
+                "admin");
+
+            Assert(currentResult.IsSuccess, $"Current-period journal save should succeed: {currentResult.Message}");
+            currentJournalId = currentResult.EntityId;
+
+            var nextResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = sharedJournalNo,
+                    JournalDate = nextMonth.AddDays(1),
+                    PeriodMonth = nextMonth,
+                    ReferenceNo = "ITEST-NEXT",
+                    Description = "Duplicate number different period next"
+                },
+                lines,
+                "admin");
+
+            Assert(nextResult.IsSuccess, $"Next-period journal with same number should succeed: {nextResult.Message}");
+            nextJournalId = nextResult.EntityId;
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (currentJournalId.HasValue || nextJournalId.HasValue)
+            {
+                var journalIds = new List<long>();
+                if (currentJournalId.HasValue)
+                {
+                    journalIds.Add(currentJournalId.Value);
+                }
+
+                if (nextJournalId.HasValue)
+                {
+                    journalIds.Add(nextJournalId.Value);
+                }
+
+                foreach (var journalId in journalIds)
+                {
+                    await using (var deleteAudit = new NpgsqlCommand(
+                        "DELETE FROM sec_audit_logs WHERE entity_type = 'JOURNAL' AND entity_id = @journal_id;",
+                        connection))
+                    {
+                        deleteAudit.Parameters.AddWithValue("journal_id", journalId);
+                        await deleteAudit.ExecuteNonQueryAsync();
+                    }
+
+                    await using (var deleteHeader = new NpgsqlCommand(
+                        "DELETE FROM gl_journal_headers WHERE id = @journal_id;",
+                        connection))
+                    {
+                        deleteHeader.Parameters.AddWithValue("journal_id", journalId);
+                        await deleteHeader.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            if (previousCurrent.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, currentMonth, previousCurrent.IsOpen, "ITEST_RESTORE_CURRENT");
+            }
+
+            if (previousNext.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, nextMonth, previousNext.IsOpen, "ITEST_RESTORE_NEXT");
+            }
+            else
+            {
+                await using var deleteNextPeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deleteNextPeriod.Parameters.AddWithValue("company_id", companyId);
+                deleteNextPeriod.Parameters.AddWithValue("location_id", locationId);
+                deleteNextPeriod.Parameters.AddWithValue("period_month", nextMonth);
+                await deleteNextPeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
     private static async Task TestAccountingPeriodOpenCloseApiAsync()
     {
         var service = CreateService();
@@ -828,7 +975,9 @@ WHERE company_id = @company_id
             ?? accessOptions.Locations[0].Id;
         var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(1);
 
+        var nextMonth = targetMonth.AddMonths(1);
         var previous = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+        var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
         try
         {
             var closeResult = await service.SetAccountingPeriodOpenStateAsync(
@@ -844,6 +993,16 @@ WHERE company_id = @company_id
             var closed = periodsAfterClose.FirstOrDefault(x => x.PeriodMonth.Date == targetMonth.Date);
             Assert(closed is not null, "Closed period row should exist.");
             Assert(!closed!.IsOpen, "Period should be closed after close API.");
+            var nextPeriod = periodsAfterClose.FirstOrDefault(x => x.PeriodMonth.Date == nextMonth.Date);
+            Assert(nextPeriod is not null, "Next period row should exist after closing current period.");
+            if (previousNext.Exists)
+            {
+                Assert(nextPeriod!.IsOpen == previousNext.IsOpen, "Existing next period state should be preserved.");
+            }
+            else
+            {
+                Assert(nextPeriod!.IsOpen, "Auto-created next period should be open.");
+            }
 
             var openResult = await service.SetAccountingPeriodOpenStateAsync(
                 companyId,
@@ -861,13 +1020,14 @@ WHERE company_id = @company_id
         }
         finally
         {
+            await using var connection = await OpenConnectionAsync();
+
             if (previous.Exists)
             {
                 await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previous.IsOpen, "ITEST_RESTORE");
             }
             else
             {
-                await using var connection = await OpenConnectionAsync();
                 await using var deleteCommand = new NpgsqlCommand(
                     @"DELETE FROM gl_accounting_periods
 WHERE company_id = @company_id
@@ -878,6 +1038,24 @@ WHERE company_id = @company_id
                 deleteCommand.Parameters.AddWithValue("location_id", locationId);
                 deleteCommand.Parameters.AddWithValue("period_month", targetMonth);
                 await deleteCommand.ExecuteNonQueryAsync();
+            }
+
+            if (previousNext.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, nextMonth, previousNext.IsOpen, "ITEST_RESTORE_NEXT");
+            }
+            else
+            {
+                await using var deleteNextCommand = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deleteNextCommand.Parameters.AddWithValue("company_id", companyId);
+                deleteNextCommand.Parameters.AddWithValue("location_id", locationId);
+                deleteNextCommand.Parameters.AddWithValue("period_month", nextMonth);
+                await deleteNextCommand.ExecuteNonQueryAsync();
             }
         }
     }
@@ -894,7 +1072,9 @@ WHERE company_id = @company_id
         var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
             ?? accessOptions.Locations[0].Id;
         var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(18);
+        var nextMonth = targetMonth.AddMonths(1);
         var previous = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+        var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
 
         var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId);
         var accounts = workspace.Accounts;
@@ -1006,6 +1186,7 @@ WHERE company_id = @company_id
                 actorUsername: "admin",
                 note: "ITEST_CLOSEFLOW_CLOSE");
             Assert(closeResult.IsSuccess, $"Close period with closing journal failed: {closeResult.Message}");
+            Assert(closeResult.Message.Contains(nextMonth.ToString("yyyy-MM"), StringComparison.Ordinal), "Close message should mention next accounting period.");
 
             await using var connection = await OpenConnectionAsync();
             await using (var closingHeaderCommand = new NpgsqlCommand(
@@ -1110,6 +1291,24 @@ WHERE company_id = @company_id
                 deleteCommand.Parameters.AddWithValue("location_id", locationId);
                 deleteCommand.Parameters.AddWithValue("period_month", targetMonth);
                 await deleteCommand.ExecuteNonQueryAsync();
+            }
+
+            if (previousNext.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, nextMonth, previousNext.IsOpen, "ITEST_RESTORE_NEXT");
+            }
+            else
+            {
+                await using var deleteNextCommand = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deleteNextCommand.Parameters.AddWithValue("company_id", companyId);
+                deleteNextCommand.Parameters.AddWithValue("location_id", locationId);
+                deleteNextCommand.Parameters.AddWithValue("period_month", nextMonth);
+                await deleteNextCommand.ExecuteNonQueryAsync();
             }
         }
     }

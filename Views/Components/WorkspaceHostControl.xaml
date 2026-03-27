@@ -4,7 +4,10 @@
                 Padding="{Binding ContentPadding}"
                 MaxWidth="{Binding ContentMaxWidth}">
             <Grid>
-                <comp:StandardWorkspaceControl DataContext="{Binding}" Visibility="{Binding IsStandardWorkspaceSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <!-- Keep the dashboard view model as child DataContext, but resolve host-level visibility from the shell. -->
+                <comp:AccountingDashboardSubView DataContext="{Binding AccountingDashboard}"
+                                                Visibility="{Binding DataContext.IsDashboardSelected, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                <comp:StandardWorkspaceControl DataContext="{Binding}" Visibility="{Binding IsScopePlaceholderSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
                 <comp:MasterDataWorkspaceControl DataContext="{Binding MasterData}" Visibility="{Binding DataContext.IsMasterDataSelected, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}" />
                 <comp:InventoryWorkspaceControl DataContext="{Binding Inventory}" Visibility="{Binding DataContext.IsInventorySelected, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}" />
                 <comp:JournalWorkspaceControl DataContext="{Binding JournalManagement}" Visibility="{Binding DataContext.IsJournalSelected, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource BoolToVisibilityConverter}}" />

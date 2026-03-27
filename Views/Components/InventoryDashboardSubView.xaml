@@ -82,6 +82,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
                         <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                        <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="140" />
                         <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="70" />
                         <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N4}" Width="100" />
                     </DataGrid.Columns>

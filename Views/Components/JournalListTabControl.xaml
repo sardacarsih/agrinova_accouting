@@ -25,40 +25,62 @@
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="130" />
                 <ColumnDefinition Width="8" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="8" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0">
-                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Periode Akuntansi" />
-                <DatePicker Margin="0,6,0,0"
-                            Style="{StaticResource MonthYearDatePickerStyle}"
-                            SelectedDate="{Binding SearchPeriodMonth, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            SelectedDateFormat="Short"
-                            Language="en-GB"
-                            MinWidth="220"
-                            Height="40" />
+                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Bulan" />
+                <ComboBox Margin="0,6,0,0"
+                          Height="40"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding ExportMonthOptions}"
+                          DisplayMemberPath="Value"
+                          SelectedValuePath="Key"
+                          SelectedValue="{Binding SearchPeriodMonthNumber, Mode=TwoWay}" />
             </StackPanel>
 
-            <Button Grid.Column="2"
-                    VerticalAlignment="Bottom"
-                    Command="{Binding SearchCommand}"
-                    Style="{StaticResource PrimaryButtonStyle}"
-                    Content="Cari" />
+            <StackPanel Grid.Column="2">
+                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tahun" />
+                <ComboBox Margin="0,6,0,0"
+                          Height="40"
+                          Style="{StaticResource InputComboBoxStyle}"
+                          ItemsSource="{Binding ExportYearOptions}"
+                          SelectedItem="{Binding SearchPeriodYear, Mode=TwoWay}" />
+            </StackPanel>
+
             <Button Grid.Column="4"
                     VerticalAlignment="Bottom"
-                    Command="{Binding ResetBrowseFiltersCommand}"
+                    Command="{Binding PreviousSearchPeriodCommand}"
+                    IsEnabled="{Binding CanMoveToPreviousSearchPeriod}"
                     Style="{StaticResource SecondaryPillButtonStyle}"
-                    Content="Reset" />
+                    Content="Prev" />
+            <Button Grid.Column="6"
+                    VerticalAlignment="Bottom"
+                    Command="{Binding NextSearchPeriodCommand}"
+                    IsEnabled="{Binding CanMoveToNextSearchPeriod}"
+                    Style="{StaticResource SecondaryPillButtonStyle}"
+                    Content="Next" />
+
+            <StackPanel Grid.Column="8"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,8">
+                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Periode Akuntansi" />
+                <TextBlock Margin="0,6,0,0"
+                           Foreground="{DynamicResource Brush.TextSecondary}"
+                           Text="{Binding SearchAccountingPeriodDisplayText}" />
+            </StackPanel>
         </Grid>
 
         <StackPanel Grid.Row="2" Margin="0,8,0,0" Orientation="Horizontal">
-            <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Muat Ulang" />
-            <Button Margin="8,0,0,0"
-                    Command="{Binding OpenSelectedJournalCommand}"
+            <Button Command="{Binding OpenSelectedJournalCommand}"
                     IsEnabled="{Binding CanOpenSelectedJournal}"
                     Style="{StaticResource PrimaryButtonStyle}"
                     Content="Buka Editor" />
@@ -104,8 +126,8 @@
                     <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="130" />
                     <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
                     <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
-                    <DataGridTextColumn Header="Debit" Binding="{Binding TotalDebit, StringFormat=N2}" Width="120" />
-                    <DataGridTextColumn Header="Kredit" Binding="{Binding TotalCredit, StringFormat=N2}" Width="120" />
+                    <DataGridTextColumn Header="Debit" Binding="{Binding TotalDebit, StringFormat=N2}" Width="120" ElementStyle="{StaticResource EnterpriseNumericCellTextStyle}" />
+                    <DataGridTextColumn Header="Kredit" Binding="{Binding TotalCredit, StringFormat=N2}" Width="120" ElementStyle="{StaticResource EnterpriseNumericCellTextStyle}" />
                 </DataGrid.Columns>
             </DataGrid>
 
@@ -131,3 +153,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

@@ -644,6 +644,8 @@ ORDER BY period_month DESC;", connection);
                 monthStart,
                 cancellationToken);
 
+            var nextMonth = monthStart.AddMonths(1);
+            var nextPeriodAutoCreated = false;
             string closingJournalNo = string.Empty;
             PostedZeroCostOutboundSummary zeroCostOutboundSummary = default;
             if (!isOpen)
@@ -723,6 +725,14 @@ WHERE company_id = @company_id
                         false,
                         $"Gagal menutup periode {monthStart:yyyy-MM}. Selisih persamaan akuntansi setelah closing masih {equationSnapshot.EquationDifference:N2}.");
                 }
+
+                nextPeriodAutoCreated = await EnsureNextAccountingPeriodAvailableAsync(
+                    connection,
+                    transaction,
+                    companyId,
+                    locationId,
+                    nextMonth,
+                    cancellationToken);
             }
 
             await InsertAuditLogAsync(
@@ -739,19 +749,59 @@ WHERE company_id = @company_id
             var closeWarning = !isOpen && zeroCostOutboundSummary.LineCount > 0
                 ? $" PERINGATAN: Ditemukan outbound cost 0 (transaksi={zeroCostOutboundSummary.TransactionCount}, baris={zeroCostOutboundSummary.LineCount}, item={zeroCostOutboundSummary.ItemCount}) pada periode ini. Review dan koreksi costing segera."
                 : string.Empty;
+            var nextPeriodMessage = !isOpen
+                ? nextPeriodAutoCreated
+                    ? $" Periode berikutnya {nextMonth:yyyy-MM} otomatis dibuat dan dibuka."
+                    : $" Periode berikutnya {nextMonth:yyyy-MM} sudah ada."
+                : string.Empty;
             return new AccessOperationResult(
                 true,
                 isOpen
                     ? $"Periode {monthStart:yyyy-MM} berhasil dibuka."
                     : string.IsNullOrWhiteSpace(closingJournalNo)
-                        ? $"Periode {monthStart:yyyy-MM} berhasil ditutup.{closeWarning}"
-                        : $"Periode {monthStart:yyyy-MM} berhasil ditutup. Jurnal penutup: {closingJournalNo}.{closeWarning}");
+                        ? $"Periode {monthStart:yyyy-MM} berhasil ditutup.{nextPeriodMessage}{closeWarning}"
+                        : $"Periode {monthStart:yyyy-MM} berhasil ditutup. Jurnal penutup: {closingJournalNo}.{nextPeriodMessage}{closeWarning}");
         }
         catch (Exception ex)
         {
             LogServiceError("SetAccountingPeriodStateFailed", $"action=set_period_open_state status=failed period={periodMonth:yyyy-MM} is_open={isOpen} company_id={companyId} location_id={locationId}", ex);
             return new AccessOperationResult(false, "Gagal memperbarui status periode akuntansi.");
         }
+    }
+
+    private static async Task<bool> EnsureNextAccountingPeriodAvailableAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        long locationId,
+        DateTime nextPeriodMonth,
+        CancellationToken cancellationToken)
+    {
+        var normalizedNextMonth = GetPeriodMonthStart(nextPeriodMonth);
+
+        await using var command = new NpgsqlCommand(@"
+INSERT INTO gl_accounting_periods (
+    company_id,
+    location_id,
+    period_month,
+    is_open,
+    note,
+    created_at,
+    updated_at)
+VALUES (
+    @company_id,
+    @location_id,
+    @period_month,
+    TRUE,
+    'AUTO_OPENED_NEXT_PERIOD',
+    NOW(),
+    NOW())
+ON CONFLICT (company_id, location_id, period_month) DO NOTHING;", connection, transaction);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("period_month", normalizedNextMonth);
+        var affectedRows = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affectedRows > 0;
     }
 
     private static async Task<PostedZeroCostOutboundSummary> GetPostedZeroCostOutboundSummaryAsync(

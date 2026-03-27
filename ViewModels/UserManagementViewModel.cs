@@ -103,6 +103,10 @@ public sealed class PermissionModuleGroup : ViewModelBase
 
     public ObservableCollection<PermissionSubmoduleGroup> Submodules { get; init; } = new();
 
+    public ObservableCollection<RolePermissionMatrixColumn> MatrixColumns { get; } = new();
+
+    public ObservableCollection<RolePermissionMatrixRow> MatrixRows { get; } = new();
+
     public bool IsExpanded
     {
         get => _isExpanded;
@@ -122,6 +126,237 @@ public sealed class PermissionModuleGroup : ViewModelBase
     }
 }
 
+public sealed class RolePermissionMatrixColumn
+{
+    public string ActionCode { get; init; } = string.Empty;
+
+    public string Header { get; init; } = string.Empty;
+}
+
+public sealed class RolePermissionMatrixCell : ViewModelBase
+{
+    private readonly SelectableOption? _option;
+
+    public RolePermissionMatrixCell(string actionCode, SelectableOption? option)
+    {
+        ActionCode = actionCode;
+        _option = option;
+
+        if (_option is not null)
+        {
+            _option.PropertyChanged += OptionOnPropertyChanged;
+        }
+    }
+
+    public string ActionCode { get; }
+
+    public bool IsAvailable => _option is not null;
+
+    public bool IsSelected
+    {
+        get => _option?.IsSelected == true;
+        set
+        {
+            if (_option is null)
+            {
+                return;
+            }
+
+            _option.IsSelected = value;
+        }
+    }
+
+    public bool IsEnabled => _option?.IsEnabled == true;
+
+    public string Tooltip => _option?.Label ?? "Action tidak tersedia untuk submodul ini.";
+
+    private void OptionOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SelectableOption.IsSelected) or nameof(SelectableOption.IsEnabled))
+        {
+            OnPropertyChanged(nameof(IsSelected));
+            OnPropertyChanged(nameof(IsEnabled));
+            OnPropertyChanged(nameof(Tooltip));
+        }
+    }
+}
+
+public sealed class RolePermissionMatrixRow : ViewModelBase
+{
+    public string ModuleCode { get; init; } = string.Empty;
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public string SubmoduleCode { get; init; } = string.Empty;
+
+    public string SubmoduleName { get; init; } = string.Empty;
+
+    public PermissionSubmoduleGroup? SourceSubmodule { get; init; }
+
+    public Dictionary<string, RolePermissionMatrixCell> Cells { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public int SelectedActionsCount => Cells.Values.Count(cell => cell.IsAvailable && cell.IsSelected);
+
+    public int AvailableActionCount => Cells.Values.Count(cell => cell.IsAvailable);
+
+    public string SelectionSummary => $"{SelectedActionsCount}/{AvailableActionCount} dipilih";
+
+    public void AttachCell(string actionCode, RolePermissionMatrixCell cell)
+    {
+        Cells[actionCode] = cell;
+        cell.PropertyChanged += CellOnPropertyChanged;
+    }
+
+    private void CellOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(RolePermissionMatrixCell.IsSelected) or nameof(RolePermissionMatrixCell.IsAvailable))
+        {
+            OnPropertyChanged(nameof(SelectedActionsCount));
+            OnPropertyChanged(nameof(AvailableActionCount));
+            OnPropertyChanged(nameof(SelectionSummary));
+        }
+    }
+}
+
+public sealed class AccessAuditActionItem
+{
+    public string Label { get; init; } = string.Empty;
+
+    public string ActionCode { get; init; } = string.Empty;
+
+    public string GrantedByRole { get; init; } = string.Empty;
+}
+
+public sealed class AccessAuditMatrixColumn
+{
+    public string ActionCode { get; init; } = string.Empty;
+
+    public string Header { get; init; } = string.Empty;
+}
+
+public sealed class AccessAuditMatrixCell
+{
+    private readonly AccessAuditActionItem? _action;
+
+    public AccessAuditMatrixCell(string actionCode, AccessAuditActionItem? action)
+    {
+        ActionCode = actionCode;
+        _action = action;
+    }
+
+    public string ActionCode { get; }
+
+    public bool IsAvailable => _action is not null;
+
+    public string Label => _action?.Label ?? string.Empty;
+
+    public string GrantedByRole => _action?.GrantedByRole ?? string.Empty;
+
+    public string Tooltip => _action is null
+        ? "Action tidak tersedia untuk submodul ini."
+        : $"{Label} ({ActionCode})\nDari role: {GrantedByRole}";
+}
+
+public sealed class AccessAuditMatrixRow
+{
+    public string ModuleCode { get; init; } = string.Empty;
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public string SubmoduleCode { get; init; } = string.Empty;
+
+    public string SubmoduleName { get; init; } = string.Empty;
+
+    public Dictionary<string, AccessAuditMatrixCell> Cells { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public int AvailableActionCount => Cells.Values.Count(cell => cell.IsAvailable);
+
+    public string AccessSummary => $"{AvailableActionCount} akses efektif";
+
+    public void AttachCell(string actionCode, AccessAuditMatrixCell cell)
+    {
+        Cells[actionCode] = cell;
+    }
+}
+
+public sealed class AccessAuditSubmoduleGroup : ViewModelBase
+{
+    private bool _isExpanded = true;
+
+    public string ModuleCode { get; init; } = string.Empty;
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public string SubmoduleCode { get; init; } = string.Empty;
+
+    public string SubmoduleName { get; init; } = string.Empty;
+
+    public ObservableCollection<AccessAuditActionItem> Actions { get; init; } = new();
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+
+    public int ActionCount => Actions.Count;
+}
+
+public sealed class AccessAuditModuleGroup : ViewModelBase
+{
+    private bool _isExpanded = true;
+
+    public string ModuleCode { get; init; } = string.Empty;
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public ObservableCollection<AccessAuditSubmoduleGroup> Submodules { get; init; } = new();
+
+    public ObservableCollection<AccessAuditMatrixColumn> MatrixColumns { get; } = new();
+
+    public ObservableCollection<AccessAuditMatrixRow> MatrixRows { get; } = new();
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+
+    public int ActionCount => Submodules.Sum(x => x.ActionCount);
+}
+
+public sealed class RoleImpactPreviewItem
+{
+    public bool IsAdded { get; init; }
+
+    public string ModuleName { get; init; } = string.Empty;
+
+    public string SubmoduleName { get; init; } = string.Empty;
+
+    public string ActionCode { get; init; } = string.Empty;
+
+    public string ActionName { get; init; } = string.Empty;
+
+    public string Label { get; init; } = string.Empty;
+
+    public string ImpactSummary { get; init; } = string.Empty;
+
+    public string ChangeLabel => IsAdded ? "Ditambahkan" : "Dicabut";
+}
+
+public sealed class RoleComparisonGridRow
+{
+    public string ModuleName { get; init; } = string.Empty;
+
+    public string SubmoduleName { get; init; } = string.Empty;
+
+    public string ActionCode { get; init; } = string.Empty;
+
+    public string ActionName { get; init; } = string.Empty;
+
+    public string Status { get; init; } = string.Empty;
+}
+
 public sealed class UserManagementViewModel : ViewModelBase
 {
     private readonly IAccessControlService _accessControlService;
@@ -132,7 +367,11 @@ public sealed class UserManagementViewModel : ViewModelBase
     private readonly Dictionary<long, HashSet<long>> _roleScopeMap = new();
     private readonly Dictionary<long, HashSet<long>> _userCompanyMap = new();
     private readonly Dictionary<long, HashSet<long>> _userLocationMap = new();
+    private readonly Dictionary<long, UserEffectiveAccessDetail> _userEffectiveAccessMap = new();
+    private readonly Dictionary<long, RoleAuditDetail> _roleAuditMap = new();
 
+    private string _userSearchText = string.Empty;
+    private string _userAuditPermissionSearchText = string.Empty;
     private ManagedUser? _selectedUser;
     private ManagedRole? _selectedRole;
     private ManagedCompany? _selectedCompany;
@@ -162,9 +401,19 @@ public sealed class UserManagementViewModel : ViewModelBase
     private bool _isRoleEditorDirty;
     private bool _suppressRoleEditorDirtyTracking;
     private bool _isRoleSelectionInternalChange;
+    private long? _selectedComparisonRoleId;
+    private int _selectedUserCompanyAccessCount;
+    private int _selectedUserLocationAccessCount;
+    private int _selectedUserEffectivePermissionCount;
+    private int _selectedUserEffectiveModuleCount;
     private int _selectedRolePermissionCount;
     private int _visibleRolePermissionCount;
     private int _selectedRoleAssignedUserCount;
+    private int _roleImpactAddedPermissionCount;
+    private int _roleImpactRemovedPermissionCount;
+    private int _roleComparisonSelectedOnlyCount;
+    private int _roleComparisonReferenceOnlyCount;
+    private int _roleComparisonSharedCount;
     private RoleEditorSnapshot? _roleEditorSnapshot;
     private bool _suppressInventoryCostingAutoLoad;
     private bool _suppressDefaultSelectionSync;
@@ -196,6 +445,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         _canManageMasterCompanySetting = canManageMasterCompanySetting;
 
         Users = new ObservableCollection<ManagedUser>();
+        FilteredUsers = new ObservableCollection<ManagedUser>();
         Roles = new ObservableCollection<ManagedRole>();
         AccessScopes = new ObservableCollection<ManagedAccessScope>();
         Companies = new ObservableCollection<ManagedCompany>();
@@ -212,6 +462,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         });
 
         UserRoleOptions = new ObservableCollection<SelectableOption>();
+        RoleComparisonOptions = new ObservableCollection<SelectableOption>();
         RoleScopeOptions = new ObservableCollection<SelectableOption>();
         UserCompanyOptions = new ObservableCollection<SelectableOption>();
         UserLocationOptions = new ObservableCollection<SelectableOption>();
@@ -219,7 +470,15 @@ public sealed class UserManagementViewModel : ViewModelBase
         UserDefaultLocationOptions = new ObservableCollection<ManagedLocation>();
         LocationTypeOptions = new ObservableCollection<string>(new[] { "ESTATE", "MILL", "OFFICE" });
         RolePermissionModules = new ObservableCollection<PermissionModuleGroup>();
+        UserAuditPermissionModules = new ObservableCollection<AccessAuditModuleGroup>();
         FilteredRoles = new ObservableCollection<ManagedRole>();
+        UserAuditCompanyAccessItems = new ObservableCollection<string>();
+        UserAuditLocationAccessItems = new ObservableCollection<string>();
+        SelectedRoleAssignedUsers = new ObservableCollection<ManagedUser>();
+        RoleImpactPreviewItems = new ObservableCollection<RoleImpactPreviewItem>();
+        RoleComparisonRows = new ObservableCollection<RoleComparisonGridRow>();
+        RoleComparisonOnlyInSelected = new ObservableCollection<string>();
+        RoleComparisonOnlyInReference = new ObservableCollection<string>();
 
         RefreshCommand = new RelayCommand(() => _ = LoadDataAsync());
         NewUserCommand = new RelayCommand(NewUser);
@@ -258,6 +517,8 @@ public sealed class UserManagementViewModel : ViewModelBase
 
     public ObservableCollection<ManagedUser> Users { get; }
 
+    public ObservableCollection<ManagedUser> FilteredUsers { get; }
+
     public ObservableCollection<ManagedRole> Roles { get; }
 
     public ObservableCollection<ManagedAccessScope> AccessScopes { get; }
@@ -278,6 +539,8 @@ public sealed class UserManagementViewModel : ViewModelBase
 
     public ObservableCollection<SelectableOption> UserRoleOptions { get; }
 
+    public ObservableCollection<SelectableOption> RoleComparisonOptions { get; }
+
     public ObservableCollection<SelectableOption> RoleScopeOptions { get; }
 
     public ObservableCollection<SelectableOption> UserCompanyOptions { get; }
@@ -292,7 +555,23 @@ public sealed class UserManagementViewModel : ViewModelBase
 
     public ObservableCollection<PermissionModuleGroup> RolePermissionModules { get; }
 
+    public ObservableCollection<AccessAuditModuleGroup> UserAuditPermissionModules { get; }
+
     public ObservableCollection<ManagedRole> FilteredRoles { get; }
+
+    public ObservableCollection<string> UserAuditCompanyAccessItems { get; }
+
+    public ObservableCollection<string> UserAuditLocationAccessItems { get; }
+
+    public ObservableCollection<ManagedUser> SelectedRoleAssignedUsers { get; }
+
+    public ObservableCollection<RoleImpactPreviewItem> RoleImpactPreviewItems { get; }
+
+    public ObservableCollection<RoleComparisonGridRow> RoleComparisonRows { get; }
+
+    public ObservableCollection<string> RoleComparisonOnlyInSelected { get; }
+
+    public ObservableCollection<string> RoleComparisonOnlyInReference { get; }
 
     public ICommand RefreshCommand { get; }
 
@@ -368,6 +647,34 @@ public sealed class UserManagementViewModel : ViewModelBase
 
     public int TotalUsersCount => Users.Count;
 
+    public string UserSearchText
+    {
+        get => _userSearchText;
+        set
+        {
+            if (!SetProperty(ref _userSearchText, value))
+            {
+                return;
+            }
+
+            FilterUsers();
+        }
+    }
+
+    public string UserAuditPermissionSearchText
+    {
+        get => _userAuditPermissionSearchText;
+        set
+        {
+            if (!SetProperty(ref _userAuditPermissionSearchText, value))
+            {
+                return;
+            }
+
+            BuildUserAuditPermissionTree();
+        }
+    }
+
     public string RoleSearchText
     {
         get => _roleSearchText;
@@ -427,6 +734,30 @@ public sealed class UserManagementViewModel : ViewModelBase
         private set => SetProperty(ref _selectedRolePermissionCount, value);
     }
 
+    public int SelectedUserCompanyAccessCount
+    {
+        get => _selectedUserCompanyAccessCount;
+        private set => SetProperty(ref _selectedUserCompanyAccessCount, value);
+    }
+
+    public int SelectedUserLocationAccessCount
+    {
+        get => _selectedUserLocationAccessCount;
+        private set => SetProperty(ref _selectedUserLocationAccessCount, value);
+    }
+
+    public int SelectedUserEffectivePermissionCount
+    {
+        get => _selectedUserEffectivePermissionCount;
+        private set => SetProperty(ref _selectedUserEffectivePermissionCount, value);
+    }
+
+    public int SelectedUserEffectiveModuleCount
+    {
+        get => _selectedUserEffectiveModuleCount;
+        private set => SetProperty(ref _selectedUserEffectiveModuleCount, value);
+    }
+
     public int VisibleRolePermissionCount
     {
         get => _visibleRolePermissionCount;
@@ -439,10 +770,137 @@ public sealed class UserManagementViewModel : ViewModelBase
         private set => SetProperty(ref _selectedRoleAssignedUserCount, value);
     }
 
+    public int RoleImpactAddedPermissionCount
+    {
+        get => _roleImpactAddedPermissionCount;
+        private set => SetProperty(ref _roleImpactAddedPermissionCount, value);
+    }
+
+    public int RoleImpactRemovedPermissionCount
+    {
+        get => _roleImpactRemovedPermissionCount;
+        private set => SetProperty(ref _roleImpactRemovedPermissionCount, value);
+    }
+
+    public int RoleComparisonSelectedOnlyCount
+    {
+        get => _roleComparisonSelectedOnlyCount;
+        private set => SetProperty(ref _roleComparisonSelectedOnlyCount, value);
+    }
+
+    public int RoleComparisonReferenceOnlyCount
+    {
+        get => _roleComparisonReferenceOnlyCount;
+        private set => SetProperty(ref _roleComparisonReferenceOnlyCount, value);
+    }
+
+    public int RoleComparisonSharedCount
+    {
+        get => _roleComparisonSharedCount;
+        private set => SetProperty(ref _roleComparisonSharedCount, value);
+    }
+
+    public long? SelectedComparisonRoleId
+    {
+        get => _selectedComparisonRoleId;
+        set
+        {
+            if (!SetProperty(ref _selectedComparisonRoleId, value))
+            {
+                return;
+            }
+
+            UpdateRoleComparison();
+            OnPropertyChanged(nameof(HasSelectedComparisonRole));
+            OnPropertyChanged(nameof(RoleComparisonSummary));
+        }
+    }
+
     public string RoleEditorDirtyMessage =>
         IsRoleEditorDirty
             ? "Ada perubahan role yang belum disimpan."
             : "Semua perubahan role sudah tersimpan.";
+
+    public bool HasSelectedUserAudit => SelectedUser is not null;
+
+    public bool HasRoleImpactChanges => RoleImpactAddedPermissionCount > 0 || RoleImpactRemovedPermissionCount > 0;
+
+    public bool HasSelectedComparisonRole => SelectedComparisonRoleId.HasValue && SelectedComparisonRoleId.Value > 0;
+
+    public string SelectedUserRoleAuditLabel
+    {
+        get
+        {
+            if (!SelectedUserRoleId.HasValue)
+            {
+                return "-";
+            }
+
+            var role = Roles.FirstOrDefault(x => x.Id == SelectedUserRoleId.Value);
+            return role is null ? "-" : $"{role.Code} - {role.Name}";
+        }
+    }
+
+    public string SelectedUserDefaultContextSummary
+    {
+        get
+        {
+            if (SelectedUser is null)
+            {
+                return "-";
+            }
+
+            if (IsSelectedUserSuperRole)
+            {
+                return "Semua company dan lokasi aktif tersedia untuk role ini.";
+            }
+
+            var company = UserDefaultCompanyOptions.FirstOrDefault(x => x.Id == SelectedUserDefaultCompanyId);
+            var location = UserDefaultLocationOptions.FirstOrDefault(x => x.Id == SelectedUserDefaultLocationId);
+
+            var companyLabel = company is null ? SelectedUser.DefaultCompanyDisplay : $"{company.Code} - {company.Name}";
+            var locationLabel = location is null ? SelectedUser.DefaultLocationDisplay : $"{location.Code} - {location.Name}";
+
+            return $"{companyLabel} • {locationLabel}";
+        }
+    }
+
+    public string SelectedUserAccessGovernanceMessage => IsSelectedUserSuperRole
+        ? "SUPER_ADMIN mewarisi semua permission aktif dan tidak dibatasi company/lokasi."
+        : "Permission efektif selalu mengikuti role yang dipilih. Perbaikan akses aksi dilakukan dari panel role.";
+
+    public string RoleImpactSummary
+    {
+        get
+        {
+            if (SelectedRole is null)
+            {
+                return "Pilih role untuk melihat dampak ke pengguna.";
+            }
+
+            if (!HasRoleImpactChanges)
+            {
+                return SelectedRoleAssignedUsers.Count == 0
+                    ? "Belum ada pengguna yang memakai role ini."
+                    : $"Perubahan saat ini belum mengubah permission tersimpan untuk {SelectedRoleAssignedUsers.Count} pengguna.";
+            }
+
+            return $"{SelectedRoleAssignedUsers.Count} pengguna akan terdampak. {RoleImpactAddedPermissionCount} izin ditambah, {RoleImpactRemovedPermissionCount} izin dicabut.";
+        }
+    }
+
+    public string RoleComparisonSummary
+    {
+        get
+        {
+            if (!HasSelectedComparisonRole)
+            {
+                return "Pilih role pembanding untuk melihat perbedaan permission.";
+            }
+
+            return $"{RoleComparisonSharedCount} izin sama, {RoleComparisonSelectedOnlyCount} hanya di role aktif, {RoleComparisonReferenceOnlyCount} hanya di role pembanding.";
+        }
+    }
 
     public ManagedUser? SelectedUser
     {
@@ -457,6 +915,7 @@ public sealed class UserManagementViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasSelectedUser));
             SyncUserRoleSelection();
             SyncUserOrganizationSelection();
+            RefreshSelectedUserAudit();
         }
     }
 
@@ -503,6 +962,8 @@ public sealed class UserManagementViewModel : ViewModelBase
             CaptureRoleEditorSnapshot();
             UpdateRolePermissionCounts();
             SelectedRoleAssignedUserCount = _selectedRole?.AssignedUserCount ?? 0;
+            BuildRoleComparisonOptions();
+            RefreshRoleImpactView();
             OnPropertyChanged(nameof(RoleEditorDirtyMessage));
         }
     }
@@ -519,6 +980,7 @@ public sealed class UserManagementViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(IsSelectedUserSuperRole));
             SyncUserOrganizationSelection();
+            RefreshSelectedUserAudit();
         }
     }
 
@@ -538,13 +1000,22 @@ public sealed class UserManagementViewModel : ViewModelBase
             }
 
             RefreshDefaultLocationOptions();
+            RefreshSelectedUserAudit();
         }
     }
 
     public long? SelectedUserDefaultLocationId
     {
         get => _selectedUserDefaultLocationId;
-        set => SetProperty(ref _selectedUserDefaultLocationId, value);
+        set
+        {
+            if (!SetProperty(ref _selectedUserDefaultLocationId, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SelectedUserDefaultContextSummary));
+        }
     }
 
     public ManagedCompany? SelectedCompany
@@ -879,14 +1350,19 @@ public sealed class UserManagementViewModel : ViewModelBase
             _roleScopeMap.Clear();
             _userCompanyMap.Clear();
             _userLocationMap.Clear();
+            _userEffectiveAccessMap.Clear();
+            _roleAuditMap.Clear();
 
             CopyMap(data.UserRoleIdsByUserId, _userRoleMap);
             CopyMap(data.RoleScopeIdsByRoleId, _roleScopeMap);
             CopyMap(data.UserCompanyIdsByUserId, _userCompanyMap);
             CopyMap(data.UserLocationIdsByUserId, _userLocationMap);
+            CopyValueMap(data.UserEffectiveAccessByUserId, _userEffectiveAccessMap);
+            CopyValueMap(data.RoleAuditByRoleId, _roleAuditMap);
             PopulateUserGridColumns(data.Users, data.Roles, data.AccessScopes);
 
             ReplaceCollection(Users, data.Users.OrderBy(x => x.Username));
+            ReplaceCollection(FilteredUsers, Users);
             ReplaceCollection(Roles, data.Roles.OrderBy(x => x.Code));
             ReplaceCollection(AccessScopes, data.AccessScopes);
             foreach (var role in Roles.Where(x => x.IsSuperRole))
@@ -1025,7 +1501,11 @@ public sealed class UserManagementViewModel : ViewModelBase
                 : null;
 
             RefreshFilteredLocations(selectedLocationId);
+            FilterUsers();
             FilterRoles();
+            BuildRoleComparisonOptions();
+            RefreshSelectedUserAudit();
+            RefreshRoleImpactView();
             UpdateRolePermissionCounts();
             IsRoleEditorDirty = false;
             OnPropertyChanged(nameof(RoleEditorDirtyMessage));
@@ -1914,6 +2394,8 @@ public sealed class UserManagementViewModel : ViewModelBase
 
         _suppressRoleEditorDirtyTracking = false;
         UpdateRolePermissionCounts();
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
     }
 
     private bool CanChangeSelectedRole()
@@ -1963,6 +2445,8 @@ public sealed class UserManagementViewModel : ViewModelBase
         IsRoleEditorDirty = false;
         BuildRolePermissionTree();
         UpdateRolePermissionCounts();
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
         OnPropertyChanged(nameof(RoleEditorDirtyMessage));
     }
 
@@ -1987,6 +2471,8 @@ public sealed class UserManagementViewModel : ViewModelBase
         };
 
         IsRoleEditorDirty = false;
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
         OnPropertyChanged(nameof(RoleEditorDirtyMessage));
     }
 
@@ -2065,11 +2551,18 @@ public sealed class UserManagementViewModel : ViewModelBase
 
         UpdateRolePermissionCounts();
         EvaluateRoleEditorDirty();
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
     }
 
     private void RoleScopeOptionOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(SelectableOption.IsSelected))
+        {
+            return;
+        }
+
+        if (_suppressRoleEditorDirtyTracking)
         {
             return;
         }
@@ -2084,6 +2577,8 @@ public sealed class UserManagementViewModel : ViewModelBase
         }
 
         EvaluateRoleEditorDirty();
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
     }
 
     private void DiscardRoleChanges()
@@ -2205,6 +2700,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         }
 
         ApplyUserLocationFilter();
+        RefreshSelectedUserAudit();
     }
 
     private void UserLocationOptionOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -2215,6 +2711,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         }
 
         RefreshDefaultLocationOptions();
+        RefreshSelectedUserAudit();
     }
 
     private void RefreshDefaultLocationOptions()
@@ -2318,6 +2815,32 @@ public sealed class UserManagementViewModel : ViewModelBase
         }
     }
 
+    private static void CopyValueMap<T>(Dictionary<long, T> source, Dictionary<long, T> target)
+        where T : class
+    {
+        target.Clear();
+        foreach (var entry in source)
+        {
+            target[entry.Key] = entry.Value;
+        }
+    }
+
+    private void FilterUsers()
+    {
+        var search = _userSearchText?.Trim() ?? string.Empty;
+        var source = string.IsNullOrEmpty(search)
+            ? Users
+            : new ObservableCollection<ManagedUser>(
+                Users.Where(user =>
+                    user.Username.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    user.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    user.Email.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    user.RoleDisplay.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    user.ModuleDisplay.Contains(search, StringComparison.OrdinalIgnoreCase)));
+
+        ReplaceCollection(FilteredUsers, source);
+    }
+
     private void FilterRoles()
     {
         var search = _roleSearchText?.Trim() ?? string.Empty;
@@ -2353,6 +2876,9 @@ public sealed class UserManagementViewModel : ViewModelBase
         {
             BuildRolePermissionTree();
         }
+
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
     }
 
     private void BuildRolePermissionTree()
@@ -2424,6 +2950,7 @@ public sealed class UserManagementViewModel : ViewModelBase
                 });
             }
 
+            PopulatePermissionMatrix(module);
             RolePermissionModules.Add(module);
         }
 
@@ -2449,6 +2976,9 @@ public sealed class UserManagementViewModel : ViewModelBase
         {
             BuildRolePermissionTree();
         }
+
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
     }
 
     private void SetAllSubmoduleActions(object? parameter, bool selected = true)
@@ -2466,6 +2996,56 @@ public sealed class UserManagementViewModel : ViewModelBase
         if (ShowSelectedRolePermissionsOnly)
         {
             BuildRolePermissionTree();
+        }
+
+        RefreshRoleImpactView();
+        UpdateRoleComparison();
+    }
+
+    private static void PopulatePermissionMatrix(PermissionModuleGroup module)
+    {
+        module.MatrixColumns.Clear();
+        module.MatrixRows.Clear();
+
+        var orderedActionColumns = module.Submodules
+            .SelectMany(submodule => submodule.Actions)
+            .GroupBy(action => action.ActionCode, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                ActionCode = group.First().ActionCode,
+                Order = group.Min(action => action.Id)
+            })
+            .OrderBy(entry => entry.Order)
+            .ToArray();
+
+        foreach (var actionColumn in orderedActionColumns)
+        {
+            module.MatrixColumns.Add(new RolePermissionMatrixColumn
+            {
+                ActionCode = actionColumn.ActionCode,
+                Header = actionColumn.ActionCode
+            });
+        }
+
+        foreach (var submodule in module.Submodules)
+        {
+            var row = new RolePermissionMatrixRow
+            {
+                ModuleCode = module.ModuleCode,
+                ModuleName = module.ModuleName,
+                SubmoduleCode = submodule.SubmoduleCode,
+                SubmoduleName = submodule.SubmoduleName,
+                SourceSubmodule = submodule
+            };
+
+            foreach (var column in module.MatrixColumns)
+            {
+                var option = submodule.Actions.FirstOrDefault(action =>
+                    string.Equals(action.ActionCode, column.ActionCode, StringComparison.OrdinalIgnoreCase));
+                row.AttachCell(column.ActionCode, new RolePermissionMatrixCell(column.ActionCode, option));
+            }
+
+            module.MatrixRows.Add(row);
         }
     }
 
@@ -2497,6 +3077,502 @@ public sealed class UserManagementViewModel : ViewModelBase
     {
         RolePermissionSearchText = string.Empty;
         ShowSelectedRolePermissionsOnly = false;
+    }
+
+    private void RefreshSelectedUserAudit()
+    {
+        if (SelectedUser is null)
+        {
+            ReplaceCollection(UserAuditCompanyAccessItems, Array.Empty<string>());
+            ReplaceCollection(UserAuditLocationAccessItems, Array.Empty<string>());
+            UserAuditPermissionModules.Clear();
+            SelectedUserCompanyAccessCount = 0;
+            SelectedUserLocationAccessCount = 0;
+            SelectedUserEffectivePermissionCount = 0;
+            SelectedUserEffectiveModuleCount = 0;
+            OnPropertyChanged(nameof(HasSelectedUserAudit));
+            OnPropertyChanged(nameof(SelectedUserRoleAuditLabel));
+            OnPropertyChanged(nameof(SelectedUserDefaultContextSummary));
+            OnPropertyChanged(nameof(SelectedUserAccessGovernanceMessage));
+            return;
+        }
+
+        if (TryApplyPersistedUserAuditDetail())
+        {
+            return;
+        }
+
+        var companyItems = IsSelectedUserSuperRole
+            ? Companies
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.Code)
+                .Select(x => $"{x.Code} - {x.Name}")
+            : UserCompanyOptions
+                .Where(x => x.IsSelected)
+                .OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Label);
+
+        var locationItems = IsSelectedUserSuperRole
+            ? Locations
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.CompanyCode, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+                .Select(x => $"{x.CompanyCode} • {x.Code} - {x.Name}")
+            : UserLocationOptions
+                .Where(x => x.IsSelected && x.IsEnabled)
+                .OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Label);
+
+        var normalizedCompanies = companyItems.ToArray();
+        var normalizedLocations = locationItems.ToArray();
+
+        ReplaceCollection(UserAuditCompanyAccessItems, normalizedCompanies);
+        ReplaceCollection(UserAuditLocationAccessItems, normalizedLocations);
+
+        SelectedUserCompanyAccessCount = normalizedCompanies.Length;
+        SelectedUserLocationAccessCount = normalizedLocations.Length;
+
+        BuildUserAuditPermissionTree();
+        OnPropertyChanged(nameof(SelectedUserDefaultContextSummary));
+        OnPropertyChanged(nameof(HasSelectedUserAudit));
+        OnPropertyChanged(nameof(SelectedUserRoleAuditLabel));
+        OnPropertyChanged(nameof(SelectedUserDefaultContextSummary));
+        OnPropertyChanged(nameof(SelectedUserAccessGovernanceMessage));
+    }
+
+    private void BuildUserAuditPermissionTree()
+    {
+        UserAuditPermissionModules.Clear();
+
+        if (SelectedUser is null || !SelectedUserRoleId.HasValue)
+        {
+            SelectedUserEffectivePermissionCount = 0;
+            SelectedUserEffectiveModuleCount = 0;
+            return;
+        }
+
+        var effectiveScopeIds = GetEffectiveScopeIdsForRole(SelectedUserRoleId.Value);
+        var keyword = _userAuditPermissionSearchText?.Trim() ?? string.Empty;
+        var roleLabel = SelectedUserRoleAuditLabel;
+
+        var scopedActions = AccessScopes
+            .Where(scope => effectiveScopeIds.Contains(scope.Id))
+            .Where(scope =>
+                string.IsNullOrWhiteSpace(keyword) ||
+                scope.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                scope.ActionCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                scope.ModuleName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                scope.SubmoduleName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                scope.ModuleCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                scope.SubmoduleCode.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(scope => scope.Id)
+            .ToArray();
+
+        var moduleGroups = scopedActions
+            .GroupBy(scope => $"{scope.ModuleCode}|{scope.ModuleName}", StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Min(item => item.Id));
+
+        foreach (var moduleGroup in moduleGroups)
+        {
+            var firstModule = moduleGroup.First();
+            var module = new AccessAuditModuleGroup
+            {
+                ModuleCode = firstModule.ModuleCode,
+                ModuleName = firstModule.ModuleName
+            };
+
+            var submoduleGroups = moduleGroup
+                .GroupBy(scope => $"{scope.SubmoduleCode}|{scope.SubmoduleName}", StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Min(item => item.Id));
+
+            foreach (var submoduleGroup in submoduleGroups)
+            {
+                var firstSubmodule = submoduleGroup.First();
+                module.Submodules.Add(new AccessAuditSubmoduleGroup
+                {
+                    ModuleCode = module.ModuleCode,
+                    ModuleName = module.ModuleName,
+                    SubmoduleCode = firstSubmodule.SubmoduleCode,
+                    SubmoduleName = firstSubmodule.SubmoduleName,
+                    Actions = new ObservableCollection<AccessAuditActionItem>(
+                        submoduleGroup.Select(scope => new AccessAuditActionItem
+                        {
+                            Label = string.IsNullOrWhiteSpace(scope.Name) ? scope.ActionCode : scope.Name,
+                            ActionCode = scope.ActionCode,
+                            GrantedByRole = roleLabel
+                        }))
+                });
+            }
+
+            PopulateAccessAuditMatrix(module);
+            UserAuditPermissionModules.Add(module);
+        }
+
+        SelectedUserEffectivePermissionCount = scopedActions.Length;
+        SelectedUserEffectiveModuleCount = UserAuditPermissionModules.Count;
+    }
+
+    private bool TryApplyPersistedUserAuditDetail()
+    {
+        if (SelectedUser is null ||
+            SelectedUser.Id <= 0 ||
+            !_userEffectiveAccessMap.TryGetValue(SelectedUser.Id, out var detail) ||
+            !DoesCurrentUserSelectionMatchDetail(detail))
+        {
+            return false;
+        }
+
+        ReplaceCollection(UserAuditCompanyAccessItems, detail.CompanyLabels);
+        ReplaceCollection(UserAuditLocationAccessItems, detail.LocationLabels);
+        SelectedUserCompanyAccessCount = detail.CompanyLabels.Count;
+        SelectedUserLocationAccessCount = detail.LocationLabels.Count;
+        BuildUserAuditPermissionTreeFromDetail(detail);
+        OnPropertyChanged(nameof(HasSelectedUserAudit));
+        OnPropertyChanged(nameof(SelectedUserRoleAuditLabel));
+        OnPropertyChanged(nameof(SelectedUserDefaultContextSummary));
+        OnPropertyChanged(nameof(SelectedUserAccessGovernanceMessage));
+        return true;
+    }
+
+    private bool DoesCurrentUserSelectionMatchDetail(UserEffectiveAccessDetail detail)
+    {
+        var selectedRoleId = SelectedUserRoleId ?? 0;
+        var detailRoleId = detail.RoleId ?? 0;
+        if (selectedRoleId != detailRoleId)
+        {
+            return false;
+        }
+
+        var companyIds = IsSelectedUserSuperRole
+            ? Companies.Where(x => x.IsActive).Select(x => x.Id).OrderBy(x => x).ToArray()
+            : UserCompanyOptions.Where(x => x.IsSelected).Select(x => x.Id).OrderBy(x => x).ToArray();
+        var locationIds = IsSelectedUserSuperRole
+            ? Locations.Where(x => x.IsActive).Select(x => x.Id).OrderBy(x => x).ToArray()
+            : UserLocationOptions.Where(x => x.IsSelected && x.IsEnabled).Select(x => x.Id).OrderBy(x => x).ToArray();
+
+        return companyIds.SequenceEqual(detail.CompanyIds.OrderBy(x => x)) &&
+               locationIds.SequenceEqual(detail.LocationIds.OrderBy(x => x));
+    }
+
+    private void BuildUserAuditPermissionTreeFromDetail(UserEffectiveAccessDetail detail)
+    {
+        UserAuditPermissionModules.Clear();
+
+        var keyword = _userAuditPermissionSearchText?.Trim() ?? string.Empty;
+        var modules = detail.Modules
+            .Select(module => new AccessAuditModuleGroup
+            {
+                ModuleCode = module.ModuleCode,
+                ModuleName = module.ModuleName,
+                Submodules = new ObservableCollection<AccessAuditSubmoduleGroup>(
+                    module.Submodules
+                        .Select(submodule => new AccessAuditSubmoduleGroup
+                        {
+                            ModuleCode = submodule.ModuleCode,
+                            ModuleName = submodule.ModuleName,
+                            SubmoduleCode = submodule.SubmoduleCode,
+                            SubmoduleName = submodule.SubmoduleName,
+                            Actions = new ObservableCollection<AccessAuditActionItem>(
+                                submodule.Actions
+                                    .Where(action =>
+                                        string.IsNullOrWhiteSpace(keyword) ||
+                                        action.Label.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                        action.ActionCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                        submodule.SubmoduleName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                        submodule.ModuleName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                        submodule.SubmoduleCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                                        submodule.ModuleCode.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                                    .Select(action => new AccessAuditActionItem
+                                    {
+                                        Label = action.Label,
+                                        ActionCode = action.ActionCode,
+                                        GrantedByRole = action.GrantedByRole
+                                    }))
+                        })
+                        .Where(submodule => submodule.Actions.Count > 0))
+            })
+            .Where(module => module.Submodules.Count > 0)
+            .ToArray();
+
+        foreach (var module in modules)
+        {
+            PopulateAccessAuditMatrix(module);
+        }
+
+        ReplaceCollection(UserAuditPermissionModules, modules);
+        SelectedUserEffectivePermissionCount = modules.Sum(module => module.Submodules.Sum(submodule => submodule.Actions.Count));
+        SelectedUserEffectiveModuleCount = modules.Length;
+    }
+
+    private static void PopulateAccessAuditMatrix(AccessAuditModuleGroup module)
+    {
+        module.MatrixColumns.Clear();
+        module.MatrixRows.Clear();
+
+        var orderedActionColumns = module.Submodules
+            .SelectMany(submodule => submodule.Actions)
+            .GroupBy(action => action.ActionCode, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(action => action.ActionCode, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var action in orderedActionColumns)
+        {
+            module.MatrixColumns.Add(new AccessAuditMatrixColumn
+            {
+                ActionCode = action.ActionCode,
+                Header = action.ActionCode
+            });
+        }
+
+        foreach (var submodule in module.Submodules)
+        {
+            var row = new AccessAuditMatrixRow
+            {
+                ModuleCode = module.ModuleCode,
+                ModuleName = module.ModuleName,
+                SubmoduleCode = submodule.SubmoduleCode,
+                SubmoduleName = submodule.SubmoduleName
+            };
+
+            foreach (var column in module.MatrixColumns)
+            {
+                var action = submodule.Actions.FirstOrDefault(item =>
+                    string.Equals(item.ActionCode, column.ActionCode, StringComparison.OrdinalIgnoreCase));
+                row.AttachCell(column.ActionCode, new AccessAuditMatrixCell(column.ActionCode, action));
+            }
+
+            module.MatrixRows.Add(row);
+        }
+    }
+
+    private void BuildRoleComparisonOptions()
+    {
+        var options = SelectedRole is null
+            ? Enumerable.Empty<SelectableOption>()
+            : Roles
+                .Where(role => role.Id > 0 && role.Id != SelectedRole.Id)
+                .OrderBy(role => role.Code, StringComparer.OrdinalIgnoreCase)
+                .Select(role => new SelectableOption
+                {
+                    Id = role.Id,
+                    Label = $"{role.Code} - {role.Name}"
+                });
+
+        ReplaceCollection(RoleComparisonOptions, options);
+
+        if (SelectedComparisonRoleId.HasValue &&
+            !RoleComparisonOptions.Any(option => option.Id == SelectedComparisonRoleId.Value))
+        {
+            SelectedComparisonRoleId = null;
+            return;
+        }
+
+        UpdateRoleComparison();
+    }
+
+    private void RefreshRoleImpactView()
+    {
+        if (SelectedRole is null)
+        {
+            ReplaceCollection(SelectedRoleAssignedUsers, Array.Empty<ManagedUser>());
+            ReplaceCollection(RoleImpactPreviewItems, Array.Empty<RoleImpactPreviewItem>());
+            SelectedRoleAssignedUserCount = 0;
+            RoleImpactAddedPermissionCount = 0;
+            RoleImpactRemovedPermissionCount = 0;
+            OnPropertyChanged(nameof(HasRoleImpactChanges));
+            OnPropertyChanged(nameof(RoleImpactSummary));
+            return;
+        }
+
+        var assignedUsers = _roleAuditMap.TryGetValue(SelectedRole.Id, out var auditDetail)
+            ? auditDetail.AssignedUsers
+                .OrderBy(user => user.Username, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : Users
+                .Where(user => _userRoleMap.TryGetValue(user.Id, out var roleIds) && roleIds.Contains(SelectedRole.Id))
+                .OrderBy(user => user.Username, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        ReplaceCollection(SelectedRoleAssignedUsers, assignedUsers);
+        SelectedRoleAssignedUserCount = assignedUsers.Length;
+
+        var baselineScopeIds = _roleAuditMap.TryGetValue(SelectedRole.Id, out auditDetail)
+            ? auditDetail.PersistedScopeIds.ToHashSet()
+            : _roleEditorSnapshot is not null && _roleEditorSnapshot.RoleId == SelectedRole.Id
+                ? _roleEditorSnapshot.SelectedScopeIds
+                : GetEffectiveScopeIdsForRole(SelectedRole.Id);
+        var currentScopeIds = GetSelectedRoleScopeIds();
+
+        var addedScopeIds = currentScopeIds.Except(baselineScopeIds).ToHashSet();
+        var removedScopeIds = baselineScopeIds.Except(currentScopeIds).ToHashSet();
+
+        RoleImpactAddedPermissionCount = addedScopeIds.Count;
+        RoleImpactRemovedPermissionCount = removedScopeIds.Count;
+
+        var scopeMap = AccessScopes.ToDictionary(scope => scope.Id);
+        var previews = new List<RoleImpactPreviewItem>();
+
+        foreach (var scopeId in addedScopeIds.OrderBy(id => id))
+        {
+            if (!scopeMap.TryGetValue(scopeId, out var scope))
+            {
+                continue;
+            }
+
+            previews.Add(new RoleImpactPreviewItem
+            {
+                IsAdded = true,
+                ModuleName = GetModuleDisplayLabel(scope),
+                SubmoduleName = GetSubmoduleDisplayLabel(scope),
+                ActionCode = scope.ActionCode,
+                ActionName = GetActionDisplayLabel(scope),
+                Label = BuildScopeDisplayLabel(scope),
+                ImpactSummary = assignedUsers.Length == 0
+                    ? "Tidak ada pengguna aktif yang terdampak saat ini."
+                    : $"{assignedUsers.Length} pengguna akan mendapatkan akses ini."
+            });
+        }
+
+        foreach (var scopeId in removedScopeIds.OrderBy(id => id))
+        {
+            if (!scopeMap.TryGetValue(scopeId, out var scope))
+            {
+                continue;
+            }
+
+            previews.Add(new RoleImpactPreviewItem
+            {
+                IsAdded = false,
+                ModuleName = GetModuleDisplayLabel(scope),
+                SubmoduleName = GetSubmoduleDisplayLabel(scope),
+                ActionCode = scope.ActionCode,
+                ActionName = GetActionDisplayLabel(scope),
+                Label = BuildScopeDisplayLabel(scope),
+                ImpactSummary = assignedUsers.Length == 0
+                    ? "Tidak ada pengguna aktif yang terdampak saat ini."
+                    : $"{assignedUsers.Length} pengguna akan kehilangan akses ini."
+            });
+        }
+
+        ReplaceCollection(RoleImpactPreviewItems, previews);
+        OnPropertyChanged(nameof(HasRoleImpactChanges));
+        OnPropertyChanged(nameof(RoleImpactSummary));
+    }
+
+    private void UpdateRoleComparison()
+    {
+        if (SelectedRole is null || !SelectedComparisonRoleId.HasValue)
+        {
+            ReplaceCollection(RoleComparisonRows, Array.Empty<RoleComparisonGridRow>());
+            ReplaceCollection(RoleComparisonOnlyInSelected, Array.Empty<string>());
+            ReplaceCollection(RoleComparisonOnlyInReference, Array.Empty<string>());
+            RoleComparisonSelectedOnlyCount = 0;
+            RoleComparisonReferenceOnlyCount = 0;
+            RoleComparisonSharedCount = 0;
+            OnPropertyChanged(nameof(RoleComparisonSummary));
+            return;
+        }
+
+        var currentScopeIds = GetSelectedRoleScopeIds();
+        var referenceScopeIds = _roleAuditMap.TryGetValue(SelectedComparisonRoleId.Value, out var comparisonAudit)
+            ? comparisonAudit.PersistedScopeIds.ToHashSet()
+            : GetEffectiveScopeIdsForRole(SelectedComparisonRoleId.Value);
+        var onlySelected = currentScopeIds.Except(referenceScopeIds).ToHashSet();
+        var onlyReference = referenceScopeIds.Except(currentScopeIds).ToHashSet();
+        var shared = currentScopeIds.Intersect(referenceScopeIds).Count();
+        var scopeMap = AccessScopes.ToDictionary(scope => scope.Id);
+        var comparisonRows = currentScopeIds
+            .Union(referenceScopeIds)
+            .OrderBy(id => id)
+            .Select(id =>
+            {
+                var status = currentScopeIds.Contains(id) && referenceScopeIds.Contains(id)
+                    ? "Sama"
+                    : currentScopeIds.Contains(id)
+                        ? "Hanya role aktif"
+                        : "Hanya role pembanding";
+
+                if (!scopeMap.TryGetValue(id, out var scope))
+                {
+                    return new RoleComparisonGridRow
+                    {
+                        ModuleName = "-",
+                        SubmoduleName = "-",
+                        ActionCode = id.ToString(),
+                        ActionName = $"Scope {id}",
+                        Status = status
+                    };
+                }
+
+                return CreateRoleComparisonGridRow(scope, status);
+            });
+
+        ReplaceCollection(
+            RoleComparisonOnlyInSelected,
+            onlySelected
+                .OrderBy(id => id)
+                .Select(id => scopeMap.TryGetValue(id, out var scope) ? BuildScopeDisplayLabel(scope) : $"Scope {id}"));
+
+        ReplaceCollection(
+            RoleComparisonOnlyInReference,
+            onlyReference
+                .OrderBy(id => id)
+                .Select(id => scopeMap.TryGetValue(id, out var scope) ? BuildScopeDisplayLabel(scope) : $"Scope {id}"));
+        ReplaceCollection(RoleComparisonRows, comparisonRows);
+
+        RoleComparisonSelectedOnlyCount = onlySelected.Count;
+        RoleComparisonReferenceOnlyCount = onlyReference.Count;
+        RoleComparisonSharedCount = shared;
+        OnPropertyChanged(nameof(RoleComparisonSummary));
+    }
+
+    private HashSet<long> GetEffectiveScopeIdsForRole(long roleId)
+    {
+        var role = Roles.FirstOrDefault(x => x.Id == roleId);
+        if (role?.IsSuperRole == true)
+        {
+            return AccessScopes.Select(scope => scope.Id).ToHashSet();
+        }
+
+        return _roleScopeMap.TryGetValue(roleId, out var scopeIds)
+            ? new HashSet<long>(scopeIds)
+            : new HashSet<long>();
+    }
+
+    private static string BuildScopeDisplayLabel(ManagedAccessScope scope)
+    {
+        var moduleLabel = GetModuleDisplayLabel(scope);
+        var submoduleLabel = GetSubmoduleDisplayLabel(scope);
+        var actionLabel = GetActionDisplayLabel(scope);
+        return $"{moduleLabel} / {submoduleLabel} / {actionLabel}";
+    }
+
+    private static string GetModuleDisplayLabel(ManagedAccessScope scope)
+    {
+        return string.IsNullOrWhiteSpace(scope.ModuleName) ? scope.ModuleCode : scope.ModuleName;
+    }
+
+    private static string GetSubmoduleDisplayLabel(ManagedAccessScope scope)
+    {
+        return string.IsNullOrWhiteSpace(scope.SubmoduleName) ? scope.SubmoduleCode : scope.SubmoduleName;
+    }
+
+    private static string GetActionDisplayLabel(ManagedAccessScope scope)
+    {
+        return string.IsNullOrWhiteSpace(scope.Name) ? scope.ActionCode : scope.Name;
+    }
+
+    private static RoleComparisonGridRow CreateRoleComparisonGridRow(ManagedAccessScope scope, string status)
+    {
+        return new RoleComparisonGridRow
+        {
+            ModuleName = GetModuleDisplayLabel(scope),
+            SubmoduleName = GetSubmoduleDisplayLabel(scope),
+            ActionCode = scope.ActionCode,
+            ActionName = GetActionDisplayLabel(scope),
+            Status = status
+        };
     }
 
     private void PopulateUserGridColumns(

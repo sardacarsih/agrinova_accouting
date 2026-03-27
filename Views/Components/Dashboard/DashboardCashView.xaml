@@ -1,0 +1,88 @@
+<UserControl x:Class="Accounting.Views.Components.Dashboard.DashboardCashView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Border Style="{StaticResource DashboardSectionCardStyle}">
+        <StackPanel>
+            <TextBlock Style="{StaticResource DashboardSectionTitleTextStyle}" Text="Cash &amp; Bank Monitoring" />
+            <TextBlock Style="{StaticResource DashboardSectionSubtitleTextStyle}" Text="Saldo, arus masuk, dan arus keluar kas &amp; bank." />
+
+            <WrapPanel Margin="0,14,0,0">
+                <Border Style="{StaticResource SummaryCardStyle}" Width="180" Margin="0,0,10,10">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="Total Balance" />
+                        <TextBlock Style="{StaticResource DashboardMiniValueTextStyle}" Text="{Binding Cash.TotalBalance, StringFormat=N0}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SummaryCardStyle}" Width="160" Margin="0,0,10,10">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="{Binding CashTodayInflowLabel}" />
+                        <TextBlock Style="{StaticResource DashboardMiniValueTextStyle}" Foreground="{DynamicResource Brush.Success}" Text="{Binding Cash.TodayInflow, StringFormat=N0}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SummaryCardStyle}" Width="160" Margin="0,0,10,10">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="{Binding CashTodayOutflowLabel}" />
+                        <TextBlock Style="{StaticResource DashboardMiniValueTextStyle}" Foreground="{DynamicResource Brush.Error}" Text="{Binding Cash.TodayOutflow, StringFormat=N0}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SummaryCardStyle}" Width="160" Margin="0,0,10,10">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="{Binding CashPeriodInflowLabel}" />
+                        <TextBlock Style="{StaticResource DashboardMiniValueTextStyle}" Foreground="{DynamicResource Brush.Success}" Text="{Binding Cash.PeriodInflow, StringFormat=N0}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SummaryCardStyle}" Width="160" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetaCaptionTextStyle}" Text="{Binding CashPeriodOutflowLabel}" />
+                        <TextBlock Style="{StaticResource DashboardMiniValueTextStyle}" Foreground="{DynamicResource Brush.Error}" Text="{Binding Cash.PeriodOutflow, StringFormat=N0}" />
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
+
+            <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Cash.Accounts}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,8" Padding="10" Background="{DynamicResource Brush.SurfaceAlt}" CornerRadius="10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock>
+                                    <TextBlock.Inlines>
+                                        <Run Text="{Binding AccountCode}" />
+                                        <Run Text=" - " />
+                                        <Run Text="{Binding AccountName}" />
+                                    </TextBlock.Inlines>
+                                </TextBlock>
+                                <TextBlock Grid.Column="1" Text="{Binding EndingBalance, StringFormat=N0}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Margin="0,8,0,0"
+                    Padding="14"
+                    CornerRadius="12"
+                    Background="{DynamicResource Brush.SurfaceAlt}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="1">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Cash.Accounts.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                           Text="Belum ada akun kas atau bank pada filter aktif." />
+            </Border>
+        </StackPanel>
+    </Border>
+</UserControl>

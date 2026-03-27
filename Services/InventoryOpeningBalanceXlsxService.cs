@@ -28,8 +28,8 @@ public sealed class InventoryOpeningBalanceXlsxService
 
             var rows = new List<List<object?>>
             {
-                new() { "CompanyCode", "LocationCode", "ItemCode", "Qty", "UnitCost", "CutoffDate", "ReferenceNo", "Notes" },
-                new() { "AGRINOVA", "HO", "RAW-001", 1250m, 10000m, DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), "OB-20260331", "Saldo awal cutover" }
+                new() { "CompanyCode", "LocationCode", "WarehouseCode", "ItemCode", "Qty", "UnitCost", "CutoffDate", "ReferenceNo", "Notes" },
+                new() { "AGRINOVA", "HO", "GDG-UTAMA", "RAW-001", 1250m, 10000m, DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), "OB-20260331", "Saldo awal cutover" }
             };
 
             using var archive = ZipFile.Open(filePath, ZipArchiveMode.Create);
@@ -145,6 +145,7 @@ public sealed class InventoryOpeningBalanceXlsxService
 
         var columnMap = BuildColumnMap(rows[0]);
         if (!columnMap.TryGetValue("LOCATIONCODE", out var locationCodeCol) ||
+            !columnMap.TryGetValue("WAREHOUSECODE", out var warehouseCodeCol) ||
             !columnMap.TryGetValue("ITEMCODE", out var itemCodeCol) ||
             !columnMap.TryGetValue("QTY", out var qtyCol) ||
             !columnMap.TryGetValue("UNITCOST", out var unitCostCol) ||
@@ -154,7 +155,7 @@ public sealed class InventoryOpeningBalanceXlsxService
             {
                 SheetName = "OpeningBalance",
                 RowNumber = 1,
-                Message = "Kolom wajib: LocationCode, ItemCode, Qty, UnitCost, CutoffDate."
+                Message = "Kolom wajib: LocationCode, WarehouseCode, ItemCode, Qty, UnitCost, CutoffDate."
             });
             return output;
         }
@@ -162,7 +163,7 @@ public sealed class InventoryOpeningBalanceXlsxService
         var companyCodeCol = GetColumnIndex(columnMap, "COMPANYCODE");
         var referenceNoCol = GetFirstColumnIndex(columnMap, "REFERENCENO", "REFERENCE");
         var notesCol = GetColumnIndex(columnMap, "NOTES");
-        var uniqueLocationItemPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var uniqueLocationWarehouseItemPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 1; i < rows.Count; i++)
         {
@@ -171,6 +172,7 @@ public sealed class InventoryOpeningBalanceXlsxService
 
             var companyCode = GetCell(row, companyCodeCol).ToUpperInvariant();
             var locationCode = GetCell(row, locationCodeCol).ToUpperInvariant();
+            var warehouseCode = GetCell(row, warehouseCodeCol).ToUpperInvariant();
             var itemCode = GetCell(row, itemCodeCol).ToUpperInvariant();
             var qtyText = GetCell(row, qtyCol);
             var unitCostText = GetCell(row, unitCostCol);
@@ -180,6 +182,7 @@ public sealed class InventoryOpeningBalanceXlsxService
 
             if (string.IsNullOrWhiteSpace(companyCode) &&
                 string.IsNullOrWhiteSpace(locationCode) &&
+                string.IsNullOrWhiteSpace(warehouseCode) &&
                 string.IsNullOrWhiteSpace(itemCode) &&
                 string.IsNullOrWhiteSpace(qtyText) &&
                 string.IsNullOrWhiteSpace(unitCostText) &&
@@ -190,13 +193,15 @@ public sealed class InventoryOpeningBalanceXlsxService
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(locationCode) || string.IsNullOrWhiteSpace(itemCode))
+            if (string.IsNullOrWhiteSpace(locationCode) ||
+                string.IsNullOrWhiteSpace(warehouseCode) ||
+                string.IsNullOrWhiteSpace(itemCode))
             {
                 errors.Add(new InventoryImportError
                 {
                     SheetName = "OpeningBalance",
                     RowNumber = rowNumber,
-                    Message = "LocationCode dan ItemCode wajib diisi."
+                    Message = "LocationCode, WarehouseCode, dan ItemCode wajib diisi."
                 });
                 continue;
             }
@@ -234,14 +239,14 @@ public sealed class InventoryOpeningBalanceXlsxService
                 continue;
             }
 
-            var duplicateKey = $"{locationCode}|{itemCode}";
-            if (!uniqueLocationItemPairs.Add(duplicateKey))
+            var duplicateKey = $"{locationCode}|{warehouseCode}|{itemCode}";
+            if (!uniqueLocationWarehouseItemPairs.Add(duplicateKey))
             {
                 errors.Add(new InventoryImportError
                 {
                     SheetName = "OpeningBalance",
                     RowNumber = rowNumber,
-                    Message = $"Duplikat item pada lokasi yang sama: {locationCode}/{itemCode}."
+                    Message = $"Duplikat item pada lokasi/gudang yang sama: {locationCode}/{warehouseCode}/{itemCode}."
                 });
                 continue;
             }
@@ -251,6 +256,7 @@ public sealed class InventoryOpeningBalanceXlsxService
                 RowNumber = rowNumber,
                 CompanyCode = companyCode,
                 LocationCode = locationCode,
+                WarehouseCode = warehouseCode,
                 ItemCode = itemCode,
                 Qty = Math.Round(qty, 4),
                 UnitCost = Math.Round(unitCost, 4),

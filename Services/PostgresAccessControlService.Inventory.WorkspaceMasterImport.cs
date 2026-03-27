@@ -106,13 +106,16 @@ ORDER BY i.item_code;", connection);
         // Load stock entries
         await using var stockCommand = new NpgsqlCommand(@"
 SELECT s.id, s.item_id, i.item_code, i.item_name, i.uom,
-       l.code AS location_code, l.name AS location_name, s.qty
+       l.code AS location_code, l.name AS location_name,
+       s.warehouse_id, COALESCE(w.warehouse_name, '') AS warehouse_name,
+       s.qty
 FROM inv_stock s
 JOIN inv_items i ON i.id = s.item_id
 JOIN org_locations l ON l.id = s.location_id
+LEFT JOIN inv_warehouses w ON w.id = s.warehouse_id
 WHERE s.company_id = @company_id
   AND s.location_id = @location_id
-ORDER BY i.item_code, l.code;", connection);
+ORDER BY i.item_code, w.warehouse_name, l.code;", connection);
         stockCommand.Parameters.AddWithValue("company_id", companyId);
         stockCommand.Parameters.AddWithValue("location_id", locationId);
 
@@ -128,7 +131,9 @@ ORDER BY i.item_code, l.code;", connection);
                 Uom = stockReader.GetString(4),
                 LocationCode = stockReader.GetString(5),
                 LocationName = stockReader.GetString(6),
-                Qty = stockReader.GetDecimal(7)
+                WarehouseId = stockReader.IsDBNull(7) ? null : stockReader.GetInt64(7),
+                WarehouseName = stockReader.GetString(8),
+                Qty = stockReader.GetDecimal(9)
             });
         }
 
@@ -1226,10 +1231,11 @@ WHERE id = @id
 
             var errors = new List<InventoryImportError>();
             var normalizedRows = new List<OpeningBalanceImportRowBuffer>();
-            var uniqueLocationItemPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var uniqueLocationWarehouseItemPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in bundle.Rows)
             {
                 var locationCode = (row.LocationCode ?? string.Empty).Trim().ToUpperInvariant();
+                var warehouseCode = (row.WarehouseCode ?? string.Empty).Trim().ToUpperInvariant();
                 var itemCode = (row.ItemCode ?? string.Empty).Trim().ToUpperInvariant();
                 var sourceCompanyCode = (row.CompanyCode ?? string.Empty).Trim().ToUpperInvariant();
                 var cutoffDate = row.CutoffDate.Date;
@@ -1257,6 +1263,17 @@ WHERE id = @id
                         SheetName = "OpeningBalance",
                         RowNumber = rowNumber,
                         Message = "ItemCode wajib diisi."
+                    });
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(warehouseCode))
+                {
+                    errors.Add(new InventoryImportError
+                    {
+                        SheetName = "OpeningBalance",
+                        RowNumber = rowNumber,
+                        Message = "WarehouseCode wajib diisi."
                     });
                     continue;
                 }
@@ -1311,14 +1328,14 @@ WHERE id = @id
                     continue;
                 }
 
-                var duplicateKey = $"{locationCode}|{itemCode}";
-                if (!uniqueLocationItemPairs.Add(duplicateKey))
+                var duplicateKey = $"{locationCode}|{warehouseCode}|{itemCode}";
+                if (!uniqueLocationWarehouseItemPairs.Add(duplicateKey))
                 {
                     errors.Add(new InventoryImportError
                     {
                         SheetName = "OpeningBalance",
                         RowNumber = rowNumber,
-                        Message = $"Duplikat item pada lokasi yang sama: {locationCode}/{itemCode}."
+                        Message = $"Duplikat item pada lokasi/gudang yang sama: {locationCode}/{warehouseCode}/{itemCode}."
                     });
                     continue;
                 }
@@ -1327,6 +1344,7 @@ WHERE id = @id
                 {
                     RowNumber = rowNumber,
                     LocationCode = locationCode,
+                    WarehouseCode = warehouseCode,
                     ItemCode = itemCode,
                     Qty = qty,
                     UnitCost = unitCost,
@@ -1388,6 +1406,29 @@ WHERE is_active = TRUE
                 }
             }
 
+            var warehouseCodes = normalizedRows
+                .Select(x => x.WarehouseCode)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var warehouseByCode = new Dictionary<string, (long Id, long? LocationId)>(StringComparer.OrdinalIgnoreCase);
+            await using (var warehouseCommand = new NpgsqlCommand(@"
+SELECT id, upper(warehouse_code), location_id
+FROM inv_warehouses
+WHERE company_id = @company_id
+  AND is_active = TRUE
+  AND upper(warehouse_code) = ANY(@warehouse_codes);", connection, transaction))
+            {
+                warehouseCommand.Parameters.AddWithValue("company_id", companyId);
+                warehouseCommand.Parameters.AddWithValue("warehouse_codes", warehouseCodes);
+                await using var reader = await warehouseCommand.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    warehouseByCode[reader.GetString(1)] = (
+                        reader.GetInt64(0),
+                        reader.IsDBNull(2) ? null : reader.GetInt64(2));
+                }
+            }
+
             var resolvedRows = new List<OpeningBalanceImportResolvedRow>(normalizedRows.Count);
             foreach (var row in normalizedRows)
             {
@@ -1398,6 +1439,28 @@ WHERE is_active = TRUE
                         SheetName = "OpeningBalance",
                         RowNumber = row.RowNumber,
                         Message = $"LocationCode '{row.LocationCode}' tidak ditemukan atau nonaktif."
+                    });
+                    continue;
+                }
+
+                if (!warehouseByCode.TryGetValue(row.WarehouseCode, out var warehouseInfo))
+                {
+                    errors.Add(new InventoryImportError
+                    {
+                        SheetName = "OpeningBalance",
+                        RowNumber = row.RowNumber,
+                        Message = $"WarehouseCode '{row.WarehouseCode}' tidak ditemukan atau nonaktif."
+                    });
+                    continue;
+                }
+
+                if (warehouseInfo.LocationId.HasValue && warehouseInfo.LocationId.Value != locationId)
+                {
+                    errors.Add(new InventoryImportError
+                    {
+                        SheetName = "OpeningBalance",
+                        RowNumber = row.RowNumber,
+                        Message = $"WarehouseCode '{row.WarehouseCode}' tidak terdaftar pada location '{row.LocationCode}'."
                     });
                     continue;
                 }
@@ -1417,6 +1480,8 @@ WHERE is_active = TRUE
                 {
                     RowNumber = row.RowNumber,
                     LocationId = locationId,
+                    WarehouseId = warehouseInfo.Id,
+                    WarehouseCode = row.WarehouseCode,
                     ItemId = itemId,
                     ItemCode = row.ItemCode,
                     Qty = row.Qty,
@@ -1466,9 +1531,9 @@ WHERE is_active = TRUE
             var replacedTransactionCount = 0;
             foreach (var group in groupedRows)
             {
-                var existingHeaders = new List<(long Id, long LocationId, long? WarehouseId, string TransactionNo)>();
+                var existingHeaders = new List<(long Id, long LocationId, string TransactionNo)>();
                 await using (var existingHeaderCommand = new NpgsqlCommand(@"
-SELECT id, location_id, warehouse_id, transaction_no
+SELECT id, location_id, transaction_no
 FROM inv_stock_transactions
 WHERE company_id = @company_id
   AND location_id = @location_id
@@ -1490,8 +1555,7 @@ FOR UPDATE;", connection, transaction))
                         existingHeaders.Add((
                             reader.GetInt64(0),
                             reader.GetInt64(1),
-                            reader.IsDBNull(2) ? null : reader.GetInt64(2),
-                            reader.GetString(3)));
+                            reader.GetString(2)));
                     }
                 }
 
@@ -1513,9 +1577,12 @@ FOR UPDATE;", connection, transaction))
 
                 foreach (var existingHeader in existingHeaders)
                 {
-                    var existingLines = new List<(long ItemId, decimal Qty, string ItemCode)>();
+                    var existingLines = new List<(long ItemId, decimal Qty, long? WarehouseId, string ItemCode)>();
                     await using (var lineCommand = new NpgsqlCommand(@"
-SELECT l.item_id, l.qty, i.item_code
+SELECT l.item_id,
+       l.qty,
+       l.warehouse_id,
+       i.item_code
 FROM inv_stock_transaction_lines l
 JOIN inv_items i ON i.id = l.item_id
 WHERE l.transaction_id = @transaction_id
@@ -1525,19 +1592,53 @@ ORDER BY l.line_no;", connection, transaction))
                         await using var reader = await lineCommand.ExecuteReaderAsync(cancellationToken);
                         while (await reader.ReadAsync(cancellationToken))
                         {
-                            existingLines.Add((reader.GetInt64(0), reader.GetDecimal(1), reader.GetString(2)));
+                            existingLines.Add((
+                                reader.GetInt64(0),
+                                reader.GetDecimal(1),
+                                reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                                reader.GetString(3)));
                         }
                     }
 
                     foreach (var line in existingLines)
                     {
+                        if (!line.WarehouseId.HasValue || line.WarehouseId.Value <= 0)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            return new InventoryOpeningBalanceExecutionResult
+                            {
+                                IsSuccess = false,
+                                IsValidationOnly = false,
+                                Message = $"Gagal replace batch {existingHeader.TransactionNo}. Transaksi lama untuk item {line.ItemCode} belum memiliki gudang per baris."
+                            };
+                        }
+
+                        var stockBucketState = await LoadWarehouseStockBucketStateAsync(
+                            connection,
+                            transaction,
+                            companyId,
+                            existingHeader.LocationId,
+                            line.ItemId,
+                            line.WarehouseId.Value,
+                            cancellationToken);
+                        if (stockBucketState.LegacyQty > 0 && stockBucketState.WarehouseQty < line.Qty)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            return new InventoryOpeningBalanceExecutionResult
+                            {
+                                IsSuccess = false,
+                                IsValidationOnly = false,
+                                Message = $"Gagal replace batch {existingHeader.TransactionNo}. Stok item {line.ItemCode} masih berada di bucket legacy tanpa gudang."
+                            };
+                        }
+
                         var reduced = await ReduceStockQtyAsync(
                             connection,
                             transaction,
                             companyId,
                             existingHeader.LocationId,
                             line.ItemId,
-                            existingHeader.WarehouseId,
+                            line.WarehouseId,
                             line.Qty,
                             cancellationToken);
                         if (!reduced)
@@ -1649,6 +1750,7 @@ INSERT INTO inv_stock_transaction_lines (
     item_id,
     qty,
     unit_cost,
+    warehouse_id,
     notes,
     created_at)
 VALUES (
@@ -1657,6 +1759,7 @@ VALUES (
     @item_id,
     @qty,
     @unit_cost,
+    @warehouse_id,
     @notes,
     NOW());", connection, transaction))
                     {
@@ -1665,6 +1768,7 @@ VALUES (
                         insertLineCommand.Parameters.AddWithValue("item_id", line.ItemId);
                         insertLineCommand.Parameters.AddWithValue("qty", line.Qty);
                         insertLineCommand.Parameters.AddWithValue("unit_cost", line.UnitCost);
+                        insertLineCommand.Parameters.AddWithValue("warehouse_id", line.WarehouseId);
                         insertLineCommand.Parameters.AddWithValue("notes", line.Notes);
                         await insertLineCommand.ExecuteNonQueryAsync(cancellationToken);
                     }
@@ -1675,7 +1779,7 @@ VALUES (
                         companyId,
                         group.Key.LocationId,
                         line.ItemId,
-                        null,
+                        line.WarehouseId,
                         line.Qty,
                         cancellationToken);
 

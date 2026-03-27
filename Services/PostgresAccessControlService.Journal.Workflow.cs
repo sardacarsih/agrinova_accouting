@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Accounting.Services;
 
@@ -158,6 +159,12 @@ ORDER BY d.line_no;", connection))
             return new AccessOperationResult(false, "Total debit dan kredit harus seimbang.");
         }
 
+        var normalizedNo = header.JournalNo.Trim().ToUpperInvariant();
+        var normalizedRef = header.ReferenceNo?.Trim() ?? string.Empty;
+        var normalizedDesc = header.Description?.Trim() ?? string.Empty;
+        var journalDate = header.JournalDate.Date;
+        var periodMonth = GetPeriodMonthStart(header.PeriodMonth == default ? journalDate : header.PeriodMonth);
+
         try
         {
             await using var connection = new NpgsqlConnection(_options.ConnectionString);
@@ -208,11 +215,6 @@ WHERE company_id = @company_id
                 return permissionFailure;
             }
 
-            var normalizedNo = header.JournalNo.Trim().ToUpperInvariant();
-            var normalizedRef = header.ReferenceNo?.Trim() ?? string.Empty;
-            var normalizedDesc = header.Description?.Trim() ?? string.Empty;
-            var journalDate = header.JournalDate.Date;
-            var periodMonth = GetPeriodMonthStart(header.PeriodMonth == default ? journalDate : header.PeriodMonth);
             var isPeriodOpen = await IsAccountingPeriodOpenAsync(
                 connection,
                 transaction,
@@ -388,12 +390,12 @@ VALUES (
         }
         catch (PostgresException ex) when (ex.SqlState == "23505")
         {
-            LogServiceWarning("SaveJournalDraftDuplicate", $"action=save_journal_draft status=duplicate journal_no={header.JournalNo} company_id={header.CompanyId} location_id={header.LocationId}", ex);
-            return new AccessOperationResult(false, "Nomor jurnal sudah digunakan pada perusahaan/lokasi ini.");
+            LogServiceWarning("SaveJournalDraftDuplicate", $"action=save_journal_draft status=duplicate journal_no={header.JournalNo} company_id={header.CompanyId} location_id={header.LocationId} period={periodMonth:yyyy-MM}", ex);
+            return new AccessOperationResult(false, $"Nomor jurnal sudah digunakan pada perusahaan/lokasi/periode {periodMonth:yyyy-MM}.");
         }
         catch (Exception ex)
         {
-            LogServiceError("SaveJournalDraftFailed", $"action=save_journal_draft status=failed journal_no={header.JournalNo} company_id={header.CompanyId} location_id={header.LocationId}", ex);
+            LogServiceError("SaveJournalDraftFailed", $"action=save_journal_draft status=failed journal_no={header.JournalNo} company_id={header.CompanyId} location_id={header.LocationId} period={periodMonth:yyyy-MM}", ex);
             return new AccessOperationResult(false, "Gagal menyimpan jurnal draft.");
         }
     }
@@ -849,6 +851,7 @@ WHERE h.company_id = @company_id
   AND (@date_to IS NULL OR h.journal_date <= @date_to)
   AND (
       @status_filter = ''
+      OR (@status_filter = 'UNPOSTED' AND upper(h.status) IN ('DRAFT', 'SUBMITTED', 'APPROVED'))
       OR upper(h.status) = @status_filter)
   AND (
       @keyword = ''
@@ -861,9 +864,18 @@ LIMIT 500;", connection);
 
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
-        command.Parameters.AddWithValue("period_month", safeFilter.PeriodMonth?.Date ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("date_from", safeFilter.DateFrom?.Date ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("date_to", safeFilter.DateTo?.Date ?? (object)DBNull.Value);
+        command.Parameters.Add(new NpgsqlParameter("period_month", NpgsqlDbType.Date)
+        {
+            Value = safeFilter.PeriodMonth?.Date ?? (object)DBNull.Value
+        });
+        command.Parameters.Add(new NpgsqlParameter("date_from", NpgsqlDbType.Date)
+        {
+            Value = safeFilter.DateFrom?.Date ?? (object)DBNull.Value
+        });
+        command.Parameters.Add(new NpgsqlParameter("date_to", NpgsqlDbType.Date)
+        {
+            Value = safeFilter.DateTo?.Date ?? (object)DBNull.Value
+        });
 
         var statusFilter = (safeFilter.Status ?? string.Empty).Trim().ToUpperInvariant();
         command.Parameters.AddWithValue("status_filter", statusFilter);

@@ -186,12 +186,12 @@ BEGIN
                s.location_id,
                r.canonical_item_id,
                SUM(s.qty) AS qty,
-               MAX(s.warehouse_id) AS warehouse_id,
+               s.warehouse_id AS warehouse_id,
                NOW()
         FROM inv_stock s
         JOIN tmp_inv_item_remap r ON r.source_item_id = s.item_id
-        GROUP BY s.company_id, s.location_id, r.canonical_item_id
-        ON CONFLICT (company_id, location_id, item_id) DO UPDATE
+        GROUP BY s.company_id, s.location_id, r.canonical_item_id, s.warehouse_id
+        ON CONFLICT (company_id, location_id, item_id, warehouse_id) DO UPDATE
         SET qty = inv_stock.qty + EXCLUDED.qty,
             updated_at = NOW();
 
@@ -289,9 +289,10 @@ CREATE TABLE IF NOT EXISTS inv_stock (
     company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
     location_id BIGINT NOT NULL REFERENCES org_locations(id) ON DELETE RESTRICT,
     item_id BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE RESTRICT,
+    warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE SET NULL,
     qty NUMERIC(18,4) NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_inv_stock_item_location UNIQUE (company_id, location_id, item_id)
+    CONSTRAINT uq_inv_stock_item_location_warehouse UNIQUE (company_id, location_id, item_id, warehouse_id)
 );
 
 CREATE TABLE IF NOT EXISTS inv_units (
@@ -348,6 +349,8 @@ CREATE TABLE IF NOT EXISTS inv_stock_transaction_lines (
     item_id BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE RESTRICT,
     qty NUMERIC(18,4) NOT NULL DEFAULT 0,
     unit_cost NUMERIC(18,4) NOT NULL DEFAULT 0,
+    warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT,
+    destination_warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT,
     expense_account_code VARCHAR(80) NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -450,7 +453,53 @@ ALTER TABLE inv_stock ADD COLUMN IF NOT EXISTS warehouse_id BIGINT REFERENCES in
 ALTER TABLE inv_stock_transactions ADD COLUMN IF NOT EXISTS cogs_journal_id BIGINT NULL;
 ALTER TABLE inv_stock_opname ADD COLUMN IF NOT EXISTS cogs_journal_id BIGINT NULL;
 ALTER TABLE inv_stock_transaction_lines ADD COLUMN IF NOT EXISTS expense_account_code VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE inv_stock_transaction_lines ADD COLUMN IF NOT EXISTS warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT;
+ALTER TABLE inv_stock_transaction_lines ADD COLUMN IF NOT EXISTS destination_warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT;
 ALTER TABLE inv_cost_outbound_events ADD COLUMN IF NOT EXISTS cogs_account_code VARCHAR(80) NOT NULL DEFAULT '';
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE table_schema = 'public'
+          AND table_name = 'inv_stock'
+          AND constraint_name = 'uq_inv_stock_item_location'
+    ) THEN
+        ALTER TABLE inv_stock DROP CONSTRAINT uq_inv_stock_item_location;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE table_schema = 'public'
+          AND table_name = 'inv_stock'
+          AND constraint_name = 'uq_inv_stock_item_location_warehouse'
+    ) THEN
+        ALTER TABLE inv_stock
+            ADD CONSTRAINT uq_inv_stock_item_location_warehouse
+            UNIQUE (company_id, location_id, item_id, warehouse_id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_inv_stock_legacy_null_warehouse
+    ON inv_stock(company_id, location_id, item_id)
+    WHERE warehouse_id IS NULL AND qty > 0;
+
+UPDATE inv_stock_transaction_lines l
+SET warehouse_id = h.warehouse_id,
+    destination_warehouse_id = h.destination_warehouse_id
+FROM inv_stock_transactions h
+WHERE l.transaction_id = h.id
+  AND l.warehouse_id IS NULL
+  AND h.warehouse_id IS NOT NULL;
+
+UPDATE inv_stock_transaction_lines l
+SET destination_warehouse_id = h.destination_warehouse_id
+FROM inv_stock_transactions h
+WHERE l.transaction_id = h.id
+  AND l.destination_warehouse_id IS NULL
+  AND h.destination_warehouse_id IS NOT NULL;
 
 UPDATE inv_stock_transaction_lines l
 SET expense_account_code = upper(btrim(COALESCE(NULLIF(loc.cogs_account_code, ''), NULLIF(comp.cogs_account_code, ''), '')))

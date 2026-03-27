@@ -1,0 +1,40 @@
+<UserControl x:Class="Accounting.Views.Components.AccountingDashboardSubView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dash="clr-namespace:Accounting.Views.Components.Dashboard"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="18,18,18,10">
+            <dash:DashboardHeaderView />
+            <dash:DashboardKpiView />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <dash:DashboardChartView Grid.Column="0" />
+
+                <StackPanel Grid.Column="2">
+                    <dash:DashboardGlView />
+                    <dash:DashboardCashView />
+                </StackPanel>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <dash:DashboardInventoryView Grid.Column="0" />
+                <dash:DashboardAlertView Grid.Column="2" />
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

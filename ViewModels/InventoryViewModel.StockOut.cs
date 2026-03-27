@@ -161,6 +161,7 @@ public sealed partial class InventoryViewModel
         StockOutLines.Clear();
         ClearOutboundAutoCostCache();
         AddStockOutLine();
+        SelectedStockOutTabIndex = 1;
         StatusMessage = "Transaksi barang keluar baru siap.";
     }
 
@@ -218,6 +219,7 @@ public sealed partial class InventoryViewModel
                 ItemId = l.ItemId,
                 Qty = l.Qty,
                 UnitCost = l.UnitCost,
+                WarehouseId = l.WarehouseId,
                 ExpenseAccountCode = l.ExpenseAccountCode,
                 Notes = l.Notes
             }).ToList();
