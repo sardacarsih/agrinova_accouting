@@ -325,7 +325,9 @@ public sealed partial class InventoryViewModel
     private IEnumerable<ManagedWarehouse> EnumerateWarehouseLookupCandidates()
     {
         return Warehouses
-            .Where(warehouse => warehouse.IsActive && warehouse.Id > 0)
+            .Where(warehouse => warehouse.IsActive &&
+                                warehouse.Id > 0 &&
+                                (!warehouse.LocationId.HasValue || warehouse.LocationId.Value == _locationId))
             .GroupBy(warehouse => warehouse.Id)
             .Select(group => group.First());
     }

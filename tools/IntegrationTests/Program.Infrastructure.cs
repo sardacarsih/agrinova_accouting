@@ -29,6 +29,33 @@ internal static partial class Program
         return transactionId;
     }
 
+    private static async Task<long> CreateWarehouseAsync(
+        PostgresAccessControlService service,
+        long companyId,
+        string warehouseCode,
+        string warehouseName,
+        long? locationId,
+        string actorUsername)
+    {
+        var saveResult = await service.SaveWarehouseAsync(
+            companyId,
+            new ManagedWarehouse
+            {
+                Id = 0,
+                CompanyId = companyId,
+                Code = warehouseCode,
+                Name = warehouseName,
+                LocationId = locationId,
+                IsActive = true
+            },
+            actorUsername);
+        Assert(
+            saveResult.IsSuccess && saveResult.EntityId.HasValue && saveResult.EntityId.Value > 0,
+            $"Failed to save warehouse {warehouseCode}: {saveResult.Message}");
+
+        return saveResult.EntityId!.Value;
+    }
+
     private static async Task<decimal> GetPostedStockTransactionLineUnitCostAsync(long transactionId)
     {
         await using var connection = await OpenConnectionAsync();
@@ -47,6 +74,32 @@ LIMIT 1;",
             $"Posted stock transaction {transactionId} has no line to read unit_cost.");
 
         return Convert.ToDecimal(scalar);
+    }
+
+    private static async Task<decimal> GetStockQtyAsync(
+        long companyId,
+        long locationId,
+        long itemId,
+        long? warehouseId)
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(
+            @"SELECT COALESCE(SUM(qty), 0)
+FROM inv_stock
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND item_id = @item_id
+  AND warehouse_id IS NOT DISTINCT FROM @warehouse_id;",
+            connection);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("item_id", itemId);
+        command.Parameters.Add(new NpgsqlParameter("warehouse_id", NpgsqlDbType.Bigint)
+        {
+            Value = warehouseId.HasValue && warehouseId.Value > 0 ? warehouseId.Value : DBNull.Value
+        });
+
+        return Convert.ToDecimal(await command.ExecuteScalarAsync());
     }
 
     private static async Task<long> CreateAndPostStockOpnameAsync(
@@ -286,6 +339,22 @@ WHERE header_id IN (SELECT id FROM gl_journal_headers WHERE company_id = @compan
             await deleteOpname.ExecuteNonQueryAsync();
         }
 
+        await using (var deleteWarehouses = new NpgsqlCommand(
+            "DELETE FROM inv_warehouses WHERE company_id = @company_id;",
+            connection))
+        {
+            deleteWarehouses.Parameters.AddWithValue("company_id", companyId);
+            await deleteWarehouses.ExecuteNonQueryAsync();
+        }
+
+        await using (var deleteUnits = new NpgsqlCommand(
+            "DELETE FROM inv_units WHERE company_id = @company_id;",
+            connection))
+        {
+            deleteUnits.Parameters.AddWithValue("company_id", companyId);
+            await deleteUnits.ExecuteNonQueryAsync();
+        }
+
         await using (var deleteLocationSettings = new NpgsqlCommand(
             "DELETE FROM inv_location_costing_settings WHERE company_id = @company_id;",
             connection))
@@ -396,6 +465,31 @@ WHERE upper(category_code) = ANY(@category_codes);",
             });
             await deleteCategories.ExecuteNonQueryAsync();
         }
+    }
+
+    private static async Task CleanupWarehousesByCodesAsync(
+        NpgsqlConnection connection,
+        IReadOnlyCollection<string> warehouseCodes)
+    {
+        var normalizedWarehouseCodes = (warehouseCodes ?? Array.Empty<string>())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalizedWarehouseCodes.Length == 0)
+        {
+            return;
+        }
+
+        await using var deleteWarehouses = new NpgsqlCommand(
+            @"DELETE FROM inv_warehouses
+WHERE upper(warehouse_code) = ANY(@warehouse_codes);",
+            connection);
+        deleteWarehouses.Parameters.Add(new NpgsqlParameter("warehouse_codes", NpgsqlDbType.Array | NpgsqlDbType.Text)
+        {
+            Value = normalizedWarehouseCodes
+        });
+        await deleteWarehouses.ExecuteNonQueryAsync();
     }
 
     private static async Task RestoreCentralSyncSystemSettingsAsync(
