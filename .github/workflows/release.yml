@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore app
+        run: dotnet restore .\Accounting.csproj
+
+      - name: Publish app
+        run: >
+          dotnet publish .\Accounting.csproj
+          -c Release
+          --no-restore
+          -f net8.0-windows
+          --self-contained false
+          -o .\artifacts\publish\Accounting
+
+      - name: Archive publish output
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assetName = "Accounting-$tag-framework-dependent-win-x64.zip"
+          $publishPath = Join-Path $PWD "artifacts\publish\Accounting"
+          $archivePath = Join-Path $PWD "artifacts\$assetName"
+
+          if (Test-Path $archivePath) {
+            Remove-Item $archivePath -Force
+          }
+
+          Compress-Archive -Path (Join-Path $publishPath '*') -DestinationPath $archivePath
+          "ASSET_PATH=$archivePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ASSET_NAME=$assetName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload release asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release upload ${{ github.ref_name }}
+          "$env:ASSET_PATH"
+          --clobber
+
