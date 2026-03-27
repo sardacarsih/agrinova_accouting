@@ -8,6 +8,7 @@ public sealed partial class PostgresAccessControlService
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -23,6 +24,20 @@ public sealed partial class PostgresAccessControlService
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT a.account_code,
@@ -61,6 +76,7 @@ ORDER BY a.account_code;", connection);
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -76,6 +92,20 @@ ORDER BY a.account_code;", connection);
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT CASE
@@ -131,6 +161,7 @@ ORDER BY CASE
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -146,6 +177,21 @@ ORDER BY CASE
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
+
         await using (var rebuildTransaction = await connection.BeginTransactionAsync(cancellationToken))
         {
             await RebuildAccountHierarchyInternalAsync(
@@ -346,6 +392,7 @@ GROUP BY le.account_id, upper(a.account_type);", connection))
         DateTime periodMonth,
         string accountCode = "",
         string keyword = "",
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -366,6 +413,20 @@ GROUP BY le.account_id, upper(a.account_type);", connection))
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT le.journal_date,
@@ -437,6 +498,7 @@ ORDER BY a.account_code, le.journal_date, le.journal_no, le.journal_line_no, le.
         DateTime periodMonth,
         string accountCode = "",
         string keyword = "",
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -457,6 +519,20 @@ ORDER BY a.account_code, le.journal_date, le.journal_no, le.journal_line_no, le.
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT le.journal_date,
@@ -547,6 +623,7 @@ ORDER BY
         long companyId,
         long locationId,
         DateTime periodMonth,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -563,6 +640,20 @@ ORDER BY
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
 
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
+
         await using var command = new NpgsqlCommand(@"
 WITH cash_accounts AS (
     SELECT a.id,
@@ -573,9 +664,9 @@ WITH cash_accounts AS (
       AND a.is_active = TRUE
       AND upper(a.account_type) = 'ASSET'
       AND (
-          upper(a.account_code) LIKE '%11100%'
-          OR a.account_name ILIKE '%kas%'
-          OR a.account_name ILIKE '%bank%'
+          upper(COALESCE(a.report_group, '')) IN ('CASH_BANK', 'KAS_BANK', 'KAS', 'BANK')
+          OR upper(COALESCE(a.cashflow_category, '')) LIKE '%CASH%'
+          OR a.account_code LIKE '1.1%'
       )
 ),
 cash_rollup AS (
@@ -629,6 +720,7 @@ ORDER BY ca.account_code;", connection);
         DateTime periodMonth,
         string accountCode = "",
         string keyword = "",
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -649,6 +741,20 @@ ORDER BY ca.account_code;", connection);
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                "reports",
+                AccountingReportsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 WITH ledger_rollup AS (

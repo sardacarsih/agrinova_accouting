@@ -324,6 +324,7 @@ public sealed partial class JournalManagementViewModel
                 selectedSummaries,
                 _companyId,
                 _locationId,
+                _actorUsername,
                 filePath);
 
             StatusMessage = exportResult.Message;
@@ -363,7 +364,8 @@ public sealed partial class JournalManagementViewModel
                     DateTo = periodEnd,
                     Keyword = string.Empty,
                     Status = string.Empty
-                });
+                },
+                _actorUsername);
 
             if (summaries.Count == 0)
             {
@@ -383,7 +385,7 @@ public sealed partial class JournalManagementViewModel
             var previewLines = new List<JournalExportPreviewLine>();
             foreach (var summary in orderedSummaries)
             {
-                var bundle = await _accessControlService.GetJournalBundleAsync(summary.Id, _companyId, _locationId);
+                var bundle = await _accessControlService.GetJournalBundleAsync(summary.Id, _companyId, _locationId, _actorUsername);
                 if (bundle is null)
                 {
                     continue;
@@ -471,6 +473,7 @@ public sealed partial class JournalManagementViewModel
                 summaries,
                 _companyId,
                 _locationId,
+                _actorUsername,
                 filePath,
                 useLegacyFormat ? JournalExportLayout.HeaderDetailLegacy : JournalExportLayout.FlatJournals);
             StatusMessage = exportResult.Message;

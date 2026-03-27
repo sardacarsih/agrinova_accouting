@@ -782,7 +782,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
 
         try
         {
-            var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId);
+            var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
             var current = periods.FirstOrDefault(x => x.PeriodMonth.Date == month.Date);
             isOpen = current?.IsOpen ?? true;
         }
@@ -803,7 +803,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
         var month = new DateTime(date.Year, date.Month, 1);
         try
         {
-            var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId);
+            var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
             var period = periods.FirstOrDefault(x => x.PeriodMonth.Date == month.Date);
             var isOpen = period?.IsOpen ?? true;
 

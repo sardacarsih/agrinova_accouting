@@ -7,6 +7,7 @@ public sealed partial class PostgresAccessControlService
     public async Task<List<ManagedAccount>> GetAccountsAsync(
         long companyId,
         bool includeInactive = false,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -20,6 +21,17 @@ public sealed partial class PostgresAccessControlService
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasScopeAccessAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                companyId,
+                locationId: null,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT a.id,
@@ -64,6 +76,7 @@ ORDER BY a.account_code;", connection);
     public async Task<AccountSearchResult> SearchAccountsAsync(
         long companyId,
         AccountSearchFilter filter,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -89,6 +102,22 @@ ORDER BY a.account_code;", connection);
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasScopeAccessAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                companyId,
+                locationId: null,
+                cancellationToken))
+        {
+            return new AccountSearchResult
+            {
+                Page = 1,
+                PageSize = pageSize,
+                TotalCount = 0
+            };
+        }
 
         var totalCount = 0;
         await using (var countCommand = new NpgsqlCommand(@"
@@ -548,6 +577,7 @@ WHERE id = @id
     public async Task<List<ManagedAccountingPeriod>> GetAccountingPeriodsAsync(
         long companyId,
         long locationId,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -561,6 +591,17 @@ WHERE id = @id
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasScopeAccessAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
 
         await using var command = new NpgsqlCommand(@"
 SELECT id,
@@ -608,6 +649,7 @@ ORDER BY period_month DESC;", connection);
     {
         await EnsureSchemaAsync(cancellationToken);
         await EnsureJournalSchemaAsync(cancellationToken);
+        await EnsureInventorySchemaAsync(cancellationToken);
 
         if (companyId <= 0 || locationId <= 0)
         {
@@ -634,6 +676,19 @@ ORDER BY period_month DESC;", connection);
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return new AccessOperationResult(false, "Anda tidak memiliki izin untuk membuka/menutup periode.");
+            }
+
+            var hasScopeAccess = await HasScopeAccessAsync(
+                connection,
+                transaction,
+                actor,
+                companyId,
+                locationId,
+                cancellationToken);
+            if (!hasScopeAccess)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new AccessOperationResult(false, "Anda tidak memiliki akses ke company/lokasi untuk membuka/menutup periode.");
             }
 
             await EnsureAccountingPeriodRowAsync(
@@ -663,6 +718,36 @@ ORDER BY period_month DESC;", connection);
                     return new AccessOperationResult(
                         false,
                         $"Masih ada jurnal belum POSTED pada periode {monthStart:yyyy-MM}. Posting seluruh jurnal sebelum tutup periode.");
+                }
+
+                var pendingInventoryTransactions = await CountPendingInventoryTransactionsAsync(
+                    connection,
+                    transaction,
+                    companyId,
+                    locationId,
+                    monthStart,
+                    cancellationToken);
+                if (pendingInventoryTransactions > 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(
+                        false,
+                        $"Masih ada {pendingInventoryTransactions:N0} transaksi inventory belum POSTED pada periode {monthStart:yyyy-MM}.");
+                }
+
+                var pendingStockOpname = await CountPendingStockOpnameAsync(
+                    connection,
+                    transaction,
+                    companyId,
+                    locationId,
+                    monthStart,
+                    cancellationToken);
+                if (pendingStockOpname > 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(
+                        false,
+                        $"Masih ada {pendingStockOpname:N0} stock opname belum POSTED pada periode {monthStart:yyyy-MM}.");
                 }
 
                 var closingResult = await EnsurePeriodClosingJournalAsync(
@@ -804,6 +889,58 @@ ON CONFLICT (company_id, location_id, period_month) DO NOTHING;", connection, tr
         return affectedRows > 0;
     }
 
+    private static async Task<int> CountPendingInventoryTransactionsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        long locationId,
+        DateTime periodMonth,
+        CancellationToken cancellationToken)
+    {
+        var monthStart = GetPeriodMonthStart(periodMonth);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+
+        await using var command = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM inv_stock_transactions
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND transaction_date BETWEEN @date_from AND @date_to
+  AND upper(status) <> 'POSTED';", connection, transaction);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("date_from", monthStart);
+        command.Parameters.AddWithValue("date_to", monthEnd);
+
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task<int> CountPendingStockOpnameAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        long locationId,
+        DateTime periodMonth,
+        CancellationToken cancellationToken)
+    {
+        var monthStart = GetPeriodMonthStart(periodMonth);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+
+        await using var command = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM inv_stock_opname
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND opname_date BETWEEN @date_from AND @date_to
+  AND upper(status) <> 'POSTED';", connection, transaction);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("date_from", monthStart);
+        command.Parameters.AddWithValue("date_to", monthEnd);
+
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
     private static async Task<PostedZeroCostOutboundSummary> GetPostedZeroCostOutboundSummaryAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -903,6 +1040,7 @@ LIMIT @limit;", connection);
     public async Task<JournalWorkspaceData> GetJournalWorkspaceDataAsync(
         long companyId,
         long locationId,
+        string actorUsername = "",
         CancellationToken cancellationToken = default)
     {
         await EnsureSchemaAsync(cancellationToken);
@@ -916,6 +1054,20 @@ LIMIT @limit;", connection);
 
         await using var connection = new NpgsqlConnection(_options.ConnectionString);
         await connection.OpenAsync(cancellationToken);
+
+        if (!await HasAnyPermissionAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                AccountingModuleCode,
+                AccountingSubmoduleTransactions,
+                AccountingTransactionsReadActions,
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return data;
+        }
 
         await using (var accountCommand = new NpgsqlCommand(@"
 SELECT id, company_id, account_code, account_name, account_type, is_active

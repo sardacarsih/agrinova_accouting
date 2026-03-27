@@ -17,7 +17,7 @@ public sealed partial class JournalManagementViewModel
         {
             if (reloadFromService)
             {
-                var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId);
+                var periods = await _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
                 RefreshPeriodCache(periods);
             }
         }

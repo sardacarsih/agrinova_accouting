@@ -83,6 +83,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
     private readonly IAccessControlService _accessControlService;
     private readonly long _selectedCompanyId;
     private readonly long _selectedLocationId;
+    private readonly string _actorUsername;
 
     private MainShellNavigationItem? _selectedNavigationItem;
     private string _currentScopeTitle = "Dashboard";
@@ -118,6 +119,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
         _accessControlService = accessControlService;
         _selectedCompanyId = accessContext.SelectedCompanyId;
         _selectedLocationId = accessContext.SelectedLocationId;
+        _actorUsername = string.IsNullOrWhiteSpace(accessContext.Username) ? "SYSTEM" : accessContext.Username.Trim();
 
         AppDisplayName = "AgrInova Suite";
         EnvironmentName = environmentName;
@@ -546,7 +548,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
         try
         {
             _lastPeriodRefreshAt = now;
-            var periods = await _accessControlService.GetAccountingPeriodsAsync(_selectedCompanyId, _selectedLocationId);
+            var periods = await _accessControlService.GetAccountingPeriodsAsync(_selectedCompanyId, _selectedLocationId, _actorUsername);
             var currentMonth = new DateTime(now.Year, now.Month, 1);
             var current = periods.FirstOrDefault(x => x.PeriodMonth.Date == currentMonth.Date);
 

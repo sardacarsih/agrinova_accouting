@@ -521,7 +521,10 @@ public sealed class AccountingDashboardViewModel : ViewModelBase, IDisposable
         {
             try
             {
-                var periods = await _accessControlService.GetAccountingPeriodsAsync(SelectedCompany.Id, lookupLocationId.Value);
+                var periods = await _accessControlService.GetAccountingPeriodsAsync(
+                    SelectedCompany.Id,
+                    lookupLocationId.Value,
+                    string.IsNullOrWhiteSpace(_accessContext.Username) ? "SYSTEM" : _accessContext.Username.Trim());
                 _availableAccountingPeriods.AddRange(periods.OrderByDescending(x => x.PeriodMonth));
             }
             catch

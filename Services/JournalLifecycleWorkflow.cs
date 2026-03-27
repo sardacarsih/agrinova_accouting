@@ -79,9 +79,9 @@ public sealed class JournalLifecycleWorkflow
         };
     }
 
-    public async Task<JournalLifecycleResult> OpenAsync(long journalId, long companyId, long locationId)
+    public async Task<JournalLifecycleResult> OpenAsync(long journalId, long companyId, long locationId, string actorUsername)
     {
-        var bundle = await _accessControlService.GetJournalBundleAsync(journalId, companyId, locationId);
+        var bundle = await _accessControlService.GetJournalBundleAsync(journalId, companyId, locationId, actorUsername);
         if (bundle is null)
         {
             return new JournalLifecycleResult

@@ -153,6 +153,7 @@ public sealed class JournalImportExportWorkflow
         IReadOnlyCollection<ManagedJournalSummary> selectedSummaries,
         long companyId,
         long locationId,
+        string actorUsername,
         string filePath,
         JournalExportLayout layout = JournalExportLayout.FlatJournals)
     {
@@ -169,7 +170,7 @@ public sealed class JournalImportExportWorkflow
         var bundles = new List<ManagedJournalBundle>();
         foreach (var summary in selectedSummaries)
         {
-            var bundle = await _accessControlService.GetJournalBundleAsync(summary.Id, companyId, locationId);
+            var bundle = await _accessControlService.GetJournalBundleAsync(summary.Id, companyId, locationId, actorUsername);
             if (bundle is not null)
             {
                 bundles.Add(bundle);
