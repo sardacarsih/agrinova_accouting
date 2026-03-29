@@ -41,10 +41,13 @@ public sealed class JournalImportExportWorkflow
         _xlsxService = xlsxService;
     }
 
-    public JournalImportLoadResult PreviewImport(string importFilePath, IReadOnlyDictionary<string, ManagedAccount> accountLookupByCode)
+    public JournalImportLoadResult PreviewImport(
+        string importFilePath,
+        IReadOnlyDictionary<string, ManagedAccount> accountLookupByCode,
+        IReadOnlyDictionary<string, ManagedCostCenter>? costCenterLookupByCode = null)
     {
         var source = _xlsxService.Import(importFilePath);
-        return ApplyCoaValidation(source, accountLookupByCode);
+        return ApplyCoaValidation(source, accountLookupByCode, costCenterLookupByCode);
     }
 
     public async Task<JournalImportCommitResult> CommitImportAsync(
@@ -209,7 +212,8 @@ public sealed class JournalImportExportWorkflow
 
     private static JournalImportLoadResult ApplyCoaValidation(
         JournalImportLoadResult source,
-        IReadOnlyDictionary<string, ManagedAccount> accountLookupByCode)
+        IReadOnlyDictionary<string, ManagedAccount> accountLookupByCode,
+        IReadOnlyDictionary<string, ManagedCostCenter>? costCenterLookupByCode)
     {
         if (!source.PreviewItems.Any())
         {
@@ -234,6 +238,12 @@ public sealed class JournalImportExportWorkflow
             ManagedAccount? account = null;
             var hasCoaCode = !string.IsNullOrWhiteSpace(normalizedCode) &&
                              accountLookupByCode.TryGetValue(normalizedCode, out account);
+            var normalizedCostCenterCode = NormalizeCostCenterCode(item.CostCenterCode);
+            ManagedCostCenter? costCenter = null;
+            var hasCostCenterCode = !string.IsNullOrWhiteSpace(normalizedCostCenterCode) &&
+                                    costCenterLookupByCode is not null &&
+                                    costCenterLookupByCode.TryGetValue(normalizedCostCenterCode, out costCenter);
+            var requiresCostCenter = account?.RequiresCostCenter == true;
             var isValid = item.IsValid && hasCoaCode;
             var message = item.ValidationMessage;
 
@@ -242,6 +252,27 @@ public sealed class JournalImportExportWorkflow
                 message = string.IsNullOrWhiteSpace(normalizedCode)
                     ? "AccountCode wajib diisi."
                     : $"Kode akun '{normalizedCode}' tidak ditemukan di COA aktif.";
+            }
+            else if (item.IsValid && requiresCostCenter && string.IsNullOrWhiteSpace(normalizedCostCenterCode))
+            {
+                isValid = false;
+                message = $"Akun '{normalizedCode}' wajib memakai cost center.";
+            }
+            else if (item.IsValid && !string.IsNullOrWhiteSpace(normalizedCostCenterCode))
+            {
+                if (!hasCostCenterCode)
+                {
+                    if (requiresCostCenter)
+                    {
+                        isValid = false;
+                        message = $"Cost center '{normalizedCostCenterCode}' tidak ditemukan.";
+                    }
+                }
+                else if (costCenter is not null && !costCenter.IsPosting)
+                {
+                    isValid = false;
+                    message = $"Cost center '{normalizedCostCenterCode}' bukan level posting.";
+                }
             }
 
             rewrittenPreview.Add(new JournalImportPreviewItem
@@ -256,7 +287,7 @@ public sealed class JournalImportExportWorkflow
                 Credit = item.Credit,
                 DepartmentCode = item.DepartmentCode,
                 ProjectCode = item.ProjectCode,
-                CostCenterCode = item.CostCenterCode,
+                CostCenterCode = hasCostCenterCode ? costCenter!.CostCenterCode : normalizedCostCenterCode,
                 IsValid = isValid,
                 ValidationMessage = isValid ? string.Empty : message
             });
@@ -267,12 +298,29 @@ public sealed class JournalImportExportWorkflow
         {
             var normalizedLines = new List<ManagedJournalLine>(bundle.Lines.Count);
             var invalidCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var invalidCostCenters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var line in bundle.Lines)
             {
                 var normalizedCode = NormalizeAccountCode(line.AccountCode);
                 if (!accountLookupByCode.TryGetValue(normalizedCode, out var account))
                 {
                     invalidCodes.Add(normalizedCode);
+                }
+
+                var normalizedCostCenterCode = NormalizeCostCenterCode(line.CostCenterCode);
+                ManagedCostCenter? costCenter = null;
+                if (!string.IsNullOrWhiteSpace(normalizedCostCenterCode))
+                {
+                    if (costCenterLookupByCode is null ||
+                        !costCenterLookupByCode.TryGetValue(normalizedCostCenterCode, out costCenter) ||
+                        !costCenter.IsPosting)
+                    {
+                        invalidCostCenters.Add(normalizedCostCenterCode);
+                    }
+                }
+                else if (account?.RequiresCostCenter == true)
+                {
+                    invalidCostCenters.Add($"REQ:{normalizedCode}");
                 }
 
                 normalizedLines.Add(new ManagedJournalLine
@@ -285,7 +333,8 @@ public sealed class JournalImportExportWorkflow
                     Credit = line.Credit,
                     DepartmentCode = line.DepartmentCode,
                     ProjectCode = line.ProjectCode,
-                    CostCenterCode = line.CostCenterCode
+                    CostCenterId = costCenter?.Id,
+                    CostCenterCode = costCenter?.CostCenterCode ?? normalizedCostCenterCode
                 });
             }
 
@@ -295,6 +344,16 @@ public sealed class JournalImportExportWorkflow
             {
                 isValid = false;
                 validationMessage = $"Kode akun tidak ditemukan di COA: {string.Join(", ", invalidCodes.Where(x => !string.IsNullOrWhiteSpace(x)).Take(3))}.";
+            }
+
+            if (isValid && invalidCostCenters.Count > 0)
+            {
+                isValid = false;
+                var missingRequirement = invalidCostCenters
+                    .FirstOrDefault(x => x.StartsWith("REQ:", StringComparison.OrdinalIgnoreCase));
+                validationMessage = missingRequirement is not null
+                    ? $"Akun '{missingRequirement[4..]}' wajib memakai cost center aktif level posting."
+                    : $"Cost center tidak valid: {string.Join(", ", invalidCostCenters.Take(3))}.";
             }
 
             if (isValid && normalizedLines.Count == 0)
@@ -380,6 +439,13 @@ public sealed class JournalImportExportWorkflow
     }
 
     private static string NormalizeAccountCode(string? code)
+    {
+        return string.IsNullOrWhiteSpace(code)
+            ? string.Empty
+            : code.Trim().ToUpperInvariant();
+    }
+
+    private static string NormalizeCostCenterCode(string? code)
     {
         return string.IsNullOrWhiteSpace(code)
             ? string.Empty

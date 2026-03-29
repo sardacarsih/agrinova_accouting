@@ -31,10 +31,12 @@
 
             <Border Margin="0,0,0,12"
                     Padding="12"
-                    Background="{DynamicResource Brush.Warning}"
+                    Background="{DynamicResource Brush.WarningSubtle}"
+                    BorderBrush="{DynamicResource Brush.Warning}"
+                    BorderThickness="1"
                     CornerRadius="10"
                     Visibility="{Binding Gl.HasPendingCount, Converter={StaticResource BoolToVisibilityConverter}}">
-                <TextBlock Foreground="White"
+                <TextBlock Foreground="{DynamicResource Brush.Warning}"
                            FontWeight="SemiBold"
                            Text="{Binding Gl.PendingCount, StringFormat=Perhatian: {0} jurnal masih menunggu posting.}" />
             </Border>

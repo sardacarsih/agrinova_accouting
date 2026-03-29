@@ -1,0 +1,48 @@
+<UserControl x:Class="Accounting.Views.Components.ThemeSkinsSelectorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dxb="http://schemas.devexpress.com/winfx/2008/xaml/bars"
+             xmlns:dxmvvm="http://schemas.devexpress.com/winfx/2008/xaml/mvvm"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <StackPanel>
+        <DockPanel LastChildFill="False">
+            <TextBlock DockPanel.Dock="Left"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Brush.TextPrimary}"
+                       Text="Skins" />
+            <TextBlock x:Name="CurrentThemeBadgeText"
+                       DockPanel.Dock="Right"
+                       FontSize="11"
+                       Foreground="{DynamicResource Brush.TextMuted}"
+                       Text="Windows 11 Light" />
+        </DockPanel>
+
+        <Border Margin="0,8,0,0"
+                Background="{DynamicResource Brush.Surface}"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="6">
+            <dxb:GalleryControl x:Name="ThemeGallery" MinHeight="144">
+                <dxb:GalleryControl.Gallery>
+                    <dxb:Gallery ColCount="3"
+                                 ItemAutoWidth="True"
+                                 AllowHoverImages="True"
+                                 IsItemCaptionVisible="True"
+                                 IsItemDescriptionVisible="False"
+                                 IsGroupCaptionVisible="False"
+                                 GroupCaptionHorizontalAlignment="Left">
+                        <dxmvvm:Interaction.Behaviors>
+                            <dxb:GalleryThemeSelectorBehavior x:Name="ThemeSelectorBehavior"
+                                                             ShowTouchThemes="False"
+                                                             ShowWin10SystemColorTheme="True"
+                                                             UseSvgGlyphs="True" />
+                        </dxmvvm:Interaction.Behaviors>
+                    </dxb:Gallery>
+                </dxb:GalleryControl.Gallery>
+            </dxb:GalleryControl>
+        </Border>
+    </StackPanel>
+</UserControl>

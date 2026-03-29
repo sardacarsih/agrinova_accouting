@@ -5,7 +5,8 @@
 1. Create a feature branch from `main`.
 2. Keep changes focused and document any required SQL migration in [`database/`](D:/VSCODE/wpf/database).
 3. Do not commit local secrets or machine-specific configuration.
-4. Open a pull request with a short summary, verification steps, and any migration/backfill notes.
+4. When changing WPF UI, follow the internal guide in [`docs/ui-theme-and-skin-guidelines.md`](D:/VSCODE/wpf/docs/ui-theme-and-skin-guidelines.md) so text, colors, and states stay aligned with curated skins.
+5. Open a pull request with a short summary, verification steps, and any migration/backfill notes.
 
 ## Local Setup
 

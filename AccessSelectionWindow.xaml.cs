@@ -1,10 +1,11 @@
+using DevExpress.Xpf.Core;
 using System.Windows;
 using Accounting.Services;
 using Accounting.ViewModels;
 
 namespace Accounting;
 
-public partial class AccessSelectionWindow : Window
+public partial class AccessSelectionWindow : ThemedWindow
 {
     private readonly AccessSelectionViewModel _viewModel;
 

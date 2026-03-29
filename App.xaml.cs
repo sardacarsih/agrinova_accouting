@@ -14,6 +14,8 @@ public partial class App : Application
     {
         AppServices.InitializeLogger(new FileAppLogger());
         RegisterGlobalExceptionHandlers();
+        AppServices.InitializeThemeCoordinator(new AppThemeCoordinator());
+        AppServices.ThemeCoordinator.Initialize();
         AppServices.Logger.LogInfo(nameof(App), "Startup", "action=startup status=initialized");
         base.OnStartup(e);
         StartRuntimeMigrationVerification();
@@ -22,6 +24,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         AppServices.Logger.LogInfo(nameof(App), "Exit", $"action=exit code={e.ApplicationExitCode}");
+        AppServices.ShutdownThemeCoordinator();
         base.OnExit(e);
     }
 

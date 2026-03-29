@@ -13,6 +13,7 @@
 
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/DesignTokens.xaml" />
+                <ResourceDictionary Source="Resources/ThemeAliases.xaml" />
                 <ResourceDictionary Source="Resources/Styles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/ButtonStyles.xaml" />
                 <ResourceDictionary Source="Resources/Styles/ComponentStyles.xaml" />
@@ -23,7 +24,6 @@
                 <ResourceDictionary Source="Resources/Templates/NavigationTemplates.xaml" />
                 <ResourceDictionary Source="Resources/Templates/DataGridTemplates.xaml" />
                 <ResourceDictionary Source="Resources/Templates/FormTemplates.xaml" />
-                <ResourceDictionary Source="Resources/Themes/DarkTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

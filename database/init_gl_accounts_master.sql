@@ -62,6 +62,7 @@ ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS cashflow_category VARCHAR(50);
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS allow_manual_journal BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_department BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_project BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_cost_center BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_partner BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS is_control_account BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -472,18 +473,117 @@ CREATE INDEX IF NOT EXISTS idx_gl_accounts_company_posting_active
 CREATE INDEX IF NOT EXISTS idx_gl_accounts_full_path_gist
     ON gl_accounts USING GIST(full_path);
 
+CREATE TABLE IF NOT EXISTS gl_cost_centers (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE CASCADE,
+    location_id BIGINT NOT NULL REFERENCES org_locations(id) ON DELETE CASCADE,
+    parent_id BIGINT NULL REFERENCES gl_cost_centers(id) ON DELETE RESTRICT,
+    cost_center_code VARCHAR(80) NOT NULL,
+    cost_center_name VARCHAR(200) NOT NULL DEFAULT '',
+    estate_code VARCHAR(40) NOT NULL DEFAULT '',
+    estate_name VARCHAR(120) NOT NULL DEFAULT '',
+    division_code VARCHAR(40) NOT NULL DEFAULT '',
+    division_name VARCHAR(120) NOT NULL DEFAULT '',
+    block_code VARCHAR(40) NOT NULL DEFAULT '',
+    block_name VARCHAR(120) NOT NULL DEFAULT '',
+    level VARCHAR(20) NOT NULL DEFAULT 'BLOCK',
+    is_posting BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_gl_cost_centers_scope_code UNIQUE (company_id, location_id, cost_center_code),
+    CONSTRAINT uq_gl_cost_centers_scope_natural UNIQUE (company_id, location_id, estate_code, division_code, block_code),
+    CONSTRAINT chk_gl_cost_centers_level CHECK (level IN ('ESTATE', 'DIVISION', 'BLOCK')),
+    CONSTRAINT chk_gl_cost_centers_estate_required CHECK (BTRIM(estate_code) <> ''),
+    CONSTRAINT chk_gl_cost_centers_level_shape CHECK (
+        (level = 'ESTATE' AND BTRIM(division_code) = '' AND BTRIM(block_code) = '')
+        OR (level = 'DIVISION' AND BTRIM(division_code) <> '' AND BTRIM(block_code) = '')
+        OR (level = 'BLOCK' AND BTRIM(division_code) <> '' AND BTRIM(block_code) <> '')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_gl_cost_centers_scope_level
+    ON gl_cost_centers(company_id, location_id, level, cost_center_code);
+
+DO $$
+BEGIN
+    IF TO_REGCLASS('gl_journal_details') IS NOT NULL THEN
+        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS cost_center_id BIGINT;
+    END IF;
+
+    IF TO_REGCLASS('gl_ledger_entries') IS NOT NULL THEN
+        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS cost_center_id BIGINT;
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF TO_REGCLASS('gl_journal_details') IS NOT NULL
+       AND NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'fk_gl_journal_details_cost_center'
+              AND conrelid = 'gl_journal_details'::regclass
+       ) THEN
+        ALTER TABLE gl_journal_details
+            ADD CONSTRAINT fk_gl_journal_details_cost_center
+            FOREIGN KEY (cost_center_id) REFERENCES gl_cost_centers(id) ON DELETE RESTRICT;
+    END IF;
+
+    IF TO_REGCLASS('gl_ledger_entries') IS NOT NULL
+       AND NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'fk_gl_ledger_entries_cost_center'
+              AND conrelid = 'gl_ledger_entries'::regclass
+       ) THEN
+        ALTER TABLE gl_ledger_entries
+            ADD CONSTRAINT fk_gl_ledger_entries_cost_center
+            FOREIGN KEY (cost_center_id) REFERENCES gl_cost_centers(id) ON DELETE RESTRICT;
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF TO_REGCLASS('gl_journal_details') IS NOT NULL
+       AND TO_REGCLASS('gl_journal_headers') IS NOT NULL THEN
+        UPDATE gl_journal_details d
+        SET cost_center_id = cc.id
+        FROM gl_journal_headers h,
+             gl_cost_centers cc
+        WHERE d.header_id = h.id
+          AND cc.company_id = h.company_id
+          AND cc.location_id = h.location_id
+          AND UPPER(cc.cost_center_code) = UPPER(d.cost_center_code)
+          AND d.cost_center_id IS NULL
+          AND BTRIM(COALESCE(d.cost_center_code, '')) <> '';
+    END IF;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION gl_journal_details_biu_validate_account()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_header_company_id BIGINT;
+    v_header_location_id BIGINT;
     v_account_company_id BIGINT;
     v_is_posting BOOLEAN;
     v_is_active BOOLEAN;
+    v_requires_cost_center BOOLEAN;
+    v_cost_center_company_id BIGINT;
+    v_cost_center_location_id BIGINT;
+    v_cost_center_code VARCHAR(80);
+    v_cost_center_is_posting BOOLEAN;
+    v_cost_center_is_active BOOLEAN;
 BEGIN
-    SELECT h.company_id
-    INTO v_header_company_id
+    SELECT h.company_id, h.location_id
+    INTO v_header_company_id, v_header_location_id
     FROM gl_journal_headers h
     WHERE h.id = NEW.header_id;
 
@@ -491,8 +591,8 @@ BEGIN
         RAISE EXCEPTION 'Journal header % not found.', NEW.header_id;
     END IF;
 
-    SELECT a.company_id, a.is_posting, a.is_active
-    INTO v_account_company_id, v_is_posting, v_is_active
+    SELECT a.company_id, a.is_posting, a.is_active, COALESCE(a.requires_cost_center, FALSE)
+    INTO v_account_company_id, v_is_posting, v_is_active, v_requires_cost_center
     FROM gl_accounts a
     WHERE a.id = NEW.account_id;
 
@@ -512,6 +612,46 @@ BEGIN
         RAISE EXCEPTION 'Account % is inactive and cannot be used in journal details.', NEW.account_id;
     END IF;
 
+    IF NEW.cost_center_id IS NOT NULL THEN
+        SELECT cc.company_id,
+               cc.location_id,
+               cc.cost_center_code,
+               cc.is_posting,
+               cc.is_active
+        INTO v_cost_center_company_id,
+             v_cost_center_location_id,
+             v_cost_center_code,
+             v_cost_center_is_posting,
+             v_cost_center_is_active
+        FROM gl_cost_centers cc
+        WHERE cc.id = NEW.cost_center_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Cost center % not found.', NEW.cost_center_id;
+        END IF;
+
+        IF v_cost_center_company_id <> v_header_company_id
+           OR v_cost_center_location_id <> v_header_location_id THEN
+            RAISE EXCEPTION 'Cost center % is outside journal scope.', NEW.cost_center_id;
+        END IF;
+
+        IF NOT v_cost_center_is_active THEN
+            RAISE EXCEPTION 'Cost center % is inactive.', NEW.cost_center_id;
+        END IF;
+
+        IF NOT v_cost_center_is_posting THEN
+            RAISE EXCEPTION 'Cost center % is non-posting.', NEW.cost_center_id;
+        END IF;
+
+        NEW.cost_center_code := COALESCE(v_cost_center_code, '');
+    END IF;
+
+    IF v_requires_cost_center
+       AND NEW.cost_center_id IS NULL
+       AND BTRIM(COALESCE(NEW.cost_center_code, '')) = '' THEN
+        RAISE EXCEPTION 'Account % requires cost center.', NEW.account_id;
+    END IF;
+
     RETURN NEW;
 END
 $$;
@@ -522,7 +662,7 @@ BEGIN
        AND TO_REGCLASS('gl_journal_headers') IS NOT NULL THEN
         EXECUTE 'DROP TRIGGER IF EXISTS trg_gl_journal_details_biu_validate_account ON gl_journal_details';
         EXECUTE 'CREATE TRIGGER trg_gl_journal_details_biu_validate_account
-                 BEFORE INSERT OR UPDATE OF account_id, header_id
+                 BEFORE INSERT OR UPDATE OF account_id, header_id, cost_center_id, cost_center_code
                  ON gl_journal_details
                  FOR EACH ROW
                  EXECUTE FUNCTION gl_journal_details_biu_validate_account()';
@@ -661,6 +801,48 @@ BEGIN
             company_id, account_code, account_name, parent_account_id, account_type, normal_balance,
             is_posting, is_active, sort_order, report_group, allow_manual_journal, created_by, updated_by
         )
+        SELECT v_company_id, v_prefix || '12000.000', 'Trade Receivables', p.id, 'ASSET', 'D', FALSE, TRUE, 40, 'BS_ASSET', FALSE, 'SEED', 'SEED'
+        FROM gl_accounts p
+        WHERE p.company_id = v_company_id
+          AND p.account_code = v_prefix || '10000.000'
+        ON CONFLICT (company_id, account_code) DO UPDATE
+        SET account_name = EXCLUDED.account_name,
+            parent_account_id = EXCLUDED.parent_account_id,
+            account_type = EXCLUDED.account_type,
+            normal_balance = EXCLUDED.normal_balance,
+            is_posting = EXCLUDED.is_posting,
+            is_active = EXCLUDED.is_active,
+            sort_order = EXCLUDED.sort_order,
+            report_group = EXCLUDED.report_group,
+            allow_manual_journal = EXCLUDED.allow_manual_journal,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = NOW();
+
+        INSERT INTO gl_accounts (
+            company_id, account_code, account_name, parent_account_id, account_type, normal_balance,
+            is_posting, is_active, sort_order, report_group, allow_manual_journal, created_by, updated_by
+        )
+        SELECT v_company_id, v_prefix || '12000.001', 'Piutang Usaha', p.id, 'ASSET', 'D', TRUE, TRUE, 41, 'BS_ASSET', TRUE, 'SEED', 'SEED'
+        FROM gl_accounts p
+        WHERE p.company_id = v_company_id
+          AND p.account_code = v_prefix || '12000.000'
+        ON CONFLICT (company_id, account_code) DO UPDATE
+        SET account_name = EXCLUDED.account_name,
+            parent_account_id = EXCLUDED.parent_account_id,
+            account_type = EXCLUDED.account_type,
+            normal_balance = EXCLUDED.normal_balance,
+            is_posting = EXCLUDED.is_posting,
+            is_active = EXCLUDED.is_active,
+            sort_order = EXCLUDED.sort_order,
+            report_group = EXCLUDED.report_group,
+            allow_manual_journal = EXCLUDED.allow_manual_journal,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = NOW();
+
+        INSERT INTO gl_accounts (
+            company_id, account_code, account_name, parent_account_id, account_type, normal_balance,
+            is_posting, is_active, sort_order, report_group, allow_manual_journal, created_by, updated_by
+        )
         SELECT v_company_id, v_prefix || '21000.000', 'Current Liabilities', p.id, 'LIABILITY', 'C', FALSE, TRUE, 60, 'BS_LIABILITY', FALSE, 'SEED', 'SEED'
         FROM gl_accounts p
         WHERE p.company_id = v_company_id
@@ -686,6 +868,27 @@ BEGIN
         FROM gl_accounts p
         WHERE p.company_id = v_company_id
           AND p.account_code = v_prefix || '21000.000'
+        ON CONFLICT (company_id, account_code) DO UPDATE
+        SET account_name = EXCLUDED.account_name,
+            parent_account_id = EXCLUDED.parent_account_id,
+            account_type = EXCLUDED.account_type,
+            normal_balance = EXCLUDED.normal_balance,
+            is_posting = EXCLUDED.is_posting,
+            is_active = EXCLUDED.is_active,
+            sort_order = EXCLUDED.sort_order,
+            report_group = EXCLUDED.report_group,
+            allow_manual_journal = EXCLUDED.allow_manual_journal,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = NOW();
+
+        INSERT INTO gl_accounts (
+            company_id, account_code, account_name, parent_account_id, account_type, normal_balance,
+            is_posting, is_active, sort_order, report_group, allow_manual_journal, created_by, updated_by
+        )
+        SELECT v_company_id, v_prefix || '30000.001', 'Modal', p.id, 'EQUITY', 'C', TRUE, TRUE, 71, 'BS_EQUITY', TRUE, 'SEED', 'SEED'
+        FROM gl_accounts p
+        WHERE p.company_id = v_company_id
+          AND p.account_code = v_prefix || '30000.000'
         ON CONFLICT (company_id, account_code) DO UPDATE
         SET account_name = EXCLUDED.account_name,
             parent_account_id = EXCLUDED.parent_account_id,

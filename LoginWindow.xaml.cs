@@ -1,34 +1,29 @@
+using DevExpress.Xpf.Core;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Accounting.Infrastructure.Logging;
 using Accounting.Services;
 using Accounting.ViewModels;
+using Accounting.Views.Components;
 
 namespace Accounting;
 
-public partial class LoginWindow : Window
+public partial class LoginWindow : ThemedWindow
 {
     private readonly LoginViewModel _viewModel;
-    private readonly ThemeService _themeService;
-    private readonly AppearancePreferencesService _appearancePreferencesService;
     private readonly IAccessControlService _accessControlService;
 
     public LoginWindow()
     {
         InitializeComponent();
 
-        _appearancePreferencesService = new AppearancePreferencesService();
-        var appearance = _appearancePreferencesService.Load();
+        var appearance = AppServices.ThemeCoordinator.CurrentSettings;
         _accessControlService = AuthServiceFactory.CreateAccessControlService();
-
-        _themeService = new ThemeService();
-        _themeService.ApplyTheme(appearance.ThemeMode, appearance.IsHighContrast, animate: false);
 
         _viewModel = new LoginViewModel(
             AuthServiceFactory.Create(),
             appearance.ThemeMode,
-            appearance.IsHighContrast,
             OnAppearanceChanged,
             OnSignInSucceeded);
         DataContext = _viewModel;
@@ -37,6 +32,7 @@ public partial class LoginWindow : Window
         {
             UpdateAdaptiveLayout();
             UpdateWindowNavigationState();
+            UpdateLoginSkinSummary();
             Keyboard.Focus(UsernameInput);
         };
     }
@@ -155,14 +151,54 @@ public partial class LoginWindow : Window
             : "Maximize window (F11)";
     }
 
-    private void OnAppearanceChanged(ThemeMode mode, bool isHighContrast)
+    private void OnAppearanceChanged(ThemeMode mode)
     {
-        _themeService.ApplyTheme(mode, isHighContrast, animate: true);
-        _appearancePreferencesService.Save(new UserAppearanceSettings
+        AppServices.ThemeCoordinator.ApplyTheme(mode);
+    }
+
+    private void ThemeSkinsSelectorControl_OnThemeModeChanged(object sender, ThemeModeChangedEventArgs e)
+    {
+        _viewModel.SyncThemeMode(e.ThemeMode);
+        UpdateLoginSkinSummary();
+        LoginThemeSelectorPopup.IsOpen = false;
+    }
+
+    private void LoginThemeSelectorButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        LoginThemeSelectorPopup.IsOpen = !LoginThemeSelectorPopup.IsOpen;
+    }
+
+    private void LoginThemeSelectorPopup_OnClosed(object sender, EventArgs e)
+    {
+        UpdateLoginSkinSummary();
+    }
+
+    private void UpdateLoginSkinSummary()
+    {
+        if (LoginSkinSummaryText is null)
         {
-            ThemeMode = mode,
-            IsHighContrast = isHighContrast
-        });
+            return;
+        }
+
+        var themeName = ApplicationThemeHelper.ApplicationThemeName;
+        if (!string.IsNullOrWhiteSpace(themeName))
+        {
+            foreach (DevExpress.Xpf.Core.Native.ITheme theme in Theme.Themes)
+            {
+                if (string.Equals(theme.Name, themeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    LoginSkinSummaryText.Text = theme.DisplayName;
+                    return;
+                }
+            }
+        }
+
+        LoginSkinSummaryText.Text = AppServices.ThemeCoordinator.CurrentThemeMode switch
+        {
+            ThemeMode.Light => "Light skin",
+            ThemeMode.Dark => "Dark skin",
+            _ => "System mode"
+        };
     }
 
     private async Task OnSignInSucceeded(string username)
@@ -212,7 +248,7 @@ public partial class LoginWindow : Window
 
         try
         {
-            var workspace = new MainWindow(accessContext, _viewModel.SelectedThemeMode, _viewModel.IsHighContrast, _accessControlService);
+            var workspace = new MainWindow(accessContext, _accessControlService);
             Application.Current.MainWindow = workspace;
             workspace.Show();
             Close();

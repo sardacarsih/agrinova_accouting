@@ -438,6 +438,52 @@
         <Setter Property="Height" Value="30" />
         <Setter Property="Padding" Value="0" />
     </Style>
+    <Style x:Key="ThemePickerPanelBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceMuted}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="12" />
+    </Style>
+    <Style x:Key="ThemePickerCardRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Card"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="12"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Card" Property="Background" Value="{DynamicResource Brush.SurfaceAlt}" />
+                            <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Card" Property="Background" Value="{DynamicResource Brush.PrimarySubtle}" />
+                            <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource Brush.Primary}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.Primary}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Card" Property="Background" Value="{DynamicResource Brush.DisabledBackground}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.DisabledForeground}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <Style x:Key="ModalOverlayStyle" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource Brush.Overlay}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />

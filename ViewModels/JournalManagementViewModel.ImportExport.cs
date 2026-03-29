@@ -50,7 +50,7 @@ public sealed partial class JournalManagementViewModel
             return;
         }
 
-        var enriched = _importExportWorkflow.PreviewImport(ImportFilePath, _accountLookupByCode);
+        var enriched = _importExportWorkflow.PreviewImport(ImportFilePath, _accountLookupByCode, _costCenterLookupByCode);
 
         ImportMessage = enriched.Message;
         ReplaceCollection(ImportPreviewItems, enriched.PreviewItems);
@@ -512,35 +512,6 @@ public sealed partial class JournalManagementViewModel
             _exportPeriodPreviewKey = string.Empty;
         }
     }
-
-
-    private List<ManagedJournalSummary> ResolveSelectedJournals(object? parameter)
-    {
-        var selected = new List<ManagedJournalSummary>();
-        if (parameter is IEnumerable enumerable)
-        {
-            foreach (var item in enumerable)
-            {
-                if (item is ManagedJournalSummary summary)
-                {
-                    selected.Add(summary);
-                }
-            }
-        }
-
-        if (selected.Count > 0)
-        {
-            return selected
-                .GroupBy(x => x.Id)
-                .Select(x => x.First())
-                .ToList();
-        }
-
-        return SelectedJournal is null
-            ? new List<ManagedJournalSummary>()
-            : new List<ManagedJournalSummary> { SelectedJournal };
-    }
-
 
     private static string AskSavePath(string journalNo)
     {

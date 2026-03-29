@@ -22,6 +22,12 @@ public sealed class ManagedAccount
 
     public bool IsActive { get; set; }
 
+    public bool RequiresDepartment { get; set; }
+
+    public bool RequiresProject { get; set; }
+
+    public bool RequiresCostCenter { get; set; }
+
     public override string ToString()
     {
         if (string.IsNullOrWhiteSpace(Code))
@@ -74,6 +80,46 @@ public sealed class ManagedAccountingPeriod
     public string Note { get; set; } = string.Empty;
 }
 
+public sealed class ManagedCostCenter
+{
+    public long Id { get; set; }
+
+    public long CompanyId { get; set; }
+
+    public long LocationId { get; set; }
+
+    public long? ParentId { get; set; }
+
+    public string CostCenterCode { get; set; } = string.Empty;
+
+    public string CostCenterName { get; set; } = string.Empty;
+
+    public string EstateCode { get; set; } = string.Empty;
+
+    public string EstateName { get; set; } = string.Empty;
+
+    public string DivisionCode { get; set; } = string.Empty;
+
+    public string DivisionName { get; set; } = string.Empty;
+
+    public string BlockCode { get; set; } = string.Empty;
+
+    public string BlockName { get; set; } = string.Empty;
+
+    public string Level { get; set; } = "BLOCK";
+
+    public bool IsPosting { get; set; } = true;
+
+    public bool IsActive { get; set; } = true;
+
+    public override string ToString()
+    {
+        return string.IsNullOrWhiteSpace(CostCenterName)
+            ? CostCenterCode
+            : $"{CostCenterCode} - {CostCenterName}";
+    }
+}
+
 public sealed class ManagedJournalHeader
 {
     public long Id { get; set; }
@@ -113,6 +159,8 @@ public sealed class ManagedJournalLine
 
     public string ProjectCode { get; set; } = string.Empty;
 
+    public long? CostCenterId { get; set; }
+
     public string CostCenterCode { get; set; } = string.Empty;
 }
 
@@ -123,6 +171,8 @@ public sealed class ManagedJournalSummary
     public string JournalNo { get; set; } = string.Empty;
 
     public DateTime JournalDate { get; set; }
+
+    public string CreatedBy { get; set; } = string.Empty;
 
     public string ReferenceNo { get; set; } = string.Empty;
 
@@ -219,7 +269,21 @@ public sealed class ManagedSubLedgerRow
 
     public string ProjectCode { get; set; } = string.Empty;
 
+    public long? CostCenterId { get; set; }
+
     public string CostCenterCode { get; set; } = string.Empty;
+
+    public string EstateCode { get; set; } = string.Empty;
+
+    public string EstateName { get; set; } = string.Empty;
+
+    public string DivisionCode { get; set; } = string.Empty;
+
+    public string DivisionName { get; set; } = string.Empty;
+
+    public string BlockCode { get; set; } = string.Empty;
+
+    public string BlockName { get; set; } = string.Empty;
 
     public string LineDescription { get; set; } = string.Empty;
 
@@ -270,6 +334,8 @@ public sealed class ManagedJournalBundle
 public sealed class JournalWorkspaceData
 {
     public List<ManagedAccount> Accounts { get; init; } = new();
+
+    public List<ManagedCostCenter> CostCenters { get; init; } = new();
 
     public List<ManagedJournalSummary> Journals { get; init; } = new();
 }

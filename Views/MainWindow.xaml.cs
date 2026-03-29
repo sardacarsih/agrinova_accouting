@@ -1,3 +1,4 @@
+using DevExpress.Xpf.Core;
 using System.Windows;
 using System.Windows.Media;
 using Accounting.Services;
@@ -5,24 +6,17 @@ using Accounting.ViewModels;
 
 namespace Accounting;
 
-public partial class MainWindow : Window
+public partial class MainWindow : ThemedWindow
 {
-    private readonly ThemeMode _selectedThemeMode;
-    private readonly bool _isHighContrast;
     private readonly IAccessControlService _accessControlService;
     private bool _isSwitchingWorkContext;
 
     private MainWindowViewModel? _viewModel;
 
-    public MainWindow(UserAccessContext accessContext, ThemeMode selectedThemeMode, bool isHighContrast, IAccessControlService accessControlService)
+    public MainWindow(UserAccessContext accessContext, IAccessControlService accessControlService)
     {
         InitializeComponent();
-        _selectedThemeMode = selectedThemeMode;
-        _isHighContrast = isHighContrast;
         _accessControlService = accessControlService;
-
-        var themeService = new ThemeService();
-        themeService.ApplyTheme(selectedThemeMode, isHighContrast, animate: false);
 
         var shellViewModel = new MainShellViewModel(
             accessContext,
@@ -151,7 +145,7 @@ public partial class MainWindow : Window
                 }
             }
 
-            var workspace = new MainWindow(nextContext, _selectedThemeMode, _isHighContrast, _accessControlService);
+            var workspace = new MainWindow(nextContext, _accessControlService);
             Application.Current.MainWindow = workspace;
             workspace.Show();
             Close();

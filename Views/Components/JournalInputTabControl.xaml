@@ -29,9 +29,9 @@
                 </Trigger>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
-                    <Setter Property="Background" Value="#FFFFFFFF" />
-                    <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryDark}" />
-                    <Setter Property="CaretBrush" Value="{DynamicResource Brush.PrimaryDark}" />
+                    <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+                    <Setter Property="CaretBrush" Value="{DynamicResource Brush.TextPrimary}" />
                     <Setter Property="Effect">
                         <Setter.Value>
                             <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.2" Color="{DynamicResource Color.Focus}" />
@@ -54,9 +54,9 @@
             <Setter Property="BorderThickness" Value="1" />
             <Style.Triggers>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                    <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryDark}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
                     <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
-                    <Setter Property="Background" Value="#FFFFFFFF" />
+                    <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -105,19 +105,10 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
-            <StackPanel>
-                <TextBlock Text="{Binding JournalEditorTitle}" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                <TextBlock Text="{Binding JournalEditorSubtitle}"
-                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
-            </StackPanel>
-        </Border>
-
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Visible" />
@@ -181,7 +172,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Collapsed" />
@@ -245,7 +236,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="2" Margin="0,2,0,0">
+        <Grid Grid.Row="1" Margin="0,2,0,0">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Visible" />
@@ -304,7 +295,7 @@
             </Border>
         </Grid>
 
-        <StackPanel Grid.Row="2" Margin="0,2,0,0">
+        <StackPanel Grid.Row="1" Margin="0,2,0,0">
             <StackPanel.Style>
                 <Style TargetType="StackPanel">
                     <Setter Property="Visibility" Value="Collapsed" />
@@ -354,7 +345,7 @@
         <DataGrid Style="{StaticResource JournalLinesGridStyle}"
                   x:Name="JournalLinesGrid"
                   TabIndex="80"
-                  Grid.Row="3"
+                  Grid.Row="2"
                   Margin="0,2,0,0"
                   SelectionMode="Extended"
                   SelectionUnit="FullRow"
@@ -376,7 +367,7 @@
                     <Setter Property="ToolTip" Value="{x:Null}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding HasValidationError}" Value="True">
-                            <Setter Property="Background" Value="#14B42318" />
+                            <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
                             <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
                             <Setter Property="BorderThickness" Value="0,0,0,1" />
                             <Setter Property="ToolTip" Value="{Binding ValidationMessage}" />
@@ -423,7 +414,7 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <Grid Grid.Row="4" Margin="0,2,0,0">
+        <Grid Grid.Row="3" Margin="0,2,0,0">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Visible" />
@@ -490,7 +481,7 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="4" Margin="0,2,0,0">
+        <StackPanel Grid.Row="3" Margin="0,2,0,0">
             <StackPanel.Style>
                 <Style TargetType="StackPanel">
                     <Setter Property="Visibility" Value="Collapsed" />

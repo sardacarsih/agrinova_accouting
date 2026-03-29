@@ -135,6 +135,113 @@ internal static partial class Program
             $"Unexpected import commit tooltip: {viewModel.CommitImportTooltip}");
     }
 
+    private static async Task TestJournalManagementViewModel_BrowseRowsMirrorSearchResultsAsync()
+    {
+        var service = CreateService();
+        var accessContext = await BuildTestAccessContextAsync("accounting.transactions.view");
+        var viewModel = new JournalManagementViewModel(service, accessContext, "ITEST Location");
+
+        var summaries = new[]
+        {
+            new ManagedJournalSummary
+            {
+                Id = 501,
+                JournalNo = "JR-ITEST-501",
+                JournalDate = new DateTime(2026, 3, 25),
+                ReferenceNo = "REF-501",
+                Description = "Jurnal ITest 501",
+                Status = "DRAFT",
+                TotalDebit = 125000m,
+                TotalCredit = 125000m
+            },
+            new ManagedJournalSummary
+            {
+                Id = 502,
+                JournalNo = "JR-ITEST-502",
+                JournalDate = new DateTime(2026, 3, 26),
+                ReferenceNo = "REF-502",
+                Description = "Jurnal ITest 502",
+                Status = "POSTED",
+                TotalDebit = 98000m,
+                TotalCredit = 98000m
+            }
+        };
+
+        InvokePrivateInstanceMethod(viewModel, "ApplyBrowseSearchResult", new object?[] { summaries });
+
+        Assert(viewModel.SearchResults.Count == 2, "SearchResults should keep browse search payload.");
+        Assert(viewModel.BrowseJournalRows.Count == 2, "BrowseJournalRows should mirror browse search payload.");
+        Assert(
+            string.Equals(viewModel.BrowseJournalRows[0].JournalNo, "JR-ITEST-501", StringComparison.Ordinal),
+            $"Unexpected browse row journal no: {viewModel.BrowseJournalRows[0].JournalNo}");
+        Assert(
+            string.Equals(viewModel.BrowseJournalRows[1].Status, "POSTED", StringComparison.Ordinal),
+            $"Unexpected browse row status: {viewModel.BrowseJournalRows[1].Status}");
+        Assert(
+            viewModel.BrowseResultSummary.Contains("2 jurnal", StringComparison.Ordinal),
+            $"Unexpected browse result summary: {viewModel.BrowseResultSummary}");
+    }
+
+    private static async Task TestJournalManagementViewModel_BrowseDetailLoadsOnceAndCachesAsync()
+    {
+        var bundleCallCount = 0;
+        var service = CreateAccessControlServiceProxy((method, _) =>
+        {
+            if (string.Equals(method.Name, nameof(IAccessControlService.GetJournalBundleAsync), StringComparison.Ordinal))
+            {
+                bundleCallCount++;
+                return Task.FromResult<ManagedJournalBundle?>(new ManagedJournalBundle
+                {
+                    Header = new ManagedJournalHeader
+                    {
+                        Id = 701,
+                        CompanyId = 77,
+                        LocationId = 88,
+                        JournalNo = "JR-CACHE-701",
+                        JournalDate = new DateTime(2026, 3, 27),
+                        PeriodMonth = new DateTime(2026, 3, 1),
+                        Status = "DRAFT"
+                    },
+                    Lines = new List<ManagedJournalLine>
+                    {
+                        new() { LineNo = 1, AccountCode = "1100", AccountName = "Kas", Description = "Line 1", Debit = 150m, Credit = 0m },
+                        new() { LineNo = 2, AccountCode = "4100", AccountName = "Pendapatan", Description = "Line 2", Debit = 0m, Credit = 150m }
+                    }
+                });
+            }
+
+            throw new NotSupportedException($"Unexpected method call: {method.Name}");
+        });
+
+        var accessContext = new UserAccessContext
+        {
+            Username = "itest",
+            SelectedCompanyId = 77,
+            SelectedLocationId = 88
+        };
+        var viewModel = new JournalManagementViewModel(service, accessContext, "ITEST Location");
+        var row = new JournalBrowseRowViewModel(new ManagedJournalSummary
+        {
+            Id = 701,
+            JournalNo = "JR-CACHE-701",
+            JournalDate = new DateTime(2026, 3, 27),
+            ReferenceNo = "CACHE-701",
+            Description = "Jurnal cache test",
+            Status = "DRAFT",
+            TotalDebit = 150m,
+            TotalCredit = 150m
+        });
+
+        await viewModel.EnsureBrowseJournalDetailLoadedAsync(row);
+        await viewModel.EnsureBrowseJournalDetailLoadedAsync(row);
+
+        Assert(bundleCallCount == 1, $"Browse detail should be loaded once, actual calls={bundleCallCount}.");
+        Assert(row.IsDetailLoaded, "Browse detail row should be marked loaded after first fetch.");
+        Assert(!row.IsDetailLoading, "Browse detail row should not stay in loading state.");
+        Assert(row.Lines.Count == 2, $"Browse detail row should expose 2 lines, actual={row.Lines.Count}.");
+        Assert(string.IsNullOrWhiteSpace(row.DetailErrorMessage), $"Unexpected browse detail error: {row.DetailErrorMessage}");
+    }
+
     private static async Task TestMainShellViewModel_GeneralLedgerNavigationRequiresViewActionsAsync()
     {
         var service = CreateService();
@@ -269,6 +376,46 @@ internal static partial class Program
         Assert(
             viewOnlyViewModel.ExportCurrentTooltip.Contains("izin export jurnal", StringComparison.OrdinalIgnoreCase),
             $"Unexpected export current tooltip: {viewOnlyViewModel.ExportCurrentTooltip}");
+    }
+
+    private static async Task TestJournalManagementViewModel_SelectedBrowseRowsDriveExportResolutionAsync()
+    {
+        var service = CreateService();
+        var accessContext = await BuildTestAccessContextAsync("accounting.transactions.export");
+        var viewModel = new JournalManagementViewModel(service, accessContext, "ITEST Location");
+
+        var firstRow = new JournalBrowseRowViewModel(new ManagedJournalSummary
+        {
+            Id = 801,
+            JournalNo = "JR-EXPORT-801",
+            JournalDate = new DateTime(2026, 3, 1),
+            ReferenceNo = "EXP-801",
+            Description = "Export 801",
+            Status = "DRAFT",
+            TotalDebit = 200m,
+            TotalCredit = 200m
+        });
+        var secondRow = new JournalBrowseRowViewModel(new ManagedJournalSummary
+        {
+            Id = 802,
+            JournalNo = "JR-EXPORT-802",
+            JournalDate = new DateTime(2026, 3, 2),
+            ReferenceNo = "EXP-802",
+            Description = "Export 802",
+            Status = "APPROVED",
+            TotalDebit = 350m,
+            TotalCredit = 350m
+        });
+
+        viewModel.SetSelectedBrowseJournalRows(new[] { firstRow, secondRow });
+
+        var resolved = InvokePrivateInstanceMethod<List<ManagedJournalSummary>>(viewModel, "ResolveSelectedJournals", new object?[] { null });
+
+        Assert(viewModel.SelectedBrowseJournalRows.Count == 2, "SelectedBrowseJournalRows should keep master-row selection.");
+        Assert(resolved.Count == 2, $"Resolved selected journals should return 2 items, actual={resolved.Count}.");
+        Assert(
+            resolved.Any(summary => summary.Id == 801) && resolved.Any(summary => summary.Id == 802),
+            "Resolved selected journals should include both selected master rows.");
     }
 
     private static async Task TestReportsViewModel_ExportRequiresDedicatedPermissionAsync()
@@ -666,5 +813,41 @@ internal static partial class Program
 
         canMaintainField!.SetValue(viewModel, canMaintainMasterData);
         masterCompanyLabelField!.SetValue(viewModel, masterCompanyLabel);
+    }
+
+    private static void InvokePrivateInstanceMethod(object instance, string methodName, params object?[]? arguments)
+    {
+        var method = instance.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(method is not null, $"{instance.GetType().Name}.{methodName} was not found.");
+        method!.Invoke(instance, arguments);
+    }
+
+    private static T InvokePrivateInstanceMethod<T>(object instance, string methodName, params object?[]? arguments)
+    {
+        var method = instance.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(method is not null, $"{instance.GetType().Name}.{methodName} was not found.");
+        var result = method!.Invoke(instance, arguments);
+        Assert(result is T, $"{instance.GetType().Name}.{methodName} returned unexpected result.");
+        return (T)result!;
+    }
+
+    private static IAccessControlService CreateAccessControlServiceProxy(Func<MethodInfo, object?[]?, object?> handler)
+    {
+        var proxy = DispatchProxy.Create<IAccessControlService, AccessControlServiceDispatchProxy>();
+        var dispatchProxy = (AccessControlServiceDispatchProxy)(object)proxy!;
+        dispatchProxy.Handler = handler;
+        return proxy!;
+    }
+
+    private class AccessControlServiceDispatchProxy : DispatchProxy
+    {
+        public Func<MethodInfo, object?[]?, object?>? Handler { get; set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert(targetMethod is not null, "DispatchProxy target method must not be null.");
+            Assert(Handler is not null, "DispatchProxy handler must not be null.");
+            return Handler!(targetMethod!, args);
+        }
     }
 }

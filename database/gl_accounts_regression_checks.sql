@@ -16,7 +16,10 @@ DECLARE
     v_posting_id BIGINT;
     v_non_posting_id BIGINT;
     v_inactive_id BIGINT;
+    v_cc_required_id BIGINT;
     v_header_id BIGINT;
+    v_division_cost_center_id BIGINT;
+    v_block_cost_center_id BIGINT;
     v_level INT;
     v_path TEXT;
     v_expected_error BOOLEAN;
@@ -242,6 +245,87 @@ BEGIN
     IF NOT v_expected_error THEN
         RAISE EXCEPTION 'CHECK FAILED: inactive account was accepted by gl_journal_details.';
     END IF;
+
+    -- 6) Account requiring cost center must reject missing/non-posting cost center.
+    INSERT INTO gl_accounts (
+        company_id, account_code, account_name, account_type, normal_balance,
+        is_posting, is_active, requires_cost_center, created_by, updated_by
+    )
+    VALUES (
+        v_company_1, 'TC.50030.001', 'Cost Center Required', 'EXPENSE', 'D',
+        TRUE, TRUE, TRUE, 'REGRESSION', 'REGRESSION'
+    )
+    RETURNING id INTO v_cc_required_id;
+
+    INSERT INTO gl_cost_centers (
+        company_id, location_id, cost_center_code, cost_center_name,
+        estate_code, estate_name, division_code, division_name, block_code, block_name,
+        level, is_posting, is_active, created_by, updated_by
+    )
+    VALUES
+    (
+        v_company_1, v_location_1, 'NE-D01', 'Division 01',
+        'NE', 'North Estate', 'D01', 'Division 01', '', '',
+        'DIVISION', FALSE, TRUE, 'REGRESSION', 'REGRESSION'
+    ),
+    (
+        v_company_1, v_location_1, 'NE-D01-B12', 'Block B12',
+        'NE', 'North Estate', 'D01', 'Division 01', 'B12', 'Block B12',
+        'BLOCK', TRUE, TRUE, 'REGRESSION', 'REGRESSION'
+    );
+
+    SELECT id
+    INTO v_division_cost_center_id
+    FROM gl_cost_centers
+    WHERE company_id = v_company_1
+      AND location_id = v_location_1
+      AND cost_center_code = 'NE-D01';
+
+    SELECT id
+    INTO v_block_cost_center_id
+    FROM gl_cost_centers
+    WHERE company_id = v_company_1
+      AND location_id = v_location_1
+      AND cost_center_code = 'NE-D01-B12';
+
+    v_expected_error := FALSE;
+    BEGIN
+        INSERT INTO gl_journal_details (
+            header_id, line_no, account_id, description, debit, credit, created_at, updated_at
+        )
+        VALUES (
+            v_header_id, 4, v_cc_required_id, 'Should fail missing cost center', 50, 0, NOW(), NOW()
+        );
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_expected_error := TRUE;
+    END;
+    IF NOT v_expected_error THEN
+        RAISE EXCEPTION 'CHECK FAILED: missing required cost center was accepted by gl_journal_details.';
+    END IF;
+
+    v_expected_error := FALSE;
+    BEGIN
+        INSERT INTO gl_journal_details (
+            header_id, line_no, account_id, description, debit, credit, cost_center_id, cost_center_code, created_at, updated_at
+        )
+        VALUES (
+            v_header_id, 5, v_cc_required_id, 'Should fail division cost center', 50, 0, v_division_cost_center_id, 'NE-D01', NOW(), NOW()
+        );
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_expected_error := TRUE;
+    END;
+    IF NOT v_expected_error THEN
+        RAISE EXCEPTION 'CHECK FAILED: non-posting cost center was accepted by gl_journal_details.';
+    END IF;
+
+    INSERT INTO gl_journal_details (
+        header_id, line_no, account_id, description, debit, credit, cost_center_id, cost_center_code, created_at, updated_at
+    )
+    VALUES (
+        v_header_id, 6, v_cc_required_id, 'Posting cost center', 50, 0, v_block_cost_center_id, 'NE-D01-B12', NOW(), NOW()
+    );
 
     RAISE NOTICE 'GL ACCOUNT REGRESSION CHECKS: PASSED';
 END

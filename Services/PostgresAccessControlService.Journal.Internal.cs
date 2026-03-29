@@ -192,6 +192,7 @@ WHERE le.company_id = @company_id
         var accounts = new List<AccountHierarchyEntry>();
         await using (var load = new NpgsqlCommand(@"
 SELECT id,
+       account_code,
        is_posting,
        COALESCE(hierarchy_level, 1) AS hierarchy_level,
        parent_account_id
@@ -205,9 +206,10 @@ WHERE company_id = @company_id;", connection, transaction))
                 accounts.Add(new AccountHierarchyEntry
                 {
                     Id = reader.GetInt64(0),
-                    IsPosting = !reader.IsDBNull(1) && reader.GetBoolean(1),
-                    HierarchyLevel = reader.GetInt32(2),
-                    ParentAccountId = reader.IsDBNull(3) ? null : reader.GetInt64(3)
+                    Code = reader.GetString(1),
+                    IsPosting = !reader.IsDBNull(2) && reader.GetBoolean(2),
+                    HierarchyLevel = reader.GetInt32(3),
+                    ParentAccountId = reader.IsDBNull(4) ? null : reader.GetInt64(4)
                 });
             }
         }
@@ -218,22 +220,45 @@ WHERE company_id = @company_id;", connection, transaction))
             byId[account.Id] = account;
         }
 
+        var childCounts = new Dictionary<long, int>();
+        foreach (var account in accounts)
+        {
+            if (!account.ParentAccountId.HasValue)
+            {
+                continue;
+            }
+
+            childCounts[account.ParentAccountId.Value] = childCounts.TryGetValue(account.ParentAccountId.Value, out var currentCount)
+                ? currentCount + 1
+                : 1;
+        }
+
         var updatedCount = 0;
         foreach (var account in accounts)
         {
             long? targetParentId = null;
             if (account.ParentAccountId.HasValue &&
                 account.ParentAccountId.Value != account.Id &&
-                byId.TryGetValue(account.ParentAccountId.Value, out var parent))
+                byId.ContainsKey(account.ParentAccountId.Value))
             {
-                if (!parent.ParentAccountId.HasValue)
+                targetParentId = account.ParentAccountId.Value;
+            }
+
+            var targetLevel = 1;
+            if (targetParentId.HasValue)
+            {
+                var visited = new HashSet<long> { account.Id };
+                var currentParentId = targetParentId;
+                while (currentParentId.HasValue &&
+                       visited.Add(currentParentId.Value) &&
+                       byId.TryGetValue(currentParentId.Value, out var parent))
                 {
-                    targetParentId = parent.Id;
+                    targetLevel++;
+                    currentParentId = parent.ParentAccountId;
                 }
             }
 
-            var targetLevel = targetParentId.HasValue ? 2 : 1;
-            var targetIsPosting = targetParentId.HasValue;
+            var targetIsPosting = !IsSummaryAccountCode(account.Code) && !childCounts.ContainsKey(account.Id);
 
             if (account.ParentAccountId == targetParentId &&
                 account.HierarchyLevel == targetLevel &&

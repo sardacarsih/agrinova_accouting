@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using DevExpress.Xpf.Core;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -8,7 +9,7 @@ using Accounting.Services;
 
 namespace Accounting;
 
-public partial class AccountSelectionWindow : Window, INotifyPropertyChanged
+public partial class AccountSelectionWindow : ThemedWindow, INotifyPropertyChanged
 {
     private readonly List<ManagedAccount> _allAccounts;
     private string _resultCountText = string.Empty;

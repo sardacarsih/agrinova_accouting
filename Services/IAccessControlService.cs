@@ -99,6 +99,27 @@ public interface IAccessControlService
         string actorUsername = "",
         CancellationToken cancellationToken = default);
 
+    Task<List<ManagedCostCenter>> GetCostCentersAsync(
+        long companyId,
+        long locationId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SaveCostCenterAsync(
+        long companyId,
+        long locationId,
+        ManagedCostCenter costCenter,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SoftDeleteCostCenterAsync(
+        long companyId,
+        long locationId,
+        long costCenterId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
     Task<AccessOperationResult> SetAccountingPeriodOpenStateAsync(
         long companyId,
         long locationId,

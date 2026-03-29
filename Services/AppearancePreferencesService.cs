@@ -7,7 +7,7 @@ public sealed class UserAppearanceSettings
 {
     public ThemeMode ThemeMode { get; set; } = ThemeMode.System;
 
-    public bool IsHighContrast { get; set; }
+    public string? PreferredThemeName { get; set; }
 }
 
 public sealed class AppearancePreferencesService
@@ -65,4 +65,3 @@ public sealed class AppearancePreferencesService
         }
     }
 }
-

@@ -28,6 +28,11 @@ public sealed partial class JournalManagementViewModel
 
             var data = workspaceTask.Result;
             ReplaceCollection(Accounts, data.Accounts.OrderBy(x => x.Code));
+            _costCenterLookupByCode.Clear();
+            foreach (var pair in _lineValidationService.BuildCostCenterLookup(data.CostCenters))
+            {
+                _costCenterLookupByCode[pair.Key] = pair.Value;
+            }
             RefreshAccountLookup();
             ReplaceCollection(JournalList, data.Journals.OrderByDescending(x => x.JournalDate).ThenByDescending(x => x.Id));
             RaiseBrowseStateChanged();
@@ -45,6 +50,11 @@ public sealed partial class JournalManagementViewModel
             {
                 SelectedJournal = JournalList.FirstOrDefault(x => x.Id == selectedJournalId.Value);
                 SelectedBrowseJournal = SearchResults.FirstOrDefault(x => x.Id == selectedJournalId.Value);
+                var selectedBrowseRow = FindBrowseJournalRow(selectedJournalId.Value);
+                if (selectedBrowseRow is not null)
+                {
+                    SetSelectedBrowseJournalRows(new[] { selectedBrowseRow });
+                }
             }
 
             _isLoaded = true;
@@ -445,6 +455,7 @@ public sealed partial class JournalManagementViewModel
         OnPropertyChanged(nameof(HasNoBrowseResults));
         OnPropertyChanged(nameof(BrowseEmptyStateTitle));
         OnPropertyChanged(nameof(BrowseEmptyStateDescription));
+        RaiseBrowseDetailStateChanged();
     }
 
     private JournalSearchFilter BuildBrowseSearchFilter()
@@ -462,7 +473,9 @@ public sealed partial class JournalManagementViewModel
     private void ApplyBrowseSearchResult(IEnumerable<ManagedJournalSummary> result)
     {
         SelectedBrowseJournal = null;
-        ReplaceCollection(SearchResults, result);
+        var summaries = result.ToList();
+        ReplaceCollection(SearchResults, summaries);
+        ReplaceBrowseJournalRows(summaries);
         IsBrowseSearchActive = true;
         RaiseBrowseStateChanged();
     }
@@ -470,7 +483,10 @@ public sealed partial class JournalManagementViewModel
     private void ClearBrowseSearchResult()
     {
         SelectedBrowseJournal = null;
+        ActiveBrowseJournalRow = null;
         SearchResults.Clear();
+        BrowseJournalRows.Clear();
+        SelectedBrowseJournalRows.Clear();
         IsBrowseSearchActive = true;
         _openSelectedJournalCommand.RaiseCanExecuteChanged();
         RaiseBrowseStateChanged();

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections;
 using System.ComponentModel;
+using System.Collections.Specialized;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
@@ -65,6 +66,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private JournalLineEditor? _selectedInputLine;
     private ManagedJournalSummary? _selectedBrowseJournal;
     private ManagedJournalSummary? _selectedJournal;
+    private JournalBrowseRowViewModel? _activeBrowseJournalRow;
 
     private DateTime _searchPeriodMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private int _searchPeriodMonthNumber = DateTime.Today.Month;
@@ -95,6 +97,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private long? _dashboardSearchLocationId;
     private List<JournalImportBundleResult> _stagedImportBundles = new();
     private readonly Dictionary<string, ManagedAccount> _accountLookupByCode = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ManagedCostCenter> _costCenterLookupByCode = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<JournalLineEditor> _accountSyncInProgress = new();
     private readonly Dictionary<string, bool> _periodOpenByMonthKey = new(StringComparer.OrdinalIgnoreCase);
     private JournalAccountingPeriodOption? _selectedJournalAccountingPeriodOption;
@@ -135,6 +138,8 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         InputLines = new ObservableCollection<JournalLineEditor>();
         JournalList = new ObservableCollection<ManagedJournalSummary>();
         SearchResults = new ObservableCollection<ManagedJournalSummary>();
+        BrowseJournalRows = new ObservableCollection<JournalBrowseRowViewModel>();
+        SelectedBrowseJournalRows = new ObservableCollection<JournalBrowseRowViewModel>();
         AccountingPeriodOptions = new ObservableCollection<JournalAccountingPeriodOption>();
         ImportPreviewItems = new ObservableCollection<JournalImportPreviewItem>();
         InventoryPullCreatedJournalNos = new ObservableCollection<string>();
@@ -214,6 +219,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     public ObservableCollection<ManagedJournalSummary> JournalList { get; }
 
     public ObservableCollection<ManagedJournalSummary> SearchResults { get; }
+
+    public ObservableCollection<JournalBrowseRowViewModel> BrowseJournalRows { get; }
+
+    public ObservableCollection<JournalBrowseRowViewModel> SelectedBrowseJournalRows { get; }
 
     public ObservableCollection<JournalAccountingPeriodOption> AccountingPeriodOptions { get; }
 
@@ -660,6 +669,35 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         }
     }
 
+    public JournalBrowseRowViewModel? ActiveBrowseJournalRow
+    {
+        get => _activeBrowseJournalRow;
+        private set
+        {
+            if (ReferenceEquals(_activeBrowseJournalRow, value))
+            {
+                return;
+            }
+
+            if (_activeBrowseJournalRow is not null)
+            {
+                _activeBrowseJournalRow.PropertyChanged -= ActiveBrowseJournalRow_OnPropertyChanged;
+                _activeBrowseJournalRow.Lines.CollectionChanged -= ActiveBrowseJournalLines_OnCollectionChanged;
+            }
+
+            _activeBrowseJournalRow = value;
+
+            if (_activeBrowseJournalRow is not null)
+            {
+                _activeBrowseJournalRow.PropertyChanged += ActiveBrowseJournalRow_OnPropertyChanged;
+                _activeBrowseJournalRow.Lines.CollectionChanged += ActiveBrowseJournalLines_OnCollectionChanged;
+            }
+
+            OnPropertyChanged(nameof(ActiveBrowseJournalRow));
+            RaiseBrowseDetailStateChanged();
+        }
+    }
+
     public JournalAccountingPeriodOption? SelectedJournalAccountingPeriodOption
     {
         get => _selectedJournalAccountingPeriodOption;
@@ -1007,9 +1045,9 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
 
     public IEnumerable<ManagedJournalSummary> BrowseJournals => SearchResults;
 
-    public string BrowseResultSummary => $"Periode {SearchPeriodMonth:MM/yyyy}: {SearchResults.Count} jurnal.";
+    public string BrowseResultSummary => $"Periode {SearchPeriodMonth:MM/yyyy}: {BrowseJournalRows.Count} jurnal.";
 
-    public bool HasBrowseResults => BrowseJournals.Any();
+    public bool HasBrowseResults => BrowseJournalRows.Count > 0;
 
     public bool HasNoBrowseResults => !HasBrowseResults;
 
@@ -1017,15 +1055,38 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
 
     public string BrowseEmptyStateDescription => $"Tidak ada jurnal pada periode {SearchPeriodMonth:MM/yyyy}. Pilih periode lain lalu coba lagi.";
 
+    public bool HasActiveBrowseJournal => ActiveBrowseJournalRow is not null;
+
+    public IEnumerable<ManagedJournalLine> ActiveBrowseJournalLines =>
+        ActiveBrowseJournalRow?.Lines is IEnumerable<ManagedJournalLine> lines
+            ? lines
+            : Array.Empty<ManagedJournalLine>();
+
+    public bool IsActiveBrowseJournalDetailLoading => ActiveBrowseJournalRow?.IsDetailLoading ?? false;
+
+    public string ActiveBrowseJournalDetailErrorMessage => ActiveBrowseJournalRow?.DetailErrorMessage ?? string.Empty;
+
+    public bool HasActiveBrowseJournalDetailError => !string.IsNullOrWhiteSpace(ActiveBrowseJournalDetailErrorMessage);
+
+    public bool HasActiveBrowseJournalDetail => ActiveBrowseJournalRow?.Lines.Count > 0;
+
+    public string BrowseDetailEmptyTitle =>
+        ActiveBrowseJournalRow is null
+            ? "Pilih jurnal"
+            : ActiveBrowseJournalRow.IsDetailLoaded
+                ? "Tidak ada detail transaksi"
+                : "Detail transaksi belum tersedia";
+
+    public string BrowseDetailEmptyDescription =>
+        ActiveBrowseJournalRow is null
+            ? "Pilih satu jurnal pada grid master untuk melihat detail transaksi."
+            : $"Jurnal {ActiveBrowseJournalRow.JournalNo} belum memiliki baris detail transaksi.";
+
     public bool IsJournalPlaceholderSelected => false;
 
     public string JournalWorkspaceTitle => "Jurnal";
 
     public string JournalWorkspaceSubtitle => "Kelola editor, daftar, dan proses batch jurnal.";
-
-    public string JournalEditorTitle => "Editor Jurnal";
-
-    public string JournalEditorSubtitle => "Isi header jurnal, lengkapi baris akun, lalu simpan draft atau ajukan.";
 
     public string JournalPlaceholderTitle => "Fitur Jurnal";
 
@@ -1120,6 +1181,34 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     {
         RaiseJournalActionAvailabilityChanged(includeSaveDraft: false);
         RaiseJournalActionTooltipChanged(includeSaveDraft: false);
+    }
+
+    private void ActiveBrowseJournalRow_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.PropertyName) ||
+            e.PropertyName == nameof(JournalBrowseRowViewModel.IsDetailLoading) ||
+            e.PropertyName == nameof(JournalBrowseRowViewModel.IsDetailLoaded) ||
+            e.PropertyName == nameof(JournalBrowseRowViewModel.DetailErrorMessage))
+        {
+            RaiseBrowseDetailStateChanged();
+        }
+    }
+
+    private void ActiveBrowseJournalLines_OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        RaiseBrowseDetailStateChanged();
+    }
+
+    private void RaiseBrowseDetailStateChanged()
+    {
+        OnPropertyChanged(nameof(HasActiveBrowseJournal));
+        OnPropertyChanged(nameof(ActiveBrowseJournalLines));
+        OnPropertyChanged(nameof(IsActiveBrowseJournalDetailLoading));
+        OnPropertyChanged(nameof(ActiveBrowseJournalDetailErrorMessage));
+        OnPropertyChanged(nameof(HasActiveBrowseJournalDetailError));
+        OnPropertyChanged(nameof(HasActiveBrowseJournalDetail));
+        OnPropertyChanged(nameof(BrowseDetailEmptyTitle));
+        OnPropertyChanged(nameof(BrowseDetailEmptyDescription));
     }
 
     private void RaiseJournalCommandCanExecuteChanged()
@@ -1329,8 +1418,6 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsJournalPlaceholderSelected));
         OnPropertyChanged(nameof(JournalWorkspaceTitle));
         OnPropertyChanged(nameof(JournalWorkspaceSubtitle));
-        OnPropertyChanged(nameof(JournalEditorTitle));
-        OnPropertyChanged(nameof(JournalEditorSubtitle));
         OnPropertyChanged(nameof(JournalPlaceholderTitle));
         OnPropertyChanged(nameof(JournalPlaceholderDescription));
     }

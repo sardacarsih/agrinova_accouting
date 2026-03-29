@@ -19,7 +19,7 @@
                                     <Setter Property="BorderThickness" Value="1" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsWarning}" Value="True">
-                                            <Setter Property="Background" Value="#FFFDF7E8" />
+                                            <Setter Property="Background" Value="{DynamicResource Brush.WarningSubtle}" />
                                             <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warning}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsCritical}" Value="True">

@@ -28,6 +28,7 @@ public sealed partial class JournalManagementViewModel
             Credit = 0m,
             DepartmentCode = sourceLine?.DepartmentCode ?? string.Empty,
             ProjectCode = sourceLine?.ProjectCode ?? string.Empty,
+            CostCenterId = sourceLine?.CostCenterId,
             CostCenterCode = sourceLine?.CostCenterCode ?? string.Empty
         };
 
@@ -306,7 +307,7 @@ public sealed partial class JournalManagementViewModel
 
         try
         {
-            _lineValidationService.SyncAccountLine(line, _accountLookupByCode);
+            _lineValidationService.SyncAccountLine(line, _accountLookupByCode, _costCenterLookupByCode);
         }
         finally
         {
@@ -317,7 +318,7 @@ public sealed partial class JournalManagementViewModel
 
     private void UpdateLineValidationState(JournalLineEditor line)
     {
-        _lineValidationService.ValidateLine(line, _accountLookupByCode);
+        _lineValidationService.ValidateLine(line, _accountLookupByCode, _costCenterLookupByCode);
     }
 
 

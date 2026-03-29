@@ -19,7 +19,7 @@ public sealed class LoginViewModel : ViewModelBase, INotifyDataErrorInfo
     private readonly Dictionary<string, List<string>> _errors = new();
     private readonly IAuthService _authService;
     private readonly RelayCommand _signInCommand;
-    private readonly Action<ThemeMode, bool>? _appearanceChanged;
+    private readonly Action<ThemeMode>? _appearanceChanged;
     private readonly Func<string, Task>? _signInSucceeded;
 
     private string _username = string.Empty;
@@ -33,7 +33,6 @@ public sealed class LoginViewModel : ViewModelBase, INotifyDataErrorInfo
     private bool _isPasswordTouched;
     private bool _isCompactLayout;
     private ThemeMode _selectedThemeMode;
-    private bool _isHighContrast;
 
     private Thickness _shellMargin = new(40);
     private double _containerMaxWidth = 1720;
@@ -52,13 +51,11 @@ public sealed class LoginViewModel : ViewModelBase, INotifyDataErrorInfo
     public LoginViewModel(
         IAuthService authService,
         ThemeMode selectedThemeMode,
-        bool isHighContrast,
-        Action<ThemeMode, bool>? appearanceChanged = null,
+        Action<ThemeMode>? appearanceChanged = null,
         Func<string, Task>? signInSucceeded = null)
     {
         _authService = authService;
         _selectedThemeMode = selectedThemeMode;
-        _isHighContrast = isHighContrast;
         _appearanceChanged = appearanceChanged;
         _signInSucceeded = signInSucceeded;
 
@@ -261,22 +258,13 @@ public sealed class LoginViewModel : ViewModelBase, INotifyDataErrorInfo
                 return;
             }
 
-            _appearanceChanged?.Invoke(SelectedThemeMode, IsHighContrast);
+            _appearanceChanged?.Invoke(SelectedThemeMode);
         }
     }
 
-    public bool IsHighContrast
+    public void SyncThemeMode(ThemeMode mode)
     {
-        get => _isHighContrast;
-        set
-        {
-            if (!SetProperty(ref _isHighContrast, value))
-            {
-                return;
-            }
-
-            _appearanceChanged?.Invoke(SelectedThemeMode, IsHighContrast);
-        }
+        SetProperty(ref _selectedThemeMode, mode, nameof(SelectedThemeMode));
     }
 
     public string SignInButtonText => IsBusy ? "Signing in..." : "Sign In";

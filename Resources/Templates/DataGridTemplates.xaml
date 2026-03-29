@@ -50,9 +50,9 @@
         <Setter Property="Height" Value="24" />
         <Setter Property="Padding" Value="6,2" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
-        <Setter Property="Background" Value="#FFFFFFFF" />
-        <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryDark}" />
-        <Setter Property="CaretBrush" Value="{DynamicResource Brush.PrimaryDark}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Brush.TextPrimary}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Brush.SelectionBorder}" />
         <Setter Property="SelectionOpacity" Value="0.28" />
     </Style>

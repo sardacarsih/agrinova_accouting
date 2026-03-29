@@ -13,6 +13,7 @@ public sealed class JournalLineEditor : ViewModelBase
     private decimal _credit;
     private string _departmentCode = string.Empty;
     private string _projectCode = string.Empty;
+    private long? _costCenterId;
     private string _costCenterCode = string.Empty;
     private bool _hasValidationError;
     private string _validationMessage = string.Empty;
@@ -65,6 +66,12 @@ public sealed class JournalLineEditor : ViewModelBase
         set => SetProperty(ref _projectCode, value);
     }
 
+    public long? CostCenterId
+    {
+        get => _costCenterId;
+        set => SetProperty(ref _costCenterId, value);
+    }
+
     public string CostCenterCode
     {
         get => _costCenterCode;
@@ -95,6 +102,7 @@ public sealed class JournalLineEditor : ViewModelBase
             Credit = Credit,
             DepartmentCode = DepartmentCode,
             ProjectCode = ProjectCode,
+            CostCenterId = CostCenterId,
             CostCenterCode = CostCenterCode
         };
     }
@@ -111,6 +119,7 @@ public sealed class JournalLineEditor : ViewModelBase
             Credit = source.Credit,
             DepartmentCode = source.DepartmentCode,
             ProjectCode = source.ProjectCode,
+            CostCenterId = source.CostCenterId,
             CostCenterCode = source.CostCenterCode
         };
     }

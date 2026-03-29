@@ -90,6 +90,7 @@ SELECT d.line_no,
        d.credit,
        COALESCE(d.department_code, ''),
        COALESCE(d.project_code, ''),
+       d.cost_center_id,
        COALESCE(d.cost_center_code, '')
 FROM gl_journal_details d
 JOIN gl_accounts a ON a.id = d.account_id
@@ -110,7 +111,8 @@ ORDER BY d.line_no;", connection))
                     Credit = reader.GetDecimal(5),
                     DepartmentCode = reader.GetString(6),
                     ProjectCode = reader.GetString(7),
-                    CostCenterCode = reader.GetString(8)
+                    CostCenterId = reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                    CostCenterCode = reader.GetString(9)
                 });
             }
         }
@@ -153,7 +155,8 @@ ORDER BY d.line_no;", connection))
                 Credit = Math.Round(x.Credit, 2),
                 DepartmentCode = x.DepartmentCode?.Trim() ?? string.Empty,
                 ProjectCode = x.ProjectCode?.Trim() ?? string.Empty,
-                CostCenterCode = x.CostCenterCode?.Trim() ?? string.Empty
+                CostCenterId = x.CostCenterId is > 0 ? x.CostCenterId : null,
+                CostCenterCode = NormalizeCostCenterCode(x.CostCenterCode)
             })
             .ToList();
 
@@ -186,9 +189,12 @@ ORDER BY d.line_no;", connection))
             await connection.OpenAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-            var accountMap = new Dictionary<string, (long Id, string Name)>(StringComparer.OrdinalIgnoreCase);
+            var accountMap = new Dictionary<string, (long Id, string Name, bool RequiresCostCenter)>(StringComparer.OrdinalIgnoreCase);
             await using (var accountCommand = new NpgsqlCommand(@"
-SELECT id, account_code, account_name
+SELECT id,
+       account_code,
+       account_name,
+       COALESCE(requires_cost_center, FALSE) AS requires_cost_center
 FROM gl_accounts
 WHERE company_id = @company_id
   AND is_active = TRUE
@@ -198,7 +204,36 @@ WHERE company_id = @company_id
                 await using var reader = await accountCommand.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
-                    accountMap[reader.GetString(1)] = (reader.GetInt64(0), reader.GetString(2));
+                    accountMap[reader.GetString(1)] = (
+                        reader.GetInt64(0),
+                        reader.GetString(2),
+                        !reader.IsDBNull(3) && reader.GetBoolean(3));
+                }
+            }
+
+            var costCentersById = new Dictionary<long, (long Id, string Code, bool IsPosting, bool IsActive)>();
+            var costCentersByCode = new Dictionary<string, (long Id, string Code, bool IsPosting, bool IsActive)>(StringComparer.OrdinalIgnoreCase);
+            await using (var costCenterCommand = new NpgsqlCommand(@"
+SELECT id,
+       cost_center_code,
+       is_posting,
+       is_active
+FROM gl_cost_centers
+WHERE company_id = @company_id
+  AND location_id = @location_id;", connection, transaction))
+            {
+                costCenterCommand.Parameters.AddWithValue("company_id", header.CompanyId);
+                costCenterCommand.Parameters.AddWithValue("location_id", header.LocationId);
+                await using var reader = await costCenterCommand.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var record = (
+                        Id: reader.GetInt64(0),
+                        Code: reader.GetString(1),
+                        IsPosting: !reader.IsDBNull(2) && reader.GetBoolean(2),
+                        IsActive: !reader.IsDBNull(3) && reader.GetBoolean(3));
+                    costCentersById[record.Id] = record;
+                    costCentersByCode[record.Code] = record;
                 }
             }
 
@@ -211,6 +246,62 @@ WHERE company_id = @company_id
                 }
 
                 line.AccountName = accountData.Name;
+
+                (long Id, string Code, bool IsPosting, bool IsActive)? costCenter = null;
+                if (line.CostCenterId is > 0)
+                {
+                    if (!costCentersById.TryGetValue(line.CostCenterId.Value, out var mappedById))
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Cost center id {line.CostCenterId.Value} tidak ditemukan untuk lokasi jurnal.");
+                    }
+
+                    costCenter = mappedById;
+                }
+                else if (!string.IsNullOrWhiteSpace(line.CostCenterCode))
+                {
+                    if (!costCentersByCode.TryGetValue(line.CostCenterCode, out var mappedByCode))
+                    {
+                        if (accountData.RequiresCostCenter)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            return new AccessOperationResult(false, $"Cost center '{line.CostCenterCode}' tidak ditemukan untuk lokasi jurnal.");
+                        }
+                    }
+                    else
+                    {
+                        costCenter = mappedByCode;
+                    }
+                }
+
+                if (costCenter.HasValue)
+                {
+                    if (!costCenter.Value.IsActive)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Cost center '{costCenter.Value.Code}' nonaktif.");
+                    }
+
+                    if (!costCenter.Value.IsPosting)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Cost center '{costCenter.Value.Code}' bukan level posting.");
+                    }
+
+                    line.CostCenterId = costCenter.Value.Id;
+                    line.CostCenterCode = costCenter.Value.Code;
+                }
+                else
+                {
+                    line.CostCenterId = null;
+                    line.CostCenterCode = NormalizeCostCenterCode(line.CostCenterCode);
+                }
+
+                if (accountData.RequiresCostCenter && !line.CostCenterId.HasValue)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return new AccessOperationResult(false, $"Akun '{line.AccountCode}' wajib memakai cost center aktif level posting.");
+                }
             }
 
             var actor = NormalizeActor(actorUsername);
@@ -362,6 +453,7 @@ INSERT INTO gl_journal_details (
     credit,
     department_code,
     project_code,
+    cost_center_id,
     cost_center_code,
     created_at,
     updated_at)
@@ -374,6 +466,7 @@ VALUES (
     @credit,
     @department_code,
     @project_code,
+    @cost_center_id,
     @cost_center_code,
     NOW(),
     NOW());", connection, transaction);
@@ -386,6 +479,7 @@ VALUES (
                 insertDetail.Parameters.AddWithValue("credit", line.Credit);
                 insertDetail.Parameters.AddWithValue("department_code", line.DepartmentCode);
                 insertDetail.Parameters.AddWithValue("project_code", line.ProjectCode);
+                insertDetail.Parameters.AddWithValue("cost_center_id", NpgsqlDbType.Bigint, line.CostCenterId.HasValue ? line.CostCenterId.Value : DBNull.Value);
                 insertDetail.Parameters.AddWithValue("cost_center_code", line.CostCenterCode);
                 await insertDetail.ExecuteNonQueryAsync(cancellationToken);
             }
@@ -772,6 +866,7 @@ INSERT INTO gl_ledger_entries (
     description,
     department_code,
     project_code,
+    cost_center_id,
     cost_center_code,
     posted_by,
     posted_at,
@@ -790,6 +885,7 @@ SELECT h.company_id,
        COALESCE(d.description, ''),
        COALESCE(d.department_code, ''),
        COALESCE(d.project_code, ''),
+       d.cost_center_id,
        COALESCE(d.cost_center_code, ''),
        @posted_by,
        NOW(),
@@ -902,14 +998,9 @@ WHERE id = @id;", connection, transaction))
 SELECT h.id,
        h.journal_no,
        h.journal_date,
-       h.period_month,
-       COALESCE(h.reference_no, ''),
-       COALESCE(h.description, ''),
        h.status,
-       COALESCE(SUM(d.debit), 0),
-       COALESCE(SUM(d.credit), 0)
+       COALESCE(h.created_by, '')
 FROM gl_journal_headers h
-LEFT JOIN gl_journal_details d ON d.header_id = h.id
 WHERE h.company_id = @company_id
   AND h.location_id = @location_id
   AND (@period_month IS NULL OR h.period_month = @period_month)
@@ -924,7 +1015,6 @@ WHERE h.company_id = @company_id
       OR h.journal_no ILIKE @keyword_like
       OR COALESCE(h.reference_no, '') ILIKE @keyword_like
       OR COALESCE(h.description, '') ILIKE @keyword_like)
-GROUP BY h.id, h.journal_no, h.journal_date, h.period_month, h.reference_no, h.description, h.status
 ORDER BY h.journal_date DESC, h.id DESC
 LIMIT 500;", connection);
 
@@ -958,15 +1048,19 @@ LIMIT 500;", connection);
                 Id = reader.GetInt64(0),
                 JournalNo = reader.GetString(1),
                 JournalDate = reader.GetDateTime(2),
-                ReferenceNo = reader.GetString(4),
-                Description = reader.GetString(5),
-                Status = reader.GetString(6),
-                TotalDebit = reader.GetDecimal(7),
-                TotalCredit = reader.GetDecimal(8)
+                Status = reader.GetString(3),
+                CreatedBy = reader.GetString(4)
             });
         }
 
         return output;
+    }
+
+    private static string NormalizeCostCenterCode(string? costCenterCode)
+    {
+        return string.IsNullOrWhiteSpace(costCenterCode)
+            ? string.Empty
+            : costCenterCode.Trim().ToUpperInvariant();
     }
 }
 

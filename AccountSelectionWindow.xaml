@@ -1,6 +1,7 @@
-<Window x:Class="Accounting.AccountSelectionWindow"
+<dx:ThemedWindow x:Class="Accounting.AccountSelectionWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
         Title="Pilih Akun"
         Width="860"
         Height="560"
@@ -8,7 +9,7 @@
         MinHeight="460"
         WindowStartupLocation="CenterOwner"
         PreviewKeyDown="Window_OnPreviewKeyDown">
-    <Window.Resources>
+    <dx:ThemedWindow.Resources>
         <Style x:Key="FieldLabelTextStyle" TargetType="{x:Type TextBlock}">
             <Setter Property="FontSize" Value="{DynamicResource Font.Caption}" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -33,7 +34,7 @@
                 </Trigger>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource Brush.Focus}" />
-                    <Setter Property="Background" Value="#FFFFFFFF" />
+                    <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -69,7 +70,7 @@
             <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Brush.BorderSoft}" />
             <Setter Property="AlternatingRowBackground" Value="{DynamicResource Brush.SurfaceAlt}" />
         </Style>
-    </Window.Resources>
+    </dx:ThemedWindow.Resources>
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -155,5 +156,5 @@
                     Content="Pilih Akun"/>
         </Grid>
     </Grid>
-</Window>
+</dx:ThemedWindow>
 

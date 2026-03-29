@@ -543,7 +543,14 @@ SELECT le.journal_date,
        a.account_name,
        COALESCE(le.department_code, '') AS department_code,
        COALESCE(le.project_code, '') AS project_code,
+       le.cost_center_id,
        COALESCE(le.cost_center_code, '') AS cost_center_code,
+       COALESCE(cc.estate_code, '') AS estate_code,
+       COALESCE(cc.estate_name, '') AS estate_name,
+       COALESCE(cc.division_code, '') AS division_code,
+       COALESCE(cc.division_name, '') AS division_name,
+       COALESCE(cc.block_code, '') AS block_code,
+       COALESCE(cc.block_name, '') AS block_name,
        COALESCE(le.description, '') AS line_description,
        le.debit,
        le.credit,
@@ -564,6 +571,7 @@ SELECT le.journal_date,
 FROM gl_ledger_entries le
 JOIN gl_accounts a ON a.id = le.account_id
 LEFT JOIN gl_journal_headers h ON h.id = le.journal_id
+LEFT JOIN gl_cost_centers cc ON cc.id = le.cost_center_id
 WHERE le.company_id = @company_id
   AND le.location_id = @location_id
   AND le.period_month = @period_month
@@ -578,6 +586,9 @@ WHERE le.company_id = @company_id
       OR COALESCE(le.department_code, '') ILIKE @keyword_like
       OR COALESCE(le.project_code, '') ILIKE @keyword_like
       OR COALESCE(le.cost_center_code, '') ILIKE @keyword_like
+      OR COALESCE(cc.estate_code, '') ILIKE @keyword_like
+      OR COALESCE(cc.division_code, '') ILIKE @keyword_like
+      OR COALESCE(cc.block_code, '') ILIKE @keyword_like
   )
 ORDER BY
     a.account_code,
@@ -608,11 +619,18 @@ ORDER BY
                 AccountName = reader.GetString(5),
                 DepartmentCode = reader.GetString(6),
                 ProjectCode = reader.GetString(7),
-                CostCenterCode = reader.GetString(8),
-                LineDescription = reader.GetString(9),
-                Debit = reader.GetDecimal(10),
-                Credit = reader.GetDecimal(11),
-                RunningBalance = reader.GetDecimal(12)
+                CostCenterId = reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                CostCenterCode = reader.GetString(9),
+                EstateCode = reader.GetString(10),
+                EstateName = reader.GetString(11),
+                DivisionCode = reader.GetString(12),
+                DivisionName = reader.GetString(13),
+                BlockCode = reader.GetString(14),
+                BlockName = reader.GetString(15),
+                LineDescription = reader.GetString(16),
+                Debit = reader.GetDecimal(17),
+                Credit = reader.GetDecimal(18),
+                RunningBalance = reader.GetDecimal(19)
             });
         }
 
@@ -968,6 +986,7 @@ INSERT INTO gl_ledger_entries (
     description,
     department_code,
     project_code,
+    cost_center_id,
     cost_center_code,
     posted_by,
     posted_at,
@@ -986,6 +1005,7 @@ SELECT h.company_id,
        COALESCE(d.description, ''),
        COALESCE(d.department_code, ''),
        COALESCE(d.project_code, ''),
+       d.cost_center_id,
        COALESCE(d.cost_center_code, ''),
        @posted_by,
        NOW(),
@@ -1214,6 +1234,7 @@ INSERT INTO gl_journal_details (
     credit,
     department_code,
     project_code,
+    cost_center_id,
     cost_center_code,
     created_at,
     updated_at)
@@ -1226,6 +1247,7 @@ VALUES (
     @credit,
     '',
     '',
+    NULL,
     '',
     NOW(),
     NOW());", connection, transaction);

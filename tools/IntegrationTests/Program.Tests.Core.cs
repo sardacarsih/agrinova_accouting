@@ -2336,6 +2336,344 @@ WHERE company_id = @company_id
         }
     }
 
+    private static async Task TestJournalRequiresPostingCostCenterAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(18);
+        var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
+        var assetAccount = workspace.Accounts.FirstOrDefault(x =>
+            x.IsPosting &&
+            string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
+        Assert(assetAccount is not null, "Posting asset account is required for cost center journal test.");
+
+        var allAccounts = await service.GetAccountsAsync(companyId, includeInactive: false, actorUsername: "admin");
+        var expenseParent = allAccounts.FirstOrDefault(x =>
+            !x.IsPosting &&
+            x.IsActive &&
+            string.Equals(x.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase));
+        Assert(expenseParent is not null, "Expense parent account is required for cost center journal test.");
+
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
+        var suffixSegment = (int)(Math.Abs(stamp) % 1000);
+        var expenseCode = $"KB.5{middleSegment:0000}.{suffixSegment:000}";
+        var journalNo = $"ITEST-CC-{stamp}";
+
+        long? accountId = null;
+        long? estateId = null;
+        long? divisionId = null;
+        long? blockId = null;
+        long? journalId = null;
+
+        try
+        {
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_CC_OPEN");
+
+            var saveAccountResult = await service.SaveAccountAsync(
+                companyId,
+                new ManagedAccount
+                {
+                    Id = 0,
+                    Code = expenseCode,
+                    Name = $"Cost Center Required Account {stamp}",
+                    AccountType = "EXPENSE",
+                    ParentAccountId = expenseParent!.Id,
+                    RequiresCostCenter = true,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveAccountResult.IsSuccess && saveAccountResult.EntityId.HasValue, $"Failed to create cost-center-required account: {saveAccountResult.Message}");
+            accountId = saveAccountResult.EntityId!.Value;
+
+            var estateSave = await service.SaveCostCenterAsync(
+                companyId,
+                locationId,
+                new ManagedCostCenter
+                {
+                    EstateCode = "NE",
+                    EstateName = "North Estate",
+                    IsActive = true
+                },
+                "admin");
+            Assert(estateSave.IsSuccess && estateSave.EntityId.HasValue, $"Failed to create estate cost center: {estateSave.Message}");
+            estateId = estateSave.EntityId!.Value;
+
+            var divisionSave = await service.SaveCostCenterAsync(
+                companyId,
+                locationId,
+                new ManagedCostCenter
+                {
+                    EstateCode = "NE",
+                    EstateName = "North Estate",
+                    DivisionCode = "D01",
+                    DivisionName = "Division 01",
+                    IsActive = true
+                },
+                "admin");
+            Assert(divisionSave.IsSuccess && divisionSave.EntityId.HasValue, $"Failed to create division cost center: {divisionSave.Message}");
+            divisionId = divisionSave.EntityId!.Value;
+
+            var blockSave = await service.SaveCostCenterAsync(
+                companyId,
+                locationId,
+                new ManagedCostCenter
+                {
+                    EstateCode = "NE",
+                    EstateName = "North Estate",
+                    DivisionCode = "D01",
+                    DivisionName = "Division 01",
+                    BlockCode = "B12",
+                    BlockName = "Block B12",
+                    IsActive = true
+                },
+                "admin");
+            Assert(blockSave.IsSuccess && blockSave.EntityId.HasValue, $"Failed to create block cost center: {blockSave.Message}");
+            blockId = blockSave.EntityId!.Value;
+
+            var costCenters = await service.GetCostCentersAsync(companyId, locationId, includeInactive: true, actorUsername: "admin");
+            var blockCostCenter = costCenters.FirstOrDefault(x => x.Id == blockId.Value);
+            Assert(blockCostCenter is not null, "Block cost center should be returned by GetCostCenters.");
+            Assert(blockCostCenter!.IsPosting, "Block level cost center should be posting.");
+            Assert(
+                string.Equals(blockCostCenter.CostCenterCode, "NE-D01-B12", StringComparison.Ordinal),
+                $"Unexpected block cost center code: {blockCostCenter.CostCenterCode}");
+
+            var missingCostCenterResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = $"{journalNo}-MISS",
+                    JournalDate = targetMonth.AddDays(5),
+                    PeriodMonth = targetMonth,
+                    Description = "Missing cost center should fail"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = expenseCode,
+                        Description = "Expense without cost center",
+                        Debit = 100m,
+                        Credit = 0m
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount!.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 100m
+                    }
+                },
+                "admin");
+            Assert(!missingCostCenterResult.IsSuccess, "Draft save should fail when required cost center is missing.");
+            Assert(
+                missingCostCenterResult.Message.Contains("cost center", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected missing cost center message: {missingCostCenterResult.Message}");
+
+            var divisionCostCenterResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = $"{journalNo}-DIV",
+                    JournalDate = targetMonth.AddDays(6),
+                    PeriodMonth = targetMonth,
+                    Description = "Non-posting cost center should fail"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = expenseCode,
+                        Description = "Expense with division cost center",
+                        Debit = 100m,
+                        Credit = 0m,
+                        CostCenterCode = "NE-D01"
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 100m
+                    }
+                },
+                "admin");
+            Assert(!divisionCostCenterResult.IsSuccess, "Draft save should fail when cost center is non-posting.");
+            Assert(
+                divisionCostCenterResult.Message.Contains("posting", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected non-posting cost center message: {divisionCostCenterResult.Message}");
+
+            var saveResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = journalNo,
+                    JournalDate = targetMonth.AddDays(7),
+                    PeriodMonth = targetMonth,
+                    Description = "Posting cost center should pass"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = expenseCode,
+                        Description = "Expense with posting cost center",
+                        Debit = 250m,
+                        Credit = 0m,
+                        CostCenterCode = "NE-D01-B12"
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 250m
+                    }
+                },
+                "admin");
+            Assert(saveResult.IsSuccess && saveResult.EntityId.HasValue, $"Draft save should pass with posting cost center: {saveResult.Message}");
+            journalId = saveResult.EntityId!.Value;
+
+            var submitResult = await service.SubmitJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(submitResult.IsSuccess, $"Failed to submit journal with cost center: {submitResult.Message}");
+            var approveResult = await service.ApproveJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(approveResult.IsSuccess, $"Failed to approve journal with cost center: {approveResult.Message}");
+            var postResult = await service.PostJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(postResult.IsSuccess, $"Failed to post journal with cost center: {postResult.Message}");
+
+            var subLedgerRows = await service.GetSubLedgerAsync(companyId, locationId, targetMonth, expenseCode, actorUsername: "admin");
+            var postedRow = subLedgerRows.FirstOrDefault(x =>
+                string.Equals(x.JournalNo, journalNo, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(x.CostCenterCode, "NE-D01-B12", StringComparison.OrdinalIgnoreCase));
+            Assert(postedRow is not null, "Subledger should return posted journal row with cost center.");
+            Assert(
+                string.Equals(postedRow!.EstateCode, "NE", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected subledger estate code: {postedRow.EstateCode}");
+            Assert(
+                string.Equals(postedRow.DivisionCode, "D01", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected subledger division code: {postedRow.DivisionCode}");
+            Assert(
+                string.Equals(postedRow.BlockCode, "B12", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected subledger block code: {postedRow.BlockCode}");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (journalId.HasValue)
+            {
+                await using (var deleteLedger = new NpgsqlCommand(
+                    "DELETE FROM gl_ledger_entries WHERE journal_id = @journal_id;",
+                    connection))
+                {
+                    deleteLedger.Parameters.AddWithValue("journal_id", journalId.Value);
+                    await deleteLedger.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteDetails = new NpgsqlCommand(
+                    "DELETE FROM gl_journal_details WHERE header_id = @header_id;",
+                    connection))
+                {
+                    deleteDetails.Parameters.AddWithValue("header_id", journalId.Value);
+                    await deleteDetails.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteHeader = new NpgsqlCommand(
+                    "DELETE FROM gl_journal_headers WHERE id = @id;",
+                    connection))
+                {
+                    deleteHeader.Parameters.AddWithValue("id", journalId.Value);
+                    await deleteHeader.ExecuteNonQueryAsync();
+                }
+            }
+
+            await using (var deleteJournalAudit = new NpgsqlCommand(
+                @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'JOURNAL'
+  AND details ILIKE @journal_no;",
+                connection))
+            {
+                deleteJournalAudit.Parameters.AddWithValue("journal_no", $"%{journalNo}%");
+                await deleteJournalAudit.ExecuteNonQueryAsync();
+            }
+
+            if (accountId.HasValue)
+            {
+                await using (var deleteAccountAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'ACCOUNT' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteAccountAudit.Parameters.AddWithValue("entity_id", accountId.Value);
+                    await deleteAccountAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteAccount = new NpgsqlCommand(
+                    "DELETE FROM gl_accounts WHERE id = @id;",
+                    connection))
+                {
+                    deleteAccount.Parameters.AddWithValue("id", accountId.Value);
+                    await deleteAccount.ExecuteNonQueryAsync();
+                }
+            }
+
+            foreach (var costCenterId in new[] { blockId, divisionId, estateId }.Where(x => x.HasValue).Select(x => x!.Value))
+            {
+                await using (var deleteCostCenterAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'COST_CENTER' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteCostCenterAudit.Parameters.AddWithValue("entity_id", costCenterId);
+                    await deleteCostCenterAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteCostCenter = new NpgsqlCommand(
+                    "DELETE FROM gl_cost_centers WHERE id = @id;",
+                    connection))
+                {
+                    deleteCostCenter.Parameters.AddWithValue("id", costCenterId);
+                    await deleteCostCenter.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (previousPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_CC_RESTORE");
+            }
+            else
+            {
+                await using var deletePeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deletePeriod.Parameters.AddWithValue("company_id", companyId);
+                deletePeriod.Parameters.AddWithValue("location_id", locationId);
+                deletePeriod.Parameters.AddWithValue("period_month", targetMonth);
+                await deletePeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
     private static async Task TestAccountSaveAndSoftDeleteAsync()
     {
         var service = CreateService();
@@ -2360,6 +2698,7 @@ WHERE company_id = @company_id
                     Code = code,
                     Name = $"Integration Test Account {stamp}",
                     AccountType = "EXPENSE",
+                    RequiresCostCenter = true,
                     IsActive = true
                 },
                 "admin");
@@ -2375,6 +2714,7 @@ WHERE company_id = @company_id
             Assert(
                 string.Equals(saved.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase),
                 $"Expected account type EXPENSE, got {saved.AccountType}.");
+            Assert(saved.RequiresCostCenter, "Saved account should preserve RequiresCostCenter flag.");
 
             var deactivateResult = await service.SoftDeleteAccountAsync(companyId, accountId.Value, "admin");
             Assert(deactivateResult.IsSuccess, $"SoftDeleteAccount failed: {deactivateResult.Message}");

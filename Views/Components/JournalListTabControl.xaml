@@ -1,6 +1,8 @@
 <UserControl x:Class="Accounting.Views.Components.JournalListTabControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+             xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
     <UserControl.InputBindings>
@@ -11,19 +13,10 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}" Margin="0,0,0,6">
-            <StackPanel>
-                <TextBlock Text="Daftar Jurnal" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                <TextBlock Text="Pantau, filter, dan buka jurnal ke editor dari satu layar browse."
-                           Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
-            </StackPanel>
-        </Border>
-
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="8" />
@@ -79,7 +72,7 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="2" Margin="0,8,0,0" Orientation="Horizontal">
+        <StackPanel Grid.Row="1" Margin="0,8,0,0" Orientation="Horizontal">
             <Button Command="{Binding OpenSelectedJournalCommand}"
                     IsEnabled="{Binding CanOpenSelectedJournal}"
                     Style="{StaticResource PrimaryButtonStyle}"
@@ -93,62 +86,200 @@
                     Content="Export Terpilih" />
         </StackPanel>
 
-        <TextBlock Grid.Row="3"
+        <TextBlock Grid.Row="2"
                    Margin="0,8,0,0"
                    Foreground="{DynamicResource Brush.TextSecondary}"
                    Text="{Binding BrowseResultSummary}" />
 
-        <Grid Grid.Row="4">
-            <DataGrid x:Name="JournalListGrid"
-                      Margin="0,8,0,0"
-                      SelectionMode="Extended"
-                      SelectionUnit="FullRow"
-                      ItemsSource="{Binding BrowseJournals}"
-                      SelectedItem="{Binding SelectedBrowseJournal, Mode=TwoWay}"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True">
-                <DataGrid.InputBindings>
-                    <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding OpenSelectedJournalCommand}" />
-                </DataGrid.InputBindings>
-                <DataGrid.Style>
-                    <Style TargetType="DataGrid" BasedOn="{StaticResource EnterpriseDataGridStyle}">
-                        <Setter Property="Visibility" Value="Visible" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding HasNoBrowseResults}" Value="True">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </DataGrid.Style>
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="No Jurnal" Binding="{Binding JournalNo}" Width="150" />
-                    <DataGridTextColumn Header="Tanggal" Binding="{Binding JournalDate, StringFormat=yyyy-MM-dd}" Width="120" />
-                    <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="130" />
-                    <DataGridTextColumn Header="Keterangan" Binding="{Binding Description}" Width="*" />
-                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
-                    <DataGridTextColumn Header="Debit" Binding="{Binding TotalDebit, StringFormat=N2}" Width="120" ElementStyle="{StaticResource EnterpriseNumericCellTextStyle}" />
-                    <DataGridTextColumn Header="Kredit" Binding="{Binding TotalCredit, StringFormat=N2}" Width="120" ElementStyle="{StaticResource EnterpriseNumericCellTextStyle}" />
-                </DataGrid.Columns>
-            </DataGrid>
+        <Grid Grid.Row="3" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-            <Border Margin="0,8,0,0"
-                    Padding="18"
+            <Grid Grid.Column="0"
+                  HorizontalAlignment="Left">
+                <dxg:GridControl x:Name="JournalListGrid"
+                                 AutoGenerateColumns="None"
+                                 ItemsSource="{Binding BrowseJournalRows}"
+                                 MouseDoubleClick="JournalListGrid_OnMouseDoubleClick"
+                                 SelectionMode="Row"
+                                 SelectionChanged="JournalListGrid_OnSelectionChanged">
+                    <dxg:GridControl.Style>
+                        <Style TargetType="dxg:GridControl">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasNoBrowseResults}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </dxg:GridControl.Style>
+                    <dxg:GridControl.Columns>
+                        <dxg:GridColumn FieldName="JournalNo" Header="No Jurnal" Width="165" />
+                        <dxg:GridColumn FieldName="JournalDate" Header="Tanggal" Width="120">
+                            <dxg:GridColumn.EditSettings>
+                                <dxe:TextEditSettings Mask="yyyy-MM-dd" MaskType="DateTime" MaskUseAsDisplayFormat="True" />
+                            </dxg:GridColumn.EditSettings>
+                        </dxg:GridColumn>
+                        <dxg:GridColumn FieldName="Status" Header="Status" Width="90" />
+                        <dxg:GridColumn FieldName="CreatedBy" Header="User ID" Width="160" />
+                    </dxg:GridControl.Columns>
+                    <dxg:GridControl.View>
+                        <dxg:TableView x:Name="JournalListView"
+                                       AllowEditing="False"
+                                       AutoWidth="True"
+                                       NavigationStyle="Row"
+                                       ShowGroupPanel="False"
+                                       ShowIndicator="False" />
+                    </dxg:GridControl.View>
+                </dxg:GridControl>
+
+                <Border Padding="18"
+                        CornerRadius="{DynamicResource Radius.Card}"
+                        BorderThickness="1"
+                        Background="{DynamicResource Brush.SurfaceMuted}"
+                        BorderBrush="{DynamicResource Brush.Border}"
+                        Visibility="{Binding HasNoBrowseResults, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding BrowseEmptyStateTitle}"
+                                   HorizontalAlignment="Center"
+                                   Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                        <TextBlock Margin="0,8,0,0"
+                                   MaxWidth="460"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Brush.TextSecondary}"
+                                   Text="{Binding BrowseEmptyStateDescription}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Column="2"
+                    Padding="12"
                     CornerRadius="{DynamicResource Radius.Card}"
                     BorderThickness="1"
                     Background="{DynamicResource Brush.SurfaceMuted}"
-                    BorderBrush="{DynamicResource Brush.Border}"
-                    Visibility="{Binding HasNoBrowseResults, Converter={StaticResource BoolToVisibilityConverter}}">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding BrowseEmptyStateTitle}"
-                               HorizontalAlignment="Center"
-                               Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                    <TextBlock Margin="0,8,0,0"
-                               MaxWidth="460"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"
+                    BorderBrush="{DynamicResource Brush.Border}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Detail Transaksi"
+                                   Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                        <TextBlock Margin="0,4,0,0"
+                                   Foreground="{DynamicResource Brush.TextSecondary}"
+                                   TextWrapping="Wrap"
+                                   Text="Menampilkan baris transaksi dari jurnal yang sedang aktif di grid master." />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,10,0,0"
                                Foreground="{DynamicResource Brush.TextSecondary}"
-                               Text="{Binding BrowseEmptyStateDescription}" />
-                </StackPanel>
+                               Text="Memuat detail transaksi..."
+                               Visibility="{Binding IsActiveBrowseJournalDetailLoading, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,10,0,0"
+                               Foreground="{DynamicResource Brush.Error}"
+                               Text="{Binding ActiveBrowseJournalDetailErrorMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveBrowseJournalDetailErrorMessage}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                        <dxg:GridControl AutoGenerateColumns="None"
+                                         ItemsSource="{Binding ActiveBrowseJournalLines}">
+                            <dxg:GridControl.Style>
+                                <Style TargetType="dxg:GridControl">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasActiveBrowseJournalDetail}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsActiveBrowseJournalDetailLoading}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </dxg:GridControl.Style>
+                            <dxg:GridControl.Columns>
+                                <dxg:GridColumn FieldName="LineNo" Header="No" Width="70" />
+                                <dxg:GridColumn FieldName="AccountCode" Header="Kode Akun" Width="110" />
+                                <dxg:GridColumn FieldName="AccountName" Header="Nama Akun" Width="180" />
+                                <dxg:GridColumn FieldName="Description" Header="Keterangan" Width="220" />
+                                <dxg:GridColumn FieldName="DepartmentCode" Header="Departemen" Width="110" />
+                                <dxg:GridColumn FieldName="ProjectCode" Header="Proyek" Width="100" />
+                                <dxg:GridColumn FieldName="CostCenterCode" Header="Cost Center" Width="110" />
+                                <dxg:GridColumn FieldName="Debit" Header="Debit" Width="100">
+                                    <dxg:GridColumn.EditSettings>
+                                        <dxe:TextEditSettings Mask="n2" MaskUseAsDisplayFormat="True" />
+                                    </dxg:GridColumn.EditSettings>
+                                </dxg:GridColumn>
+                                <dxg:GridColumn FieldName="Credit" Header="Kredit" Width="100">
+                                    <dxg:GridColumn.EditSettings>
+                                        <dxe:TextEditSettings Mask="n2" MaskUseAsDisplayFormat="True" />
+                                    </dxg:GridColumn.EditSettings>
+                                </dxg:GridColumn>
+                            </dxg:GridControl.Columns>
+                            <dxg:GridControl.View>
+                                <dxg:TableView AllowEditing="False"
+                                               AutoWidth="True"
+                                               NavigationStyle="Row"
+                                               ShowGroupPanel="False"
+                                               ShowIndicator="False" />
+                            </dxg:GridControl.View>
+                        </dxg:GridControl>
+
+                        <Border Padding="16"
+                                CornerRadius="{DynamicResource Radius.Card}"
+                                BorderThickness="1"
+                                Background="{DynamicResource Brush.Surface}"
+                                BorderBrush="{DynamicResource Brush.Border}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasActiveBrowseJournalDetail}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsActiveBrowseJournalDetailLoading}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding HasActiveBrowseJournalDetailError}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding BrowseDetailEmptyTitle}"
+                                           HorizontalAlignment="Center"
+                                           Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                                <TextBlock Margin="0,8,0,0"
+                                           MaxWidth="320"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Brush.TextSecondary}"
+                                           Text="{Binding BrowseDetailEmptyDescription}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
