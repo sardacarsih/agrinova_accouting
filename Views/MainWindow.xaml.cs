@@ -81,7 +81,7 @@ public partial class MainWindow : ThemedWindow
         _isSwitchingWorkContext = true;
         try
         {
-            var username = _viewModel?.Shell.CurrentUserDisplayName ?? string.Empty;
+            var username = _viewModel?.Shell.CurrentUsername ?? string.Empty;
             if (string.IsNullOrWhiteSpace(username))
             {
                 MessageBox.Show(
@@ -114,25 +114,9 @@ public partial class MainWindow : ThemedWindow
             }
 
             var selectorViewModel = new AccessSelectionViewModel(loginOptions);
-            UserAccessContext? nextContext;
-            if (selectorViewModel.HasMultipleChoices)
+            if (!selectorViewModel.HasMultipleChoices)
             {
-                var selectionWindow = new AccessSelectionWindow(selectorViewModel)
-                {
-                    Owner = this
-                };
-
-                var selectionResult = selectionWindow.ShowDialog();
-                if (selectionResult != true || selectionWindow.SelectedSessionContext is null)
-                {
-                    return;
-                }
-
-                nextContext = selectionWindow.SelectedSessionContext;
-            }
-            else
-            {
-                if (!selectorViewModel.TryBuildSessionContext(out nextContext) || nextContext is null)
+                if (!selectorViewModel.TryBuildSessionContext(out var lockedContext) || lockedContext is null)
                 {
                     MessageBox.Show(
                         string.IsNullOrWhiteSpace(selectorViewModel.ErrorMessage)
@@ -143,8 +127,30 @@ public partial class MainWindow : ThemedWindow
                         MessageBoxImage.Warning);
                     return;
                 }
+
+                MessageBox.Show(
+                    $"Akun ini hanya memiliki satu konteks kerja aktif:{Environment.NewLine}{Environment.NewLine}" +
+                    $"Company: {lockedContext.SelectedCompanyCode} - {lockedContext.SelectedCompanyName}{Environment.NewLine}" +
+                    $"Lokasi: {lockedContext.SelectedLocationCode} - {lockedContext.SelectedLocationName}{Environment.NewLine}{Environment.NewLine}" +
+                    "Tambahkan akses company atau lokasi lain pada User Management jika konteks kerja perlu bisa diganti.",
+                    "Konteks Kerja",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
             }
 
+            var selectionWindow = new AccessSelectionWindow(selectorViewModel)
+            {
+                Owner = this
+            };
+
+            var selectionResult = selectionWindow.ShowDialog();
+            if (selectionResult != true || selectionWindow.SelectedSessionContext is null)
+            {
+                return;
+            }
+
+            var nextContext = selectionWindow.SelectedSessionContext;
             var workspace = new MainWindow(nextContext, _accessControlService);
             Application.Current.MainWindow = workspace;
             workspace.Show();

@@ -123,7 +123,8 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
 
         AppDisplayName = "AgrInova Suite";
         EnvironmentName = environmentName;
-        CurrentUserDisplayName = string.IsNullOrWhiteSpace(accessContext.Username) ? "User" : accessContext.Username.Trim();
+        CurrentUsername = string.IsNullOrWhiteSpace(accessContext.Username) ? string.Empty : accessContext.Username.Trim();
+        CurrentUserDisplayName = string.IsNullOrWhiteSpace(CurrentUsername) ? "User" : CurrentUsername;
         CurrentRoleDisplayName = string.IsNullOrWhiteSpace(accessContext.SelectedRoleCode)
             ? "-"
             : $"{accessContext.SelectedRoleCode} - {accessContext.SelectedRoleName}";
@@ -198,6 +199,8 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
     public string EnvironmentName { get; }
 
     public int NotificationCount { get; }
+
+    public string CurrentUsername { get; }
 
     public string CurrentUserDisplayName { get; }
 

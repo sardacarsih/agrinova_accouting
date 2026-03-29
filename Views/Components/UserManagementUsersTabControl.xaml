@@ -408,18 +408,38 @@
                                 </ItemsControl>
                             </ScrollViewer>
                             <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Akses Lokasi" />
+                            <TextBlock Margin="0,6,0,0"
+                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                                       Text="{Binding UserLocationSelectionHint}" />
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                <Button Content="Semua" Command="{Binding SelectAllUserLocationsCommand}" Style="{StaticResource SelectAllLinkStyle}" />
+                                <Button Content="Semua"
+                                        Command="{Binding SelectAllUserLocationsCommand}"
+                                        IsEnabled="{Binding CanBulkEditUserLocations}"
+                                        Style="{StaticResource SelectAllLinkStyle}" />
                                 <TextBlock Text=" / " FontSize="11" VerticalAlignment="Center" />
-                                <Button Content="Kosongkan" Command="{Binding DeselectAllUserLocationsCommand}" Style="{StaticResource SelectAllLinkStyle}" />
+                                <Button Content="Kosongkan"
+                                        Command="{Binding DeselectAllUserLocationsCommand}"
+                                        IsEnabled="{Binding CanBulkEditUserLocations}"
+                                        Style="{StaticResource SelectAllLinkStyle}" />
                             </StackPanel>
                             <ScrollViewer MaxHeight="140" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl ItemsSource="{Binding UserLocationOptions}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate><CheckBox Margin="0,0,0,4" Style="{StaticResource CompactCheckBoxStyle}" IsChecked="{Binding IsSelected}" IsEnabled="{Binding IsEnabled}" Content="{Binding Label}" /></DataTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Margin="0,0,0,4"
+                                                      Style="{StaticResource CompactCheckBoxStyle}"
+                                                      IsChecked="{Binding IsSelected}"
+                                                      IsEnabled="{Binding IsEnabled}"
+                                                      Visibility="{Binding IsEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                      Content="{Binding Label}" />
+                                        </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
+                            <TextBlock Margin="0,6,0,0"
+                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}"
+                                       Visibility="{Binding HasVisibleUserLocations, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                       Text="Belum ada lokasi yang bisa dipilih untuk kombinasi company saat ini." />
                             <TextBlock Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Company Default" />
                             <ComboBox Margin="0,6,0,0" Style="{StaticResource InputComboBoxStyle}" ItemsSource="{Binding UserDefaultCompanyOptions}"
                                       SelectedValuePath="Id" SelectedValue="{Binding SelectedUserDefaultCompanyId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"

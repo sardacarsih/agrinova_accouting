@@ -23,6 +23,7 @@ internal static partial class Program
             ("UserManagementViewModel_CloneRoleCommandCreatesRoleCopy", TestUserManagementCloneRoleCommandCreatesRoleCopyAsync),
             ("UserManagementViewModel_TryLeaveRoleEditorReturnsTrueWhenClean", TestUserManagementTryLeaveRoleEditorReturnsTrueWhenCleanAsync),
             ("UserManagementViewModel_RolePermissionTreeIncludesInventoryImportActions", TestUserManagementRolePermissionTreeIncludesInventoryImportActionsAsync),
+            ("UserManagementViewModel_LocationOptionsFollowSelectedCompanies", TestUserManagementLocationOptionsFollowSelectedCompaniesAsync),
             ("InventoryViewModel_MasterDataActionsReflectExactPermissions", TestInventoryViewModel_MasterDataActionsReflectExactPermissionsAsync),
             ("JournalManagementViewModel_ActionTooltipsReflectPermissions", TestJournalManagementViewModel_ActionTooltipsReflectPermissionsAsync),
             ("JournalManagementViewModel_BrowseRowsMirrorSearchResults", TestJournalManagementViewModel_BrowseRowsMirrorSearchResultsAsync),

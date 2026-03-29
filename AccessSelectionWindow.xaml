@@ -90,12 +90,17 @@
             </ComboBox>
         </Grid>
 
-        <TextBlock Grid.Row="4"
-                   Margin="0,14,0,0"
-                   FontSize="12"
-                   Foreground="{DynamicResource Brush.Error}"
-                   TextWrapping="Wrap"
-                   Text="{Binding ErrorMessage}"/>
+        <StackPanel Grid.Row="4" Margin="0,14,0,0">
+            <TextBlock FontSize="12"
+                       Foreground="{DynamicResource Brush.TextSecondary}"
+                       TextWrapping="Wrap"
+                       Text="{Binding SelectionHint}"/>
+            <TextBlock Margin="0,6,0,0"
+                       FontSize="12"
+                       Foreground="{DynamicResource Brush.Error}"
+                       TextWrapping="Wrap"
+                       Text="{Binding ErrorMessage}"/>
+        </StackPanel>
 
         <Grid Grid.Row="5" Margin="0,14,0,0">
             <Grid.ColumnDefinitions>

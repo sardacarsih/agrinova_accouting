@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Accounting.Infrastructure;
 using Accounting.Services;
 
@@ -44,6 +45,50 @@ public sealed class AccessSelectionViewModel : ViewModelBase
     public bool IsCompanyMulti => CompanyOptions.Count > 1;
 
     public bool IsLocationMulti => LocationOptions.Count > 1;
+
+    public string SelectionHint
+    {
+        get
+        {
+            if (_resolvedRole is null)
+            {
+                return "Akun ini harus memiliki tepat satu role aktif sebelum konteks kerja dapat diganti.";
+            }
+
+            if (CompanyOptions.Count == 0)
+            {
+                return "Akun ini belum memiliki company aktif yang bisa dipakai.";
+            }
+
+            if (SelectedCompany is null)
+            {
+                return "Pilih company untuk melihat lokasi yang tersedia.";
+            }
+
+            if (LocationOptions.Count == 0)
+            {
+                return string.Format(
+                    CultureInfo.CurrentCulture,
+                    "Tidak ada lokasi aktif yang tersedia untuk company {0}.",
+                    SelectedCompany.Code);
+            }
+
+            var lockedParts = new List<string>();
+            if (!IsCompanyMulti)
+            {
+                lockedParts.Add("company akses Anda hanya satu");
+            }
+
+            if (!IsLocationMulti)
+            {
+                lockedParts.Add("lokasi untuk company ini hanya satu");
+            }
+
+            return lockedParts.Count == 0
+                ? "Pilih company dan lokasi yang tersedia untuk melanjutkan."
+                : $"Sebagian konteks terkunci karena {string.Join(" dan ", lockedParts)}.";
+        }
+    }
 
     public ManagedCompany? SelectedCompany
     {
@@ -150,8 +195,7 @@ public sealed class AccessSelectionViewModel : ViewModelBase
 
         if (_resolvedRole is null)
         {
-            OnPropertyChanged(nameof(IsCompanyMulti));
-            OnPropertyChanged(nameof(IsLocationMulti));
+            NotifySelectionStateChanged();
             return;
         }
 
@@ -163,6 +207,7 @@ public sealed class AccessSelectionViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(IsCompanyMulti));
+        OnPropertyChanged(nameof(SelectionHint));
         if (_options.DefaultCompanyId.HasValue)
         {
             SelectedCompany = CompanyOptions.FirstOrDefault(x => x.Id == _options.DefaultCompanyId.Value);
@@ -178,7 +223,7 @@ public sealed class AccessSelectionViewModel : ViewModelBase
 
         if (_resolvedRole is null || SelectedCompany is null)
         {
-            OnPropertyChanged(nameof(IsLocationMulti));
+            NotifySelectionStateChanged();
             return;
         }
 
@@ -189,12 +234,19 @@ public sealed class AccessSelectionViewModel : ViewModelBase
             LocationOptions.Add(location);
         }
 
-        OnPropertyChanged(nameof(IsLocationMulti));
+        NotifySelectionStateChanged();
         if (_options.DefaultLocationId.HasValue)
         {
             SelectedLocation = LocationOptions.FirstOrDefault(x => x.Id == _options.DefaultLocationId.Value);
         }
 
         SelectedLocation ??= LocationOptions.FirstOrDefault();
+    }
+
+    private void NotifySelectionStateChanged()
+    {
+        OnPropertyChanged(nameof(IsCompanyMulti));
+        OnPropertyChanged(nameof(IsLocationMulti));
+        OnPropertyChanged(nameof(SelectionHint));
     }
 }

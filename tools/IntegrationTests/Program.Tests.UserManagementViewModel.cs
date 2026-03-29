@@ -201,6 +201,63 @@ internal static partial class Program
             "Permission tree should render the dedicated inventory import label.");
     }
 
+    private static async Task TestUserManagementLocationOptionsFollowSelectedCompaniesAsync()
+    {
+        var service = CreateService();
+        var viewModel = new UserManagementViewModel(service, "itest");
+        await viewModel.EnsureLoadedAsync();
+
+        viewModel.NewUserCommand.Execute(null);
+        var nonSuperRole = viewModel.Roles.FirstOrDefault(role => !role.IsSuperRole);
+        Assert(nonSuperRole is not null, "At least one non-super role is required for user location filter test.");
+
+        viewModel.SelectedUserRoleId = nonSuperRole!.Id;
+
+        var companyGroups = viewModel.Locations
+            .Where(location => location.IsActive)
+            .GroupBy(location => location.CompanyId)
+            .Where(group => group.Any())
+            .Take(2)
+            .ToArray();
+
+        Assert(companyGroups.Length >= 2, "At least two companies with active locations are required for user location filter test.");
+
+        var firstCompanyId = companyGroups[0].Key;
+        var secondCompanyId = companyGroups[1].Key;
+
+        var firstCompanyOption = viewModel.UserCompanyOptions.FirstOrDefault(option => option.Id == firstCompanyId);
+        var secondCompanyOption = viewModel.UserCompanyOptions.FirstOrDefault(option => option.Id == secondCompanyId);
+        Assert(firstCompanyOption is not null, "First company option was not found.");
+        Assert(secondCompanyOption is not null, "Second company option was not found.");
+
+        firstCompanyOption!.IsSelected = true;
+        secondCompanyOption!.IsSelected = false;
+
+        var firstCompanyLocations = viewModel.UserLocationOptions.Where(option => option.GroupId == firstCompanyId).ToArray();
+        var secondCompanyLocations = viewModel.UserLocationOptions.Where(option => option.GroupId == secondCompanyId).ToArray();
+        Assert(firstCompanyLocations.Length > 0, "First company should have visible location options.");
+        Assert(secondCompanyLocations.Length > 0, "Second company should have location options for filter validation.");
+        Assert(firstCompanyLocations.All(option => option.IsEnabled), "Locations for selected company should stay enabled.");
+        Assert(secondCompanyLocations.All(option => !option.IsEnabled), "Locations for unselected company should be hidden from selection.");
+        Assert(viewModel.CanBulkEditUserLocations, "Location bulk actions should be enabled after selecting a company.");
+        Assert(
+            viewModel.UserLocationSelectionHint.Contains("hanya menampilkan", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected location hint after company selection: {viewModel.UserLocationSelectionHint}");
+
+        viewModel.SelectAllUserLocationsCommand.Execute(null);
+        Assert(firstCompanyLocations.All(option => option.IsSelected), "Select-all locations should affect enabled locations.");
+        Assert(secondCompanyLocations.All(option => !option.IsSelected), "Select-all locations must not select hidden company locations.");
+
+        firstCompanyOption.IsSelected = false;
+
+        Assert(viewModel.UserLocationOptions.All(option => !option.IsEnabled), "No location should remain enabled when no company is selected.");
+        Assert(viewModel.UserLocationOptions.All(option => !option.IsSelected), "Locations should be cleared when their company is unselected.");
+        Assert(!viewModel.CanBulkEditUserLocations, "Location bulk actions should be disabled when no company is selected.");
+        Assert(
+            viewModel.UserLocationSelectionHint.Contains("Pilih minimal satu company", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected location hint without selected company: {viewModel.UserLocationSelectionHint}");
+    }
+
     private static IEnumerable<SelectableOption> EnumerateVisibleRoleActions(UserManagementViewModel viewModel)
     {
         return viewModel.RolePermissionModules

@@ -1211,6 +1211,42 @@ public sealed class UserManagementViewModel : ViewModelBase
         SelectedUserRoleId.HasValue &&
         Roles.Any(x => x.Id == SelectedUserRoleId.Value && x.IsSuperRole);
 
+    public bool HasSelectedUserCompanies =>
+        IsSelectedUserSuperRole || UserCompanyOptions.Any(x => x.IsSelected);
+
+    public bool HasVisibleUserLocations =>
+        IsSelectedUserSuperRole || UserLocationOptions.Any(x => x.IsEnabled);
+
+    public bool CanBulkEditUserLocations => HasSelectedUser && HasSelectedUserCompanies;
+
+    public string UserLocationSelectionHint
+    {
+        get
+        {
+            if (!HasSelectedUser)
+            {
+                return "Pilih pengguna untuk mengatur cakupan lokasi.";
+            }
+
+            if (IsSelectedUserSuperRole)
+            {
+                return "SUPER_ADMIN selalu melihat seluruh lokasi aktif.";
+            }
+
+            if (!HasSelectedUserCompanies)
+            {
+                return "Pilih minimal satu company agar daftar lokasi muncul.";
+            }
+
+            if (!HasVisibleUserLocations)
+            {
+                return "Belum ada lokasi aktif untuk company yang dipilih.";
+            }
+
+            return "Daftar lokasi hanya menampilkan lokasi dari company yang dipilih.";
+        }
+    }
+
     public bool CanManageMasterCompanySetting => _canManageMasterCompanySetting;
 
     public string MasterCompanyPermissionMessage => CanManageMasterCompanySetting
@@ -2608,6 +2644,7 @@ public sealed class UserManagementViewModel : ViewModelBase
             _suppressDefaultSelectionSync = false;
             ReplaceCollection(UserDefaultCompanyOptions, Enumerable.Empty<ManagedCompany>());
             ReplaceCollection(UserDefaultLocationOptions, Enumerable.Empty<ManagedLocation>());
+            NotifyUserLocationSelectionStateChanged();
             return;
         }
 
@@ -2664,6 +2701,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         _suppressDefaultSelectionSync = false;
         ReplaceCollection(UserDefaultCompanyOptions, Enumerable.Empty<ManagedCompany>());
         ReplaceCollection(UserDefaultLocationOptions, Enumerable.Empty<ManagedLocation>());
+        NotifyUserLocationSelectionStateChanged();
     }
 
     private void ApplyUserLocationFilter()
@@ -2676,6 +2714,7 @@ public sealed class UserManagementViewModel : ViewModelBase
             }
 
             ReplaceCollection(UserDefaultLocationOptions, Enumerable.Empty<ManagedLocation>());
+            NotifyUserLocationSelectionStateChanged();
             return;
         }
 
@@ -2690,6 +2729,7 @@ public sealed class UserManagementViewModel : ViewModelBase
         }
 
         RefreshDefaultLocationOptions();
+        NotifyUserLocationSelectionStateChanged();
     }
 
     private void UserCompanyOptionOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -2863,6 +2903,14 @@ public sealed class UserManagementViewModel : ViewModelBase
                 option.IsSelected = selected;
             }
         }
+    }
+
+    private void NotifyUserLocationSelectionStateChanged()
+    {
+        OnPropertyChanged(nameof(HasSelectedUserCompanies));
+        OnPropertyChanged(nameof(HasVisibleUserLocations));
+        OnPropertyChanged(nameof(CanBulkEditUserLocations));
+        OnPropertyChanged(nameof(UserLocationSelectionHint));
     }
 
     private void SetAllRoleScopes(bool selected)
