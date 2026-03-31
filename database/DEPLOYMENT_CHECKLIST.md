@@ -34,3 +34,26 @@ Use this checklist when deploying the dedicated inventory import/template permis
 - Fresh environments that already run the latest [init_auth.sql](D:\VSCODE\wpf\database\init_auth.sql) do not need the backfill script.
 - The script is safe to run multiple times.
 - Do not assume `kategori.update` or `item.update` is enough anymore for import/template workflows.
+
+## GL Account Prefix Compatibility
+
+Use this checklist when upgrading an existing accounting database that still enforces the old numeric-only account prefix rule.
+
+### Scope
+- Existing environments that previously accepted only `99.99999.999`
+- Environments that now use company/scope prefixes such as `HO.33000.001` or `KB.51000.001`
+
+### Checklist
+1. Confirm the application build includes the account-code validation update and retained-earnings fix.
+2. Run the idempotent compatibility script:
+   - [allow_alphanumeric_account_prefix.sql](D:\VSCODE\wpf\database\allow_alphanumeric_account_prefix.sql)
+3. Verify new or existing GL accounts with a 2-character alphanumeric prefix can be inserted or updated.
+4. Smoke test account master save/import for:
+   - a summary account
+   - a posting child account
+   - a retained earnings close-period flow
+5. Confirm journal draft validation still rejects non-posting cost center selections and accepts posting cost center selections.
+
+### Notes
+- Fresh environments that run the latest [init_gl_accounts_master.sql](D:\VSCODE\wpf\database\init_gl_accounts_master.sql) already get the updated `XX.99999.999` rule.
+- The compatibility script is safe to run multiple times.

@@ -54,6 +54,7 @@ This project includes:
 - .NET 8 SDK
 - PostgreSQL
 - PowerShell
+- DevExpress 24.1 local packages installed on the machine
 
 ## Getting Started
 
@@ -104,10 +105,15 @@ Then run the production-oriented GL account master migration:
 
 - [`database/init_gl_accounts_master.sql`](D:/VSCODE/wpf/database/init_gl_accounts_master.sql)
 
+For existing environments that already use the GL schema and still reject account codes like `HO.33000.001` or `KB.51000.001`, run the compatibility patch:
+
+- [`database/allow_alphanumeric_account_prefix.sql`](D:/VSCODE/wpf/database/allow_alphanumeric_account_prefix.sql)
+
 Available database scripts:
 
 - `init_auth.sql`
 - `init_gl_accounts_master.sql`
+- `allow_alphanumeric_account_prefix.sql`
 - `init_inventory.sql`
 - `gl_accounts_regression_checks.sql`
 - `gl_accounts_cleanup_candidates.sql`
@@ -128,6 +134,8 @@ Seed credentials from the auth script:
 ```powershell
 dotnet run --project .\Accounting.csproj
 ```
+
+This repo also includes a local [`NuGet.Config`](D:/VSCODE/wpf/NuGet.Config) so `dotnet restore`, `dotnet build`, and the integration test project can use local package sources in offline or restricted-network environments.
 
 ## RBAC Notes
 
@@ -177,6 +185,14 @@ Period close currently includes:
 - automatic creation of a closing journal
 - transfer of `REVENUE` and `EXPENSE` balances into retained earnings
 - accounting-equation validation during post/close flow
+
+## Account Code Format
+
+GL account codes use the format `XX.99999.999`.
+
+- The first segment is a 2-character company or scope prefix such as `HO` or `KB`
+- The second and third segments remain numeric
+- Existing databases that still enforce the old numeric-only prefix rule should run [`database/allow_alphanumeric_account_prefix.sql`](D:/VSCODE/wpf/database/allow_alphanumeric_account_prefix.sql)
 
 ## Screenshots
 
@@ -247,13 +263,14 @@ tools/           Integration test harness and support tools
 3. Run a local build before opening a PR:
 
 ```powershell
-dotnet build .\Accounting.csproj -nologo
+$env:NUGET_PACKAGES = "D:\VSCODE\wpf\.nuget\packages"
+dotnet build .\Accounting.csproj --packages D:\VSCODE\wpf\.nuget\packages -nologo
 ```
 
 4. Run integration tests when your change touches database, RBAC, journal, inventory, or reporting behavior:
 
 ```powershell
-dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj
+dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj --packages D:\VSCODE\wpf\.nuget\packages
 ```
 
 5. Document any required SQL migration or backfill in the `database/` folder and mention it in the PR summary.
