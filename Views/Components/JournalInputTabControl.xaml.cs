@@ -247,6 +247,25 @@ public partial class JournalInputTabControl : UserControl
             }
         }
 
+        if (ReferenceEquals(currentColumn, CostCenterColumn))
+        {
+            TryRunBlockPicker(viewModel, currentLine);
+            if (currentLine.HasValidationError)
+            {
+                MoveFocusToGridCell(currentLine, CostCenterColumn);
+                return;
+            }
+        }
+        else if (ReferenceEquals(currentColumn, SubledgerColumn))
+        {
+            TryRunSubledgerPicker(viewModel, currentLine);
+            if (currentLine.HasValidationError)
+            {
+                MoveFocusToGridCell(currentLine, SubledgerColumn);
+                return;
+            }
+        }
+
         if (currentColumnIndex < editableColumns.Count - 1)
         {
             MoveFocusToGridCell(currentLine, editableColumns[currentColumnIndex + 1]);
@@ -289,6 +308,46 @@ public partial class JournalInputTabControl : UserControl
         }
 
         return viewModel.ApplySelectedAccountToLine(line, picker.SelectedAccount);
+    }
+
+    private bool TryRunBlockPicker(JournalManagementViewModel viewModel, JournalLineEditor line)
+    {
+        if (!viewModel.TryPrepareBlockPicker(line, out var activeBlocks, out var initialFilter))
+        {
+            return false;
+        }
+
+        var picker = new Accounting.BlockSelectionWindow(activeBlocks, initialFilter)
+        {
+            Owner = Window.GetWindow(this) ?? Application.Current?.MainWindow
+        };
+
+        if (picker.ShowDialog() != true || picker.SelectedBlock is null)
+        {
+            return false;
+        }
+
+        return viewModel.ApplySelectedBlockToLine(line, picker.SelectedBlock);
+    }
+
+    private bool TryRunSubledgerPicker(JournalManagementViewModel viewModel, JournalLineEditor line)
+    {
+        if (!viewModel.TryPrepareSubledgerPicker(line, out var activeSubledgers, out var initialFilter, out var title))
+        {
+            return false;
+        }
+
+        var picker = new Accounting.SubledgerSelectionWindow(title, activeSubledgers, initialFilter)
+        {
+            Owner = Window.GetWindow(this) ?? Application.Current?.MainWindow
+        };
+
+        if (picker.ShowDialog() != true || picker.SelectedSubledger is null)
+        {
+            return false;
+        }
+
+        return viewModel.ApplySelectedSubledgerToLine(line, picker.SelectedSubledger);
     }
 
     private void AmountTextBox_OnPreviewTextInput(object sender, TextCompositionEventArgs e)
@@ -477,6 +536,7 @@ public partial class JournalInputTabControl : UserControl
             CreditColumn,
             DepartmentColumn,
             ProjectColumn,
+            SubledgerColumn,
             CostCenterColumn
         };
     }

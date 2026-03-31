@@ -90,7 +90,11 @@ SELECT d.line_no,
        d.credit,
        COALESCE(d.department_code, ''),
        COALESCE(d.project_code, ''),
-       d.cost_center_id,
+       COALESCE(d.subledger_type, ''),
+       d.subledger_id,
+       COALESCE(d.subledger_code, ''),
+       COALESCE(d.subledger_name, ''),
+       d.block_id,
        COALESCE(d.cost_center_code, '')
 FROM gl_journal_details d
 JOIN gl_accounts a ON a.id = d.account_id
@@ -111,8 +115,13 @@ ORDER BY d.line_no;", connection))
                     Credit = reader.GetDecimal(5),
                     DepartmentCode = reader.GetString(6),
                     ProjectCode = reader.GetString(7),
-                    CostCenterId = reader.IsDBNull(8) ? null : reader.GetInt64(8),
-                    CostCenterCode = reader.GetString(9)
+                    SubledgerType = reader.GetString(8),
+                    SubledgerId = reader.IsDBNull(9) ? null : reader.GetInt64(9),
+                    SubledgerCode = reader.GetString(10),
+                    SubledgerName = reader.GetString(11),
+                    CostCenterId = null,
+                    BlockId = reader.IsDBNull(12) ? null : reader.GetInt64(12),
+                    CostCenterCode = reader.GetString(13)
                 });
             }
         }
@@ -155,7 +164,12 @@ ORDER BY d.line_no;", connection))
                 Credit = Math.Round(x.Credit, 2),
                 DepartmentCode = x.DepartmentCode?.Trim() ?? string.Empty,
                 ProjectCode = x.ProjectCode?.Trim() ?? string.Empty,
-                CostCenterId = x.CostCenterId is > 0 ? x.CostCenterId : null,
+                SubledgerType = NormalizeSubledgerType(x.SubledgerType),
+                SubledgerId = x.SubledgerId is > 0 ? x.SubledgerId : null,
+                SubledgerCode = NormalizeSubledgerCode(x.SubledgerCode),
+                SubledgerName = x.SubledgerName?.Trim() ?? string.Empty,
+                CostCenterId = null,
+                BlockId = x.BlockId is > 0 ? x.BlockId : null,
                 CostCenterCode = NormalizeCostCenterCode(x.CostCenterCode)
             })
             .ToList();
@@ -189,12 +203,14 @@ ORDER BY d.line_no;", connection))
             await connection.OpenAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-            var accountMap = new Dictionary<string, (long Id, string Name, bool RequiresCostCenter)>(StringComparer.OrdinalIgnoreCase);
+            var accountMap = new Dictionary<string, (long Id, string Name, bool RequiresCostCenter, bool RequiresSubledger, string AllowedSubledgerType)>(StringComparer.OrdinalIgnoreCase);
             await using (var accountCommand = new NpgsqlCommand(@"
 SELECT id,
        account_code,
        account_name,
-       COALESCE(requires_cost_center, FALSE) AS requires_cost_center
+       COALESCE(requires_cost_center, FALSE) AS requires_cost_center,
+       COALESCE(requires_partner, FALSE) AS requires_subledger,
+       COALESCE(allowed_subledger_type, '') AS allowed_subledger_type
 FROM gl_accounts
 WHERE company_id = @company_id
   AND is_active = TRUE
@@ -207,33 +223,80 @@ WHERE company_id = @company_id
                     accountMap[reader.GetString(1)] = (
                         reader.GetInt64(0),
                         reader.GetString(2),
-                        !reader.IsDBNull(3) && reader.GetBoolean(3));
+                        !reader.IsDBNull(3) && reader.GetBoolean(3),
+                        !reader.IsDBNull(4) && reader.GetBoolean(4),
+                        reader.IsDBNull(5) ? string.Empty : NormalizeSubledgerType(reader.GetString(5)));
                 }
             }
 
-            var costCentersById = new Dictionary<long, (long Id, string Code, bool IsPosting, bool IsActive)>();
-            var costCentersByCode = new Dictionary<string, (long Id, string Code, bool IsPosting, bool IsActive)>(StringComparer.OrdinalIgnoreCase);
-            await using (var costCenterCommand = new NpgsqlCommand(@"
-SELECT id,
-       cost_center_code,
-       is_posting,
-       is_active
-FROM gl_cost_centers
-WHERE company_id = @company_id
-  AND location_id = @location_id;", connection, transaction))
+            var vendorById = new Dictionary<long, (long Id, string Code, string Name, bool IsActive)>();
+            var vendorByCode = new Dictionary<string, (long Id, string Code, string Name, bool IsActive)>(StringComparer.OrdinalIgnoreCase);
+            var customerById = new Dictionary<long, (long Id, string Code, string Name, bool IsActive)>();
+            var customerByCode = new Dictionary<string, (long Id, string Code, string Name, bool IsActive)>(StringComparer.OrdinalIgnoreCase);
+            var employeeById = new Dictionary<long, (long Id, string Code, string Name, bool IsActive)>();
+            var employeeByCode = new Dictionary<string, (long Id, string Code, string Name, bool IsActive)>(StringComparer.OrdinalIgnoreCase);
+
+            async Task LoadSubledgersAsync(
+                string tableName,
+                string codeColumn,
+                string nameColumn,
+                Dictionary<long, (long Id, string Code, string Name, bool IsActive)> byId,
+                Dictionary<string, (long Id, string Code, string Name, bool IsActive)> byCode)
             {
-                costCenterCommand.Parameters.AddWithValue("company_id", header.CompanyId);
-                costCenterCommand.Parameters.AddWithValue("location_id", header.LocationId);
-                await using var reader = await costCenterCommand.ExecuteReaderAsync(cancellationToken);
+                var sql = $@"
+SELECT id,
+       upper(btrim(coalesce({codeColumn}, ''))) AS subledger_code,
+       btrim(coalesce({nameColumn}, '')) AS subledger_name,
+       coalesce(is_active, FALSE) AS is_active
+FROM {tableName}
+WHERE company_id = @company_id
+  AND btrim(coalesce({codeColumn}, '')) <> '';";
+
+                await using var command = new NpgsqlCommand(sql, connection, transaction);
+                command.Parameters.AddWithValue("company_id", header.CompanyId);
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     var record = (
                         Id: reader.GetInt64(0),
                         Code: reader.GetString(1),
-                        IsPosting: !reader.IsDBNull(2) && reader.GetBoolean(2),
+                        Name: reader.GetString(2),
                         IsActive: !reader.IsDBNull(3) && reader.GetBoolean(3));
-                    costCentersById[record.Id] = record;
-                    costCentersByCode[record.Code] = record;
+                    byId[record.Id] = record;
+                    byCode[record.Code] = record;
+                }
+            }
+
+            await LoadSubledgersAsync("gl_vendors", "vendor_code", "vendor_name", vendorById, vendorByCode);
+            await LoadSubledgersAsync("gl_customers", "customer_code", "customer_name", customerById, customerByCode);
+            await LoadSubledgersAsync("gl_employees", "employee_code", "employee_name", employeeById, employeeByCode);
+
+            var blocksById = new Dictionary<long, (long Id, string Code, bool IsActive)>();
+            var blocksByCode = new Dictionary<string, (long Id, string Code, bool IsActive)>(StringComparer.OrdinalIgnoreCase);
+            await using (var blockCommand = new NpgsqlCommand(@"
+SELECT b.id,
+       upper(btrim(e.code)) || '-' || upper(btrim(d.code)) || '-' || upper(btrim(b.code)) AS block_cost_center_code,
+       coalesce(e.is_active, FALSE) AND coalesce(d.is_active, FALSE) AND coalesce(b.is_active, FALSE) AS is_active
+FROM blocks b
+JOIN divisions d ON d.id = b.division_id
+JOIN estates e ON e.id = d.estate_id
+WHERE e.company_id = @company_id
+  AND e.location_id = @location_id
+  AND btrim(coalesce(e.code, '')) <> ''
+  AND btrim(coalesce(d.code, '')) <> ''
+  AND btrim(coalesce(b.code, '')) <> '';", connection, transaction))
+            {
+                blockCommand.Parameters.AddWithValue("company_id", header.CompanyId);
+                blockCommand.Parameters.AddWithValue("location_id", header.LocationId);
+                await using var reader = await blockCommand.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var record = (
+                        Id: reader.GetInt64(0),
+                        Code: reader.GetString(1),
+                        IsActive: !reader.IsDBNull(2) && reader.GetBoolean(2));
+                    blocksById[record.Id] = record;
+                    blocksByCode[record.Code] = record;
                 }
             }
 
@@ -247,60 +310,122 @@ WHERE company_id = @company_id
 
                 line.AccountName = accountData.Name;
 
-                (long Id, string Code, bool IsPosting, bool IsActive)? costCenter = null;
-                if (line.CostCenterId is > 0)
+                (long Id, string Code, string Name, bool IsActive)? subledger = null;
+                if (accountData.RequiresSubledger)
                 {
-                    if (!costCentersById.TryGetValue(line.CostCenterId.Value, out var mappedById))
+                    var requiredSubledgerType = accountData.AllowedSubledgerType;
+                    if (string.IsNullOrWhiteSpace(requiredSubledgerType))
                     {
                         await transaction.RollbackAsync(cancellationToken);
-                        return new AccessOperationResult(false, $"Cost center id {line.CostCenterId.Value} tidak ditemukan untuk lokasi jurnal.");
+                        return new AccessOperationResult(false, $"Akun '{line.AccountCode}' belum memiliki konfigurasi tipe buku bantu.");
                     }
 
-                    costCenter = mappedById;
+                    if (!string.IsNullOrWhiteSpace(line.SubledgerType) &&
+                        !string.Equals(line.SubledgerType, requiredSubledgerType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Akun '{line.AccountCode}' hanya menerima buku bantu tipe {requiredSubledgerType}.");
+                    }
+
+                    line.SubledgerType = requiredSubledgerType;
+
+                    if (line.SubledgerId is > 0)
+                    {
+                        subledger = requiredSubledgerType switch
+                        {
+                            "VENDOR" when vendorById.TryGetValue(line.SubledgerId.Value, out var vendor) => vendor,
+                            "CUSTOMER" when customerById.TryGetValue(line.SubledgerId.Value, out var customer) => customer,
+                            "EMPLOYEE" when employeeById.TryGetValue(line.SubledgerId.Value, out var employee) => employee,
+                            _ => null
+                        };
+                    }
+                    else if (!string.IsNullOrWhiteSpace(line.SubledgerCode))
+                    {
+                        subledger = requiredSubledgerType switch
+                        {
+                            "VENDOR" when vendorByCode.TryGetValue(line.SubledgerCode, out var vendor) => vendor,
+                            "CUSTOMER" when customerByCode.TryGetValue(line.SubledgerCode, out var customer) => customer,
+                            "EMPLOYEE" when employeeByCode.TryGetValue(line.SubledgerCode, out var employee) => employee,
+                            _ => null
+                        };
+                    }
+
+                    if (!subledger.HasValue)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Akun '{line.AccountCode}' wajib memakai buku bantu {requiredSubledgerType} yang aktif.");
+                    }
+
+                    if (!subledger.Value.IsActive)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Buku bantu '{subledger.Value.Code}' nonaktif.");
+                    }
+
+                    line.SubledgerId = subledger.Value.Id;
+                    line.SubledgerCode = subledger.Value.Code;
+                    line.SubledgerName = subledger.Value.Name;
+                }
+                else
+                {
+                    line.SubledgerType = string.Empty;
+                    line.SubledgerId = null;
+                    line.SubledgerCode = string.Empty;
+                    line.SubledgerName = string.Empty;
+                }
+
+                (long Id, string Code, bool IsActive)? block = null;
+                if (line.BlockId is > 0)
+                {
+                    if (!blocksById.TryGetValue(line.BlockId.Value, out var mappedById))
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return new AccessOperationResult(false, $"Blok id {line.BlockId.Value} tidak ditemukan untuk lokasi jurnal.");
+                    }
+                    else
+                    {
+                        block = mappedById;
+                    }
                 }
                 else if (!string.IsNullOrWhiteSpace(line.CostCenterCode))
                 {
-                    if (!costCentersByCode.TryGetValue(line.CostCenterCode, out var mappedByCode))
+                    if (!blocksByCode.TryGetValue(line.CostCenterCode, out var mappedByCode))
                     {
                         if (accountData.RequiresCostCenter)
                         {
                             await transaction.RollbackAsync(cancellationToken);
-                            return new AccessOperationResult(false, $"Cost center '{line.CostCenterCode}' tidak ditemukan untuk lokasi jurnal.");
+                            return new AccessOperationResult(false, $"Blok '{line.CostCenterCode}' tidak ditemukan untuk lokasi jurnal.");
                         }
                     }
                     else
                     {
-                        costCenter = mappedByCode;
+                        block = mappedByCode;
                     }
                 }
 
-                if (costCenter.HasValue)
+                if (block.HasValue)
                 {
-                    if (!costCenter.Value.IsActive)
+                    if (!block.Value.IsActive)
                     {
                         await transaction.RollbackAsync(cancellationToken);
-                        return new AccessOperationResult(false, $"Cost center '{costCenter.Value.Code}' nonaktif.");
+                        return new AccessOperationResult(false, $"Blok '{block.Value.Code}' nonaktif.");
                     }
 
-                    if (!costCenter.Value.IsPosting)
-                    {
-                        await transaction.RollbackAsync(cancellationToken);
-                        return new AccessOperationResult(false, $"Cost center '{costCenter.Value.Code}' bukan level posting.");
-                    }
-
-                    line.CostCenterId = costCenter.Value.Id;
-                    line.CostCenterCode = costCenter.Value.Code;
+                    line.CostCenterId = null;
+                    line.BlockId = block.Value.Id;
+                    line.CostCenterCode = block.Value.Code;
                 }
                 else
                 {
                     line.CostCenterId = null;
+                    line.BlockId = null;
                     line.CostCenterCode = NormalizeCostCenterCode(line.CostCenterCode);
                 }
 
-                if (accountData.RequiresCostCenter && !line.CostCenterId.HasValue)
+                if (accountData.RequiresCostCenter && !line.BlockId.HasValue)
                 {
                     await transaction.RollbackAsync(cancellationToken);
-                    return new AccessOperationResult(false, $"Akun '{line.AccountCode}' wajib memakai cost center aktif level posting.");
+                    return new AccessOperationResult(false, $"Akun '{line.AccountCode}' wajib memakai blok aktif.");
                 }
             }
 
@@ -453,7 +578,11 @@ INSERT INTO gl_journal_details (
     credit,
     department_code,
     project_code,
-    cost_center_id,
+    subledger_type,
+    subledger_id,
+    subledger_code,
+    subledger_name,
+    block_id,
     cost_center_code,
     created_at,
     updated_at)
@@ -466,7 +595,11 @@ VALUES (
     @credit,
     @department_code,
     @project_code,
-    @cost_center_id,
+    @subledger_type,
+    @subledger_id,
+    @subledger_code,
+    @subledger_name,
+    @block_id,
     @cost_center_code,
     NOW(),
     NOW());", connection, transaction);
@@ -479,7 +612,11 @@ VALUES (
                 insertDetail.Parameters.AddWithValue("credit", line.Credit);
                 insertDetail.Parameters.AddWithValue("department_code", line.DepartmentCode);
                 insertDetail.Parameters.AddWithValue("project_code", line.ProjectCode);
-                insertDetail.Parameters.AddWithValue("cost_center_id", NpgsqlDbType.Bigint, line.CostCenterId.HasValue ? line.CostCenterId.Value : DBNull.Value);
+                insertDetail.Parameters.AddWithValue("subledger_type", line.SubledgerType);
+                insertDetail.Parameters.AddWithValue("subledger_id", NpgsqlDbType.Bigint, line.SubledgerId.HasValue ? line.SubledgerId.Value : DBNull.Value);
+                insertDetail.Parameters.AddWithValue("subledger_code", line.SubledgerCode);
+                insertDetail.Parameters.AddWithValue("subledger_name", line.SubledgerName);
+                insertDetail.Parameters.AddWithValue("block_id", NpgsqlDbType.Bigint, line.BlockId.HasValue ? line.BlockId.Value : DBNull.Value);
                 insertDetail.Parameters.AddWithValue("cost_center_code", line.CostCenterCode);
                 await insertDetail.ExecuteNonQueryAsync(cancellationToken);
             }
@@ -866,7 +1003,11 @@ INSERT INTO gl_ledger_entries (
     description,
     department_code,
     project_code,
-    cost_center_id,
+    subledger_type,
+    subledger_id,
+    subledger_code,
+    subledger_name,
+    block_id,
     cost_center_code,
     posted_by,
     posted_at,
@@ -885,7 +1026,11 @@ SELECT h.company_id,
        COALESCE(d.description, ''),
        COALESCE(d.department_code, ''),
        COALESCE(d.project_code, ''),
-       d.cost_center_id,
+       COALESCE(d.subledger_type, ''),
+       d.subledger_id,
+       COALESCE(d.subledger_code, ''),
+       COALESCE(d.subledger_name, ''),
+       d.block_id,
        COALESCE(d.cost_center_code, ''),
        @posted_by,
        NOW(),
@@ -1061,6 +1206,13 @@ LIMIT 500;", connection);
         return string.IsNullOrWhiteSpace(costCenterCode)
             ? string.Empty
             : costCenterCode.Trim().ToUpperInvariant();
+    }
+
+    private static string NormalizeSubledgerCode(string? subledgerCode)
+    {
+        return string.IsNullOrWhiteSpace(subledgerCode)
+            ? string.Empty
+            : subledgerCode.Trim().ToUpperInvariant();
     }
 }
 

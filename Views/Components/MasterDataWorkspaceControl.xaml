@@ -21,6 +21,7 @@
 
         <Grid Grid.Row="1" Margin="10,8,10,0">
             <comp:MasterDataAccountsTabControl Visibility="{Binding IsMasterAccountListSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <comp:MasterDataCostCentersTabControl Visibility="{Binding IsMasterCostCenterSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:MasterDataPeriodsTabControl Visibility="{Binding IsMasterPeriodSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <Border Padding="14"
                     CornerRadius="{DynamicResource Radius.Card}"
@@ -37,6 +38,255 @@
                                Text="{Binding MasterPlaceholderDescription}" />
                 </StackPanel>
             </Border>
+
+            <Grid Background="#66000000"
+                  Visibility="{Binding IsMasterDataModalOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      MaxWidth="760"
+                      Width="760">
+                    <Border CornerRadius="14"
+                            Background="{DynamicResource Brush.Surface}"
+                            BorderBrush="{DynamicResource Brush.BorderStrong}"
+                            BorderThickness="1"
+                            Padding="18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="12" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0">
+                                <TextBlock Text="{Binding AccountEditorTitle}"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextPrimary}"
+                                           Visibility="{Binding IsAccountModalOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <TextBlock Text="{Binding AccountEditorSubtitle}"
+                                           Margin="0,4,0,0"
+                                           Foreground="{DynamicResource Brush.TextSecondary}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding IsAccountModalOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                                <TextBlock Text="Detail Blok"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextPrimary}"
+                                           Visibility="{Binding IsCostCenterDetailModalOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <TextBlock Margin="0,4,0,0"
+                                           Foreground="{DynamicResource Brush.TextSecondary}"
+                                           TextWrapping="Wrap"
+                                           Text="Blok ini dibaca langsung dari master operasional, sehingga di layar Accounting hanya ditampilkan sebagai referensi."
+                                           Visibility="{Binding IsCostCenterDetailModalOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
+
+                            <Grid Grid.Row="2"
+                                  Visibility="{Binding IsAccountModalOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Kode Akun" />
+                                    <TextBox Margin="0,6,0,0"
+                                             Text="{Binding AccountDraft.Code, UpdateSourceTrigger=PropertyChanged}"
+                                             TextChanged="AccountModalText_OnChanged"
+                                             Style="{StaticResource InputTextBoxStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="2">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Nama Akun" />
+                                    <TextBox Margin="0,6,0,0"
+                                             Text="{Binding AccountDraft.Name, UpdateSourceTrigger=PropertyChanged}"
+                                             TextChanged="AccountModalText_OnChanged"
+                                             Style="{StaticResource InputTextBoxStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,12,0,0">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tipe Akun" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              ItemsSource="{Binding AccountTypeOptions}"
+                                              SelectedItem="{Binding AccountDraft.AccountType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              SelectionChanged="AccountModalSelection_OnChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,12,0,0">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Parent Akun" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              ItemsSource="{Binding ParentAccountOptions}"
+                                              SelectedItem="{Binding SelectedParentAccountOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              SelectionChanged="AccountModalSelection_OnChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0" Orientation="Horizontal">
+                                    <CheckBox IsChecked="{Binding AccountDraft.IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              Checked="AccountModalCheck_OnChanged"
+                                              Unchecked="AccountModalCheck_OnChanged"
+                                              Content="Akun Aktif" />
+                                    <CheckBox Margin="18,0,0,0"
+                                              IsChecked="{Binding AccountDraft.RequiresSubledger, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              Checked="AccountModalCheck_OnChanged"
+                                              Unchecked="AccountModalCheck_OnChanged"
+                                              Content="Wajib Buku Bantu" />
+                                    <CheckBox Margin="18,0,0,0"
+                                              IsChecked="{Binding AccountDraft.RequiresCostCenter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              Checked="AccountModalCheck_OnChanged"
+                                              Unchecked="AccountModalCheck_OnChanged"
+                                              Content="Wajib Cost Center / Blok" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,12,0,0">
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Jenis Buku Bantu" />
+                                    <ComboBox Margin="0,6,0,0"
+                                              Style="{StaticResource InputComboBoxStyle}"
+                                              ItemsSource="{Binding SubledgerTypeOptions}"
+                                              SelectedItem="{Binding AccountDraft.AllowedSubledgerType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              SelectionChanged="AccountModalSelection_OnChanged" />
+                                </StackPanel>
+
+                                <Border Grid.Row="4"
+                                        Grid.Column="0"
+                                        Grid.ColumnSpan="3"
+                                        Margin="0,12,0,0"
+                                        Padding="10,8"
+                                        CornerRadius="8"
+                                        BorderThickness="1">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource Brush.InfoSubtle}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Info}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAccountValidationError}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource Brush.ErrorSubtle}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Error}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding AccountValidationMessage}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource Brush.Info}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAccountValidationError}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+
+                                <Border Grid.Row="5"
+                                        Grid.Column="0"
+                                        Grid.ColumnSpan="3"
+                                        Margin="0,12,0,0"
+                                        Padding="10"
+                                        CornerRadius="8"
+                                        Background="{DynamicResource Brush.SurfaceMuted}"
+                                        BorderBrush="{DynamicResource Brush.BorderSoft}"
+                                        BorderThickness="1">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabelTextStyle}" Text="Parent Turunan" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding DerivedParentAccountCode}" />
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Level Turunan" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding DerivedHierarchyLevelText}" />
+
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Mode Posting" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding DerivedPostingModeText}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Border Grid.Row="2"
+                                    Padding="12"
+                                    CornerRadius="10"
+                                    Background="{DynamicResource Brush.SurfaceMuted}"
+                                    BorderBrush="{DynamicResource Brush.BorderSoft}"
+                                    BorderThickness="1"
+                                    Visibility="{Binding IsCostCenterDetailModalOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode Cost Center" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding CostCenterDetail.CostCenterCode}" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Estate" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding CostCenterDetail.EstateCode}" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Divisi" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding CostCenterDetail.DivisionCode}" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Blok" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding CostCenterDetail.BlockCode}" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,8,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama Blok" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,8,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding CostCenterDetail.BlockName}" />
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Grid.Row="4"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right">
+                                <Button Command="{Binding CloseMasterDataModalCommand}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Tutup" />
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding DeactivateAccountCommand}"
+                                        IsEnabled="{Binding CanDeactivateAccount}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Nonaktifkan"
+                                        Visibility="{Binding IsAccountModalOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding SaveAccountCommand}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="Simpan Akun"
+                                        Visibility="{Binding IsAccountModalOpen, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
         </Grid>
 
         <ContentControl Grid.Row="2"

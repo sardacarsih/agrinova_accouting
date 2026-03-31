@@ -256,7 +256,7 @@ public sealed class JournalImportExportWorkflow
             else if (item.IsValid && requiresCostCenter && string.IsNullOrWhiteSpace(normalizedCostCenterCode))
             {
                 isValid = false;
-                message = $"Akun '{normalizedCode}' wajib memakai cost center.";
+                message = $"Akun '{normalizedCode}' wajib memakai blok.";
             }
             else if (item.IsValid && !string.IsNullOrWhiteSpace(normalizedCostCenterCode))
             {
@@ -265,13 +265,13 @@ public sealed class JournalImportExportWorkflow
                     if (requiresCostCenter)
                     {
                         isValid = false;
-                        message = $"Cost center '{normalizedCostCenterCode}' tidak ditemukan.";
+                        message = $"Blok '{normalizedCostCenterCode}' tidak ditemukan.";
                     }
                 }
                 else if (costCenter is not null && !costCenter.IsPosting)
                 {
                     isValid = false;
-                    message = $"Cost center '{normalizedCostCenterCode}' bukan level posting.";
+                    message = $"Blok '{normalizedCostCenterCode}' bukan level posting.";
                 }
             }
 
@@ -333,7 +333,8 @@ public sealed class JournalImportExportWorkflow
                     Credit = line.Credit,
                     DepartmentCode = line.DepartmentCode,
                     ProjectCode = line.ProjectCode,
-                    CostCenterId = costCenter?.Id,
+                    CostCenterId = null,
+                    BlockId = costCenter?.BlockId ?? costCenter?.Id,
                     CostCenterCode = costCenter?.CostCenterCode ?? normalizedCostCenterCode
                 });
             }
@@ -352,8 +353,8 @@ public sealed class JournalImportExportWorkflow
                 var missingRequirement = invalidCostCenters
                     .FirstOrDefault(x => x.StartsWith("REQ:", StringComparison.OrdinalIgnoreCase));
                 validationMessage = missingRequirement is not null
-                    ? $"Akun '{missingRequirement[4..]}' wajib memakai cost center aktif level posting."
-                    : $"Cost center tidak valid: {string.Join(", ", invalidCostCenters.Take(3))}.";
+                    ? $"Akun '{missingRequirement[4..]}' wajib memakai blok aktif."
+                    : $"Blok tidak valid: {string.Join(", ", invalidCostCenters.Take(3))}.";
             }
 
             if (isValid && normalizedLines.Count == 0)

@@ -1,0 +1,353 @@
+<UserControl x:Class="Accounting.Views.Components.MasterDataCostCentersTabControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="clr-namespace:Accounting.Services"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Estate / Division / Blok"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextPrimary}" />
+                    <TextBlock Margin="0,4,0,0"
+                               Foreground="{DynamicResource Brush.TextSecondary}"
+                               Text="Kelola hierarchy operasional yang menjadi sumber blok posting untuk jurnal dan laporan." />
+                    <WrapPanel Margin="0,10,0,0">
+                        <TextBlock Foreground="{DynamicResource Brush.TextMuted}" Text="Estate: " />
+                        <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding VisibleEstatesCount}" />
+                        <TextBlock Margin="14,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="Divisi: " />
+                        <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding VisibleDivisionsCount}" />
+                        <TextBlock Margin="14,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="Blok: " />
+                        <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding VisibleBlocksCount}" />
+                    </WrapPanel>
+                </StackPanel>
+
+                <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <Button Command="{Binding NewEstateCommand}" Style="{StaticResource SecondaryPillButtonStyle}" Content="Estate Baru" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding NewDivisionCommand}"
+                            IsEnabled="{Binding CanCreateDivision}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Divisi Baru" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding NewBlockCommand}"
+                            IsEnabled="{Binding CanCreateBlock}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Blok Baru" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding EditEstateHierarchyCommand}"
+                            IsEnabled="{Binding CanEditEstateHierarchy}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Edit" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding DeactivateEstateHierarchyCommand}"
+                            IsEnabled="{Binding CanDeactivateEstateHierarchy}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Nonaktifkan" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding ExportEstateHierarchyCommand}"
+                            IsEnabled="{Binding CanExportEstateHierarchy}"
+                            ToolTip="{Binding ExportEstateHierarchyTooltip}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Export" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding ImportEstateHierarchyCommand}"
+                            IsEnabled="{Binding CanImportEstateHierarchy}"
+                            ToolTip="{Binding ImportEstateHierarchyTooltip}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Import" />
+                    <Button Margin="8,0,0,0"
+                            Command="{Binding RefreshCommand}"
+                            Style="{StaticResource SecondaryPillButtonStyle}"
+                            Content="Muat Ulang" />
+                </WrapPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2"
+                Padding="10"
+                CornerRadius="8"
+                Background="{DynamicResource Brush.Surface}"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="220" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Cari Hierarchy" />
+                    <TextBox Margin="0,6,0,0"
+                             Text="{Binding EstateHierarchySearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource InputTextBoxStyle}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Filter Status" />
+                    <ComboBox Margin="0,6,0,0"
+                              Style="{StaticResource InputComboBoxStyle}"
+                              ItemsSource="{Binding AccountStatusFilterOptions}"
+                              SelectedItem="{Binding SelectedEstateHierarchyStatusFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ContentControl Grid.Row="4"
+                        Content="{Binding EstateHierarchyImportErrorPanel}"
+                        ContentTemplate="{StaticResource InventoryImportErrorPanelTemplate}"
+                        Visibility="{Binding EstateHierarchyImportErrorPanel.HasErrors, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.25*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Padding="10"
+                    CornerRadius="10"
+                    Background="{DynamicResource Brush.Surface}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="8" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="Browser Hierarchy"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextPrimary}" />
+
+                    <TreeView Grid.Row="2"
+                              ItemsSource="{Binding VisibleEstateHierarchyEstates}"
+                              SelectedItemChanged="TreeView_OnSelectedItemChanged"
+                              BorderThickness="0"
+                              Background="Transparent">
+                        <TreeView.Resources>
+                            <HierarchicalDataTemplate DataType="{x:Type services:ManagedEstate}" ItemsSource="{Binding Divisions}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontWeight="SemiBold" Text="{Binding Code}" />
+                                    <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource Brush.TextSecondary}" Text="{Binding Name}" />
+                                    <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="{Binding IsActive, StringFormat=({0})}" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                            <HierarchicalDataTemplate DataType="{x:Type services:ManagedDivision}" ItemsSource="{Binding Blocks}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontWeight="SemiBold" Text="{Binding Code}" />
+                                    <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource Brush.TextSecondary}" Text="{Binding Name}" />
+                                    <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="{Binding IsActive, StringFormat=({0})}" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                            <DataTemplate DataType="{x:Type services:ManagedBlock}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontWeight="SemiBold" Text="{Binding Code}" />
+                                    <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource Brush.TextSecondary}" Text="{Binding Name}" />
+                                    <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource Brush.TextMuted}" Text="{Binding CostCenterCode}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </TreeView.Resources>
+                    </TreeView>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Padding="14"
+                    CornerRadius="10"
+                    Background="{DynamicResource Brush.Surface}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="{Binding IsEstateHierarchyEditorOpen, Converter={StaticResource BoolToVisibilityConverter}}" Visibility="Collapsed" />
+                        <TextBlock FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush.TextPrimary}"
+                                   Text="{Binding EstateHierarchyEditorTitle}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsEstateHierarchyEditorOpen}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Margin="0,4,0,0"
+                                   Foreground="{DynamicResource Brush.TextSecondary}"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding EstateHierarchyEditorSubtitle}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsEstateHierarchyEditorOpen}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <TextBlock FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush.TextPrimary}"
+                                   Text="Detail Hierarchy">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsEstateHierarchyEditorOpen}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsEstateHierarchyEditorOpen}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabelTextStyle}" Text="Level" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding SelectedEstateHierarchyLevelLabel}" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Kode" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding SelectedEstateHierarchyCode}" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Nama" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding SelectedEstateHierarchyName}" />
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,10,0,0" Style="{StaticResource FieldLabelTextStyle}" Text="Parent / Status" />
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,10,0,0">
+                            <TextBlock Foreground="{DynamicResource Brush.TextPrimary}" Text="{Binding SelectedEstateHierarchyParentLabel}" />
+                            <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource Brush.TextSecondary}" Text="{Binding SelectedEstateHierarchyStatusText}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsEstateHierarchyEditorOpen}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Level" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding EstateHierarchyEditorLevel}"
+                                     IsReadOnly="True"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Estate Code" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding EstateHierarchyEditorEstateCode, UpdateSourceTrigger=PropertyChanged}"
+                                     IsReadOnly="True"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Division Code" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding EstateHierarchyEditorDivisionCode, UpdateSourceTrigger=PropertyChanged}"
+                                     IsReadOnly="True"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="3" Margin="0,12,0,0">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Code" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding EstateHierarchyEditorCode, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="4" Margin="0,12,0,0">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Name" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding EstateHierarchyEditorName, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                            <CheckBox Margin="0,12,0,0"
+                                      IsChecked="{Binding EstateHierarchyEditorIsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{StaticResource CompactCheckBoxStyle}"
+                                      Content="Hierarchy Aktif" />
+                            <WrapPanel Margin="0,16,0,0" HorizontalAlignment="Right">
+                                <Button Command="{Binding CancelEstateHierarchyEditCommand}"
+                                        Style="{StaticResource SecondaryPillButtonStyle}"
+                                        Content="Batal" />
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding SaveEstateHierarchyCommand}"
+                                        IsEnabled="{Binding CanSaveEstateHierarchy}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Content="Simpan" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

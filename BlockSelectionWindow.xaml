@@ -1,0 +1,132 @@
+<dx:ThemedWindow x:Class="Accounting.BlockSelectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
+        Title="Pilih Blok"
+        Width="920"
+        Height="580"
+        MinWidth="820"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        PreviewKeyDown="Window_OnPreviewKeyDown">
+    <dx:ThemedWindow.Resources>
+        <Style x:Key="FieldLabelTextStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="{DynamicResource Font.Caption}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+        <Style x:Key="InputTextBoxStyle" TargetType="{x:Type TextBox}">
+            <Setter Property="Height" Value="{DynamicResource Size.InputHeight}" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
+            <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="BlockPickerGridCellStyle"
+               TargetType="{x:Type DataGridCell}"
+               BasedOn="{StaticResource EnterpriseDataGridCellStyle}">
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style x:Key="BlockPickerGridStyle"
+               TargetType="{x:Type DataGrid}"
+               BasedOn="{StaticResource EnterpriseDataGridStyle}">
+            <Setter Property="RowHeight" Value="30" />
+            <Setter Property="CellStyle" Value="{StaticResource BlockPickerGridCellStyle}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Brush.BorderSoft}" />
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Brush.BorderSoft}" />
+            <Setter Property="AlternatingRowBackground" Value="{DynamicResource Brush.SurfaceAlt}" />
+        </Style>
+    </dx:ThemedWindow.Resources>
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Pilih Blok"
+                       FontFamily="Bahnschrift"
+                       FontSize="28"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Brush.TextPrimary}"/>
+            <TextBlock Margin="0,8,0,0"
+                       FontSize="14"
+                       Foreground="{DynamicResource Brush.TextSecondary}"
+                       Text="Cari berdasarkan estate, divisi, blok, atau kode gabungan lalu pilih untuk mengisi cost center jurnal."/>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource FieldLabelTextStyle}"
+                       Text="Cari"/>
+            <TextBox x:Name="SearchTextBox"
+                     Grid.Column="1"
+                     Margin="8,0,0,0"
+                     TextChanged="SearchTextBox_OnTextChanged"
+                     Style="{StaticResource InputTextBoxStyle}"/>
+        </Grid>
+
+        <DataGrid x:Name="BlocksGrid"
+                  Grid.Row="4"
+                  Style="{StaticResource BlockPickerGridStyle}"
+                  ItemsSource="{Binding FilteredBlocks}"
+                  SelectionChanged="BlocksGrid_OnSelectionChanged"
+                  MouseDoubleClick="BlocksGrid_OnMouseDoubleClick"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  CanUserAddRows="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Kode" Binding="{Binding CostCenterCode}" Width="180"/>
+                <DataGridTextColumn Header="Nama Blok" Binding="{Binding BlockName}" Width="200"/>
+                <DataGridTextColumn Header="Estate" Binding="{Binding EstateCode}" Width="110"/>
+                <DataGridTextColumn Header="Divisi" Binding="{Binding DivisionCode}" Width="110"/>
+                <DataGridTextColumn Header="Blok" Binding="{Binding BlockCode}" Width="110"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="{DynamicResource Brush.TextSecondary}"
+                       Text="{Binding ResultCountText}"/>
+            <Button Grid.Column="1"
+                    Height="40"
+                    MinWidth="110"
+                    IsCancel="True"
+                    Click="CancelButton_OnClick"
+                    Style="{StaticResource SecondaryPillButtonStyle}"
+                    Content="Batal"/>
+            <Button x:Name="SelectButton"
+                    Grid.Column="3"
+                    Height="40"
+                    MinWidth="130"
+                    IsDefault="True"
+                    IsEnabled="False"
+                    Click="SelectButton_OnClick"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Content="Pilih Blok"/>
+        </Grid>
+    </Grid>
+</dx:ThemedWindow>

@@ -58,6 +58,7 @@ public sealed class JournalXlsxService
                 "Credit",
                 "DepartmentCode",
                 "ProjectCode",
+                "SubledgerCode",
                 "CostCenterCode"
             }
         };
@@ -92,6 +93,7 @@ public sealed class JournalXlsxService
                     line.Credit,
                     line.DepartmentCode,
                     line.ProjectCode,
+                    line.SubledgerCode,
                     line.CostCenterCode
                 });
             }
@@ -149,6 +151,7 @@ public sealed class JournalXlsxService
                 "Credit",
                 "DepartmentCode",
                 "ProjectCode",
+                "SubledgerCode",
                 "CostCenterCode"
             }
         };
@@ -188,6 +191,7 @@ public sealed class JournalXlsxService
                     line.Credit,
                     line.DepartmentCode,
                     line.ProjectCode,
+                    line.SubledgerCode,
                     line.CostCenterCode
                 });
             }
@@ -285,6 +289,7 @@ public sealed class JournalXlsxService
         var genericDescriptionCol = GetColumnIndex(columnByKey, "DESCRIPTION");
         var departmentCol = GetColumnIndex(columnByKey, "DEPARTMENTCODE");
         var projectCol = GetColumnIndex(columnByKey, "PROJECTCODE");
+        var subledgerCol = GetColumnIndex(columnByKey, "SUBLEDGERCODE");
         var costCenterCol = GetColumnIndex(columnByKey, "COSTCENTERCODE");
 
         var groups = new Dictionary<string, JournalImportGroup>(StringComparer.OrdinalIgnoreCase);
@@ -302,6 +307,7 @@ public sealed class JournalXlsxService
             var journalStatus = GetCell(row, journalStatusCol);
             var deptCode = GetCell(row, departmentCol);
             var projectCode = GetCell(row, projectCol);
+            var subledgerCode = GetCell(row, subledgerCol);
             var costCenterCode = GetCell(row, costCenterCol);
 
             var debit = ParseDecimal(GetCell(row, debitCol));
@@ -345,6 +351,7 @@ public sealed class JournalXlsxService
                 Credit = credit,
                 DepartmentCode = deptCode,
                 ProjectCode = projectCode,
+                SubledgerCode = subledgerCode,
                 CostCenterCode = costCenterCode,
                 IsValid = isValid,
                 ValidationMessage = message
@@ -402,6 +409,7 @@ public sealed class JournalXlsxService
                 Credit = credit,
                 DepartmentCode = deptCode,
                 ProjectCode = projectCode,
+                SubledgerCode = subledgerCode,
                 CostCenterCode = costCenterCode
             });
         }
@@ -422,6 +430,7 @@ public sealed class JournalXlsxService
                     Credit = x.Credit,
                     DepartmentCode = x.DepartmentCode,
                     ProjectCode = x.ProjectCode,
+                    SubledgerCode = x.SubledgerCode,
                     CostCenterCode = x.CostCenterCode
                 })
                 .ToList();
@@ -486,6 +495,7 @@ public sealed class JournalXlsxService
                 Credit = x.Credit,
                 DepartmentCode = x.DepartmentCode,
                 ProjectCode = x.ProjectCode,
+                SubledgerCode = x.SubledgerCode,
                 CostCenterCode = x.CostCenterCode,
                 IsValid = x.IsValid,
                 ValidationMessage = x.ValidationMessage
@@ -950,6 +960,8 @@ public sealed class JournalXlsxService
         public string DepartmentCode { get; init; } = string.Empty;
 
         public string ProjectCode { get; init; } = string.Empty;
+
+        public string SubledgerCode { get; init; } = string.Empty;
 
         public string CostCenterCode { get; init; } = string.Empty;
 

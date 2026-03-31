@@ -43,37 +43,24 @@ WHERE le.company_id = @company_id
         return new AccountingEquationSnapshot(Math.Round(lhs - rhs, 2));
     }
 
-    private static string NormalizeAccountType(string? accountType, string? accountCode = null)
+    private static string NormalizeAccountType(string? accountType)
     {
         var normalized = (accountType ?? string.Empty).Trim().ToUpperInvariant();
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return InferAccountTypeFromCode(accountCode);
-        }
-
         if (AllowedAccountTypes.Contains(normalized, StringComparer.OrdinalIgnoreCase))
         {
             return normalized;
         }
 
-        return InferAccountTypeFromCode(accountCode);
+        return string.Empty;
     }
 
-    private static string InferAccountTypeFromCode(string? accountCode)
+    private static string NormalizeSubledgerType(string? subledgerType)
     {
-        var code = (accountCode ?? string.Empty).Trim().ToUpperInvariant();
-        var first = code.Length >= 9 && code[2] == '.' && code[8] == '.' && char.IsDigit(code[3])
-            ? code[3]
-            : (code.Length > 0 ? code[0] : '\0');
-
-        return first switch
+        var normalized = (subledgerType ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized switch
         {
-            '1' => "ASSET",
-            '2' => "LIABILITY",
-            '3' => "EQUITY",
-            '4' => "REVENUE",
-            '5' => "EXPENSE",
-            _ => "ASSET"
+            "VENDOR" or "CUSTOMER" or "EMPLOYEE" => normalized,
+            _ => string.Empty
         };
     }
 
@@ -111,11 +98,11 @@ WHERE le.company_id = @company_id
 
     private static bool TrySplitSegmentedAccountCode(
         string accountCode,
-        out string locationCode,
+        out string prefixSegment,
         out string majorCode,
         out string minorCode)
     {
-        locationCode = string.Empty;
+        prefixSegment = string.Empty;
         majorCode = string.Empty;
         minorCode = string.Empty;
 
@@ -125,7 +112,7 @@ WHERE le.company_id = @company_id
             return false;
         }
 
-        locationCode = code[..2];
+        prefixSegment = code[..2];
         majorCode = code.Substring(3, 5);
         minorCode = code.Substring(9, 3);
         return true;
@@ -137,9 +124,17 @@ WHERE le.company_id = @company_id
                string.Equals(minorCode, "000", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string BuildParentAccountCode(string locationCode, string majorCode)
+    private static string BuildParentAccountCode(string prefixSegment, string majorCode)
     {
-        return $"{locationCode}.{majorCode}.000";
+        return $"{prefixSegment}.{majorCode}.000";
+    }
+
+    private static string ExtractAccountCodePrefix(string? accountCode)
+    {
+        var code = (accountCode ?? string.Empty).Trim().ToUpperInvariant();
+        return code.Length >= 3 && code[2] == '.'
+            ? code[..2]
+            : string.Empty;
     }
 
     private sealed class AccountHierarchyEntry
@@ -299,34 +294,61 @@ WHERE id = @id
         long locationId,
         CancellationToken cancellationToken)
     {
+        _ = locationId;
         await using var command = new NpgsqlCommand(@"
-SELECT code
-FROM org_locations
-WHERE id = @location_id
-  AND company_id = @company_id;", connection, transaction);
-        command.Parameters.AddWithValue("location_id", locationId);
+SELECT account_code
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND account_code LIKE '__.33000.001'
+ORDER BY is_active DESC, id
+LIMIT 1;", connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
 
-        var locationCode = await command.ExecuteScalarAsync(cancellationToken);
-        var prefix = NormalizeLocationCoaSegment(locationCode as string);
-        return $"{prefix}.{RetainedEarningsSuffix}";
-    }
-
-    private static string NormalizeLocationCoaSegment(string? locationCode)
-    {
-        var normalized = (locationCode ?? string.Empty).Trim().ToUpperInvariant();
-        return normalized switch
+        var retainedCode = await command.ExecuteScalarAsync(cancellationToken);
+        if (retainedCode is string existingRetainedCode &&
+            IsSegmentedAccountCode(existingRetainedCode))
         {
-            "HO" => "HO",
-            "HQ" => "HO",
-            "PK" => "PK",
-            "PKS" => "PK",
-            "KB" => "KB",
-            "KEBUN" => "KB",
-            _ when normalized.Length >= 2 => normalized[..2],
-            _ when normalized.Length == 1 => normalized + "X",
-            _ => "HO"
-        };
+            return existingRetainedCode.Trim().ToUpperInvariant();
+        }
+
+        await using var prefixCommand = new NpgsqlCommand(@"
+SELECT account_code
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND account_code LIKE '__.30000.000'
+ORDER BY is_active DESC, id
+LIMIT 1;", connection, transaction);
+        prefixCommand.Parameters.AddWithValue("company_id", companyId);
+
+        var prefixSource = await prefixCommand.ExecuteScalarAsync(cancellationToken);
+        if (prefixSource is string existingPrefixSource)
+        {
+            var prefix = ExtractAccountCodePrefix(existingPrefixSource);
+            if (!string.IsNullOrWhiteSpace(prefix))
+            {
+                return $"{prefix}.33000.001";
+            }
+        }
+
+        await using var fallbackCommand = new NpgsqlCommand(@"
+SELECT account_code
+FROM gl_accounts
+WHERE company_id = @company_id
+ORDER BY id
+LIMIT 1;", connection, transaction);
+        fallbackCommand.Parameters.AddWithValue("company_id", companyId);
+
+        var fallbackSource = await fallbackCommand.ExecuteScalarAsync(cancellationToken);
+        if (fallbackSource is string existingAccountCode)
+        {
+            var prefix = ExtractAccountCodePrefix(existingAccountCode);
+            if (!string.IsNullOrWhiteSpace(prefix))
+            {
+                return $"{prefix}.33000.001";
+            }
+        }
+
+        return RetainedEarningsCode;
     }
 
     private static DateTime GetPeriodMonthStart(DateTime value)

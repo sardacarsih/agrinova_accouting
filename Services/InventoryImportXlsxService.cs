@@ -28,7 +28,7 @@ public sealed class InventoryImportXlsxService
             var categoryRows = new List<List<object?>>
             {
                 new() { "CategoryCode", "CategoryName", "AccountCode", "IsActive" },
-                new() { "RAW", "Bahan Baku", "HO.11000.001", "true" }
+                new() { "RAW", "Bahan Baku", "10.01105.011", "true" }
             };
             var itemRows = new List<List<object?>>
             {

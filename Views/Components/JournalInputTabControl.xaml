@@ -392,7 +392,66 @@
                 <DataGridTextColumn x:Name="CreditColumn" Header="Kredit" Binding="{Binding Credit, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}" Width="120" ElementStyle="{StaticResource JournalLinesGridNumericTextStyle}" EditingElementStyle="{StaticResource JournalLinesGridNumericEditingTextBoxStyle}" />
                 <DataGridTextColumn x:Name="DepartmentColumn" Header="Departemen" Binding="{Binding DepartmentCode, UpdateSourceTrigger=PropertyChanged}" Width="120" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
                 <DataGridTextColumn x:Name="ProjectColumn" Header="Proyek" Binding="{Binding ProjectCode, UpdateSourceTrigger=PropertyChanged}" Width="120" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
-                <DataGridTextColumn x:Name="CostCenterColumn" Header="Cost Center" Binding="{Binding CostCenterCode, UpdateSourceTrigger=PropertyChanged}" Width="130" EditingElementStyle="{StaticResource JournalLinesGridEditingTextBoxStyle}" />
+                <DataGridTemplateColumn x:Name="SubledgerColumn" Header="Buku Bantu" Width="240" MinWidth="210">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="34" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Style="{StaticResource JournalLinesGridEditingTextBoxStyle}"
+                                         VerticalContentAlignment="Center"
+                                         IsReadOnly="True"
+                                         Text="{Binding SubledgerDisplay}" />
+                                <Button Grid.Column="1"
+                                        Width="26"
+                                        Height="24"
+                                        Margin="6,0,0,0"
+                                        Padding="0"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="12"
+                                        ToolTip="Pilih buku bantu"
+                                        Command="{Binding DataContext.OpenSubledgerPickerCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"
+                                        Content="&#xE721;" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn x:Name="CostCenterColumn" Header="Blok" Width="220" MinWidth="190">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="34" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Style="{StaticResource JournalLinesGridEditingTextBoxStyle}"
+                                         VerticalContentAlignment="Center"
+                                         IsReadOnly="True"
+                                         Text="{Binding CostCenterCode}" />
+                                <Button Grid.Column="1"
+                                        Width="26"
+                                        Height="24"
+                                        Margin="6,0,0,0"
+                                        Padding="0"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontFamily="Segoe MDL2 Assets"
+                                        FontSize="12"
+                                        ToolTip="Pilih blok"
+                                        Command="{Binding DataContext.OpenBlockPickerCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"
+                                        Content="&#xE721;" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTemplateColumn Header="" Width="46" MinWidth="46" IsReadOnly="True">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>

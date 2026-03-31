@@ -447,6 +447,278 @@ internal static partial class Program
             "Export command should be enabled when reports.export exists.");
     }
 
+    private static Task TestMasterDataViewModel_AccountImportExportCommandsReflectBusyStateAsync()
+    {
+        var service = CreateAccessControlServiceProxy((method, _) =>
+        {
+            throw new NotSupportedException($"Unexpected method call: {method.Name}");
+        });
+
+        var viewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 77,
+            locationId: 88,
+            canManageAccountingPeriod: false);
+
+        Assert(viewModel.CanExportAccounts, "Account export should be enabled when company id is valid and viewmodel is idle.");
+        Assert(viewModel.CanImportAccounts, "Account import should be enabled when company id is valid and viewmodel is idle.");
+        Assert(
+            string.Equals(viewModel.ExportAccountsTooltip, "Export seluruh master akun company aktif ke XLSX.", StringComparison.Ordinal),
+            $"Unexpected account export tooltip: {viewModel.ExportAccountsTooltip}");
+        Assert(
+            string.Equals(viewModel.ImportAccountsTooltip, "Import master akun dari XLSX dengan mode upsert only.", StringComparison.Ordinal),
+            $"Unexpected account import tooltip: {viewModel.ImportAccountsTooltip}");
+        Assert(viewModel.ExportAccountsCommand.CanExecute(null), "Account export command should be executable when idle.");
+        Assert(viewModel.ImportAccountsCommand.CanExecute(null), "Account import command should be executable when idle.");
+
+        SetPrivateField(viewModel, "_isBusy", true);
+
+        Assert(!viewModel.CanExportAccounts, "Account export should be disabled while viewmodel is busy.");
+        Assert(!viewModel.CanImportAccounts, "Account import should be disabled while viewmodel is busy.");
+        Assert(
+            string.Equals(viewModel.ExportAccountsTooltip, "Master akun sedang sibuk atau company tidak valid.", StringComparison.Ordinal),
+            $"Unexpected busy export tooltip: {viewModel.ExportAccountsTooltip}");
+        Assert(
+            string.Equals(viewModel.ImportAccountsTooltip, "Master akun sedang sibuk atau company tidak valid.", StringComparison.Ordinal),
+            $"Unexpected busy import tooltip: {viewModel.ImportAccountsTooltip}");
+        Assert(!viewModel.ExportAccountsCommand.CanExecute(null), "Account export command should be disabled while busy.");
+        Assert(!viewModel.ImportAccountsCommand.CanExecute(null), "Account import command should be disabled while busy.");
+
+        var invalidCompanyViewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 0,
+            locationId: 88,
+            canManageAccountingPeriod: false);
+        Assert(!invalidCompanyViewModel.CanExportAccounts, "Account export should be disabled when company id is invalid.");
+        Assert(!invalidCompanyViewModel.CanImportAccounts, "Account import should be disabled when company id is invalid.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task TestMasterDataViewModel_AccountImportValidationFailureUpdatesStatusAndPanelAsync()
+    {
+        var service = CreateAccessControlServiceProxy((method, _) =>
+        {
+            throw new NotSupportedException($"Unexpected method call: {method.Name}");
+        });
+        var viewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 77,
+            locationId: 88,
+            canManageAccountingPeriod: false);
+
+        InvokePrivateInstanceMethod(
+            viewModel,
+            "ApplyAccountImportValidationFailure",
+            new AccountImportParseResult
+            {
+                IsSuccess = false,
+                Message = "Format import tidak valid.",
+                Errors =
+                [
+                    new InventoryImportError
+                    {
+                        SheetName = "Accounts",
+                        RowNumber = 3,
+                        Message = "Parent akun tidak ditemukan."
+                    }
+                ]
+            });
+
+        Assert(
+            viewModel.StatusMessage.Contains("Validasi file import master akun gagal.", StringComparison.Ordinal),
+            $"Unexpected validation failure status: {viewModel.StatusMessage}");
+        Assert(
+            viewModel.StatusMessage.Contains("1 error", StringComparison.Ordinal),
+            $"Validation failure status should include error count: {viewModel.StatusMessage}");
+        Assert(viewModel.AccountImportErrorPanel.HasErrors, "Validation failure should populate the account import error panel.");
+        Assert(viewModel.AccountImportErrorPanel.Errors.Count == 1, $"Expected one validation error, got {viewModel.AccountImportErrorPanel.Errors.Count}.");
+        Assert(
+            viewModel.AccountImportErrorPanel.Summary.Contains("Format import tidak valid.", StringComparison.Ordinal),
+            $"Unexpected validation error summary: {viewModel.AccountImportErrorPanel.Summary}");
+
+        return Task.CompletedTask;
+    }
+
+    private static async Task TestMasterDataViewModel_AccountImportExecutionResultUpdatesStatusAndErrorsAsync()
+    {
+        var service = CreateAccessControlServiceProxy((method, _) =>
+        {
+            throw new NotSupportedException($"Unexpected method call: {method.Name}");
+        });
+        var viewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 77,
+            locationId: 88,
+            canManageAccountingPeriod: false);
+
+        await InvokePrivateInstanceTaskAsync(
+            viewModel,
+            "ApplyAccountImportExecutionResultAsync",
+            new AccountImportExecutionResult
+            {
+                IsSuccess = false,
+                Message = "Import master akun gagal.",
+                Errors = []
+            },
+            false);
+
+        Assert(
+            string.Equals(viewModel.StatusMessage, "Import master akun gagal.", StringComparison.Ordinal),
+            $"Unexpected import failure status: {viewModel.StatusMessage}");
+        Assert(viewModel.AccountImportErrorPanel.HasErrors, "Import failure should populate the account import error panel.");
+        Assert(viewModel.AccountImportErrorPanel.Errors.Count == 1, "Import failure without row errors should add one generic error.");
+        Assert(
+            string.Equals(viewModel.AccountImportErrorPanel.Errors[0].SheetName, "Accounts", StringComparison.Ordinal),
+            $"Unexpected generic error sheet name: {viewModel.AccountImportErrorPanel.Errors[0].SheetName}");
+        Assert(
+            string.Equals(viewModel.AccountImportErrorPanel.Errors[0].Message, "Import master akun gagal.", StringComparison.Ordinal),
+            $"Unexpected generic import error message: {viewModel.AccountImportErrorPanel.Errors[0].Message}");
+
+        await InvokePrivateInstanceTaskAsync(
+            viewModel,
+            "ApplyAccountImportExecutionResultAsync",
+            new AccountImportExecutionResult
+            {
+                IsSuccess = true,
+                Message = "Import master akun berhasil. Create 1, update 0."
+            },
+            false);
+
+        Assert(
+            string.Equals(viewModel.StatusMessage, "Import master akun berhasil. Create 1, update 0.", StringComparison.Ordinal),
+            $"Unexpected import success status: {viewModel.StatusMessage}");
+        Assert(!viewModel.AccountImportErrorPanel.HasErrors, "Successful account import should clear previous errors.");
+        Assert(
+            string.IsNullOrWhiteSpace(viewModel.AccountImportErrorPanel.Summary),
+            $"Successful account import should clear the panel summary, got: {viewModel.AccountImportErrorPanel.Summary}");
+    }
+
+    private static Task TestMasterDataViewModel_EstateHierarchyCommandsReflectSelectionAndBusyStateAsync()
+    {
+        var service = CreateAccessControlServiceProxy((method, _) =>
+        {
+            throw new NotSupportedException($"Unexpected method call: {method.Name}");
+        });
+
+        var viewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 77,
+            locationId: 88,
+            canManageAccountingPeriod: false);
+
+        Assert(viewModel.CanCreateEstate, "Estate create should be enabled when company/location are valid and viewmodel is idle.");
+        Assert(viewModel.CanImportEstateHierarchy, "Estate hierarchy import should be enabled when idle.");
+        Assert(viewModel.CanExportEstateHierarchy, "Estate hierarchy export should be enabled when idle.");
+        Assert(!viewModel.CanCreateDivision, "Division create should require an estate selection.");
+        Assert(!viewModel.CanCreateBlock, "Block create should require a division selection.");
+        Assert(
+            string.Equals(viewModel.ExportEstateHierarchyTooltip, "Export seluruh master estate/division/blok ke XLSX.", StringComparison.Ordinal),
+            $"Unexpected estate hierarchy export tooltip: {viewModel.ExportEstateHierarchyTooltip}");
+        Assert(
+            string.Equals(viewModel.ImportEstateHierarchyTooltip, "Import hierarchy estate/division/blok dari workbook XLSX 3 sheet.", StringComparison.Ordinal),
+            $"Unexpected estate hierarchy import tooltip: {viewModel.ImportEstateHierarchyTooltip}");
+
+        viewModel.SetSelectedEstateHierarchyItem(new ManagedEstate
+        {
+            Id = 1,
+            Code = "EST01",
+            Name = "Estate 01",
+            IsActive = true
+        });
+        Assert(viewModel.CanCreateDivision, "Division create should be enabled when an estate is selected.");
+        Assert(!viewModel.CanCreateBlock, "Block create should stay disabled when only an estate is selected.");
+        Assert(viewModel.CanEditEstateHierarchy, "Hierarchy edit should be enabled when an estate is selected.");
+        Assert(viewModel.CanDeactivateEstateHierarchy, "Hierarchy deactivate should be enabled when an estate is selected.");
+
+        viewModel.SetSelectedEstateHierarchyItem(new ManagedDivision
+        {
+            Id = 2,
+            EstateId = 1,
+            EstateCode = "EST01",
+            Code = "DIV01",
+            Name = "Division 01",
+            IsActive = true
+        });
+        Assert(viewModel.CanCreateBlock, "Block create should be enabled when a division is selected.");
+        Assert(
+            string.Equals(viewModel.SelectedEstateHierarchyCode, "EST01-DIV01", StringComparison.Ordinal),
+            $"Unexpected selected hierarchy code for division: {viewModel.SelectedEstateHierarchyCode}");
+
+        SetPrivateField(viewModel, "_isBusy", true);
+
+        Assert(!viewModel.CanCreateEstate, "Estate create should be disabled while viewmodel is busy.");
+        Assert(!viewModel.CanCreateDivision, "Division create should be disabled while viewmodel is busy.");
+        Assert(!viewModel.CanCreateBlock, "Block create should be disabled while viewmodel is busy.");
+        Assert(!viewModel.CanImportEstateHierarchy, "Estate hierarchy import should be disabled while viewmodel is busy.");
+        Assert(!viewModel.CanExportEstateHierarchy, "Estate hierarchy export should be disabled while viewmodel is busy.");
+        Assert(
+            string.Equals(viewModel.ExportEstateHierarchyTooltip, "Hierarchy estate/division/blok sedang sibuk atau company/lokasi tidak valid.", StringComparison.Ordinal),
+            $"Unexpected busy estate hierarchy export tooltip: {viewModel.ExportEstateHierarchyTooltip}");
+        Assert(
+            string.Equals(viewModel.ImportEstateHierarchyTooltip, "Hierarchy estate/division/blok sedang sibuk atau company/lokasi tidak valid.", StringComparison.Ordinal),
+            $"Unexpected busy estate hierarchy import tooltip: {viewModel.ImportEstateHierarchyTooltip}");
+
+        var invalidScopeViewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 0,
+            locationId: 0,
+            canManageAccountingPeriod: false);
+        Assert(!invalidScopeViewModel.CanCreateEstate, "Estate create should be disabled for invalid company/location.");
+        Assert(!invalidScopeViewModel.CanImportEstateHierarchy, "Estate hierarchy import should be disabled for invalid company/location.");
+        Assert(!invalidScopeViewModel.CanExportEstateHierarchy, "Estate hierarchy export should be disabled for invalid company/location.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task TestMasterDataViewModel_EstateHierarchyImportFailureUpdatesStatusAndPanelAsync()
+    {
+        var service = CreateAccessControlServiceProxy((method, _) =>
+        {
+            throw new NotSupportedException($"Unexpected method call: {method.Name}");
+        });
+        var viewModel = new MasterDataViewModel(
+            service,
+            "admin",
+            companyId: 77,
+            locationId: 88,
+            canManageAccountingPeriod: false);
+
+        InvokePrivateInstanceMethod(
+            viewModel,
+            "ApplyEstateHierarchyImportFailure",
+            "Format hierarchy tidak valid.",
+            new InventoryImportError[]
+            {
+                new()
+                {
+                    SheetName = "Blocks",
+                    RowNumber = 4,
+                    Message = "DivisionCode tidak ditemukan."
+                }
+            });
+
+        Assert(
+            viewModel.StatusMessage.Contains("Format hierarchy tidak valid.", StringComparison.Ordinal),
+            $"Unexpected hierarchy import failure status: {viewModel.StatusMessage}");
+        Assert(
+            viewModel.StatusMessage.Contains("1 error", StringComparison.Ordinal),
+            $"Hierarchy import failure status should include error count: {viewModel.StatusMessage}");
+        Assert(viewModel.EstateHierarchyImportErrorPanel.HasErrors, "Hierarchy import failure should populate the hierarchy error panel.");
+        Assert(viewModel.EstateHierarchyImportErrorPanel.Errors.Count == 1, $"Expected one hierarchy import error, got {viewModel.EstateHierarchyImportErrorPanel.Errors.Count}.");
+        Assert(
+            viewModel.EstateHierarchyImportErrorPanel.Summary.Contains("Format hierarchy tidak valid.", StringComparison.Ordinal),
+            $"Unexpected hierarchy import error summary: {viewModel.EstateHierarchyImportErrorPanel.Summary}");
+
+        return Task.CompletedTask;
+    }
+
     private static async Task TestInventoryViewModel_TransactionWorkflowStateReflectsDocumentStatusAsync()
     {
         var service = CreateService();
@@ -829,6 +1101,22 @@ internal static partial class Program
         var result = method!.Invoke(instance, arguments);
         Assert(result is T, $"{instance.GetType().Name}.{methodName} returned unexpected result.");
         return (T)result!;
+    }
+
+    private static async Task InvokePrivateInstanceTaskAsync(object instance, string methodName, params object?[]? arguments)
+    {
+        var method = instance.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(method is not null, $"{instance.GetType().Name}.{methodName} was not found.");
+        var result = method!.Invoke(instance, arguments);
+        Assert(result is Task, $"{instance.GetType().Name}.{methodName} did not return Task.");
+        await ((Task)result!);
+    }
+
+    private static void SetPrivateField<T>(object instance, string fieldName, T value)
+    {
+        var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(field is not null, $"{instance.GetType().Name}.{fieldName} field was not found.");
+        field!.SetValue(instance, value);
     }
 
     private static IAccessControlService CreateAccessControlServiceProxy(Func<MethodInfo, object?[]?, object?> handler)

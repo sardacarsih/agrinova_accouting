@@ -614,6 +614,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
                     Children = new ObservableCollection<MainShellNavigationItem>
                     {
                         new("master_data", "Daftar Akun (Chart of Accounts)", "\uE8D2", subCode: "coa"),
+                        new("master_data", "Estate / Divisi / Blok", "\uE8EF", subCode: "cost_centers"),
                         new("master_data", "Kategori Akun", "\uE8EC", subCode: "kategori_akun"),
                         new("master_data", "Mapping Akun", "\uE713", subCode: "mapping_akun")
                     }
