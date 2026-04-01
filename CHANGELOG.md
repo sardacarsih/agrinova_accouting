@@ -6,6 +6,8 @@ This project currently follows a simple keep-a-changelog style format.
 
 ## [Unreleased]
 
+## [2026-04-01]
+
 ### Added
 
 - GitHub CI workflow for Windows/.NET 8 build validation

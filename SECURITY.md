@@ -29,6 +29,7 @@ Please report issues involving these areas with extra care:
 - PostgreSQL connection handling
 - import/export flows that may expose protected data
 - inventory central sync credentials or API key handling
+- estate hierarchy bulk import/export that can overwrite organizational structure
 
 ## Repository Hygiene
 

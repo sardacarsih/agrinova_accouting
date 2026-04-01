@@ -5,14 +5,16 @@ Use this checklist before publishing a tagged release or deployment build.
 ## Code and Validation
 
 - [ ] `main` is up to date
-- [ ] `dotnet build .\Accounting.csproj -nologo` passes
-- [ ] `dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj` passes for the target database
+- [ ] `dotnet build .\Accounting.csproj --packages D:\VSCODE\wpf\.nuget\packages -nologo` passes
+- [ ] `dotnet run --project .\tools\IntegrationTests\IntegrationTests.csproj --packages D:\VSCODE\wpf\.nuget\packages` passes for the target database
+- [ ] `NuGet.Config` local package source is accessible for build
 - [ ] Any required manual smoke tests are completed
 
 ## Database and Migration Review
 
 - [ ] Required SQL scripts are present in `database/`
 - [ ] Existing-environment backfills are documented
+- [ ] Estate hierarchy schema (estates, divisions, blocks) is deployed if applicable
 - [ ] Verification scripts exist for RBAC or schema changes where needed
 - [ ] Deployment notes are updated
 
