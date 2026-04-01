@@ -1,5 +1,7 @@
 param(
     [string]$WorkbookPath = 'D:\VSCODE\wpf\MASTER AKUN BLOK COST CENTRE RESEED 20 80 81 LVL1.XLSX',
+    [string]$CleanupSqlPath = 'D:\VSCODE\wpf\database\cleanup_gl_accounts_legacy_10_company1.sql',
+    [string]$VerificationSqlPath = 'D:\VSCODE\wpf\database\verify_gl_accounts_workbook_company1.sql',
     [int]$CompanyId = 1,
     [string]$ConnectionHost = '127.0.0.1',
     [int]$ConnectionPort = 5432,
@@ -10,6 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 function Get-EntryText {
@@ -79,16 +82,9 @@ try {
         $byCode[$row.Account] = $row
     }
 
-    $excludedCodes = @(
-        '20.00000.607', '20.00000.608', '20.00000.609',
-        '80.00000.607', '80.00000.608', '80.00000.609',
-        '81.00000.607', '81.00000.608', '81.00000.609'
-    )
-
     $desiredRows = @(
         $byCode.Values |
-            Where-Object { $_.Account -notin $excludedCodes } |
-            Sort-Object Account
+            Sort-Object Level, Account
     )
 
     $parentCodes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -183,7 +179,7 @@ SELECT $CompanyId,
        s.account_name,
        s.account_type,
        s.normal_balance,
-       p.id,
+       NULL,
        s.hierarchy_level,
        s.is_posting,
        TRUE,
@@ -197,16 +193,10 @@ SELECT $CompanyId,
        NOW(),
        NOW()
 FROM tmp_master_akun_seed s
-LEFT JOIN gl_accounts p
-  ON p.company_id = $CompanyId
- AND p.account_code = s.parent_code
 ON CONFLICT (company_id, account_code) DO UPDATE
 SET account_name = EXCLUDED.account_name,
     account_type = EXCLUDED.account_type,
     normal_balance = EXCLUDED.normal_balance,
-    parent_account_id = EXCLUDED.parent_account_id,
-    hierarchy_level = EXCLUDED.hierarchy_level,
-    is_posting = EXCLUDED.is_posting,
     is_active = TRUE,
     sort_order = EXCLUDED.sort_order,
     report_group = EXCLUDED.report_group,
@@ -215,6 +205,54 @@ SET account_name = EXCLUDED.account_name,
     requires_cost_center = EXCLUDED.requires_cost_center,
     updated_by = 'SEED',
     updated_at = NOW();
+
+UPDATE gl_accounts a
+SET parent_account_id = p.id,
+    updated_by = 'SEED',
+    updated_at = NOW()
+FROM tmp_master_akun_seed s
+LEFT JOIN gl_accounts p
+  ON p.company_id = $CompanyId
+ AND p.account_code = s.parent_code
+WHERE a.company_id = $CompanyId
+  AND a.account_code = s.account_code
+  AND a.parent_account_id IS DISTINCT FROM p.id;
+
+WITH RECURSIVE account_tree AS (
+    SELECT a.id,
+           1 AS expected_hierarchy_level,
+           ARRAY[a.id] AS visited_ids
+    FROM gl_accounts a
+    WHERE a.company_id = $CompanyId
+      AND a.parent_account_id IS NULL
+    UNION ALL
+    SELECT c.id,
+           p.expected_hierarchy_level + 1 AS expected_hierarchy_level,
+           p.visited_ids || c.id AS visited_ids
+    FROM gl_accounts c
+    JOIN account_tree p ON p.id = c.parent_account_id
+    WHERE c.company_id = $CompanyId
+      AND NOT (c.id = ANY(p.visited_ids))
+)
+UPDATE gl_accounts a
+SET hierarchy_level = t.expected_hierarchy_level,
+    is_posting = NOT EXISTS (
+        SELECT 1
+        FROM gl_accounts child
+        WHERE child.parent_account_id = a.id
+    ),
+    updated_by = 'SEED',
+    updated_at = NOW()
+FROM account_tree t
+WHERE a.id = t.id
+  AND (
+      a.hierarchy_level IS DISTINCT FROM t.expected_hierarchy_level
+      OR a.is_posting IS DISTINCT FROM NOT EXISTS (
+          SELECT 1
+          FROM gl_accounts child
+          WHERE child.parent_account_id = a.id
+      )
+  );
 
 DELETE FROM gl_accounts a
 WHERE a.company_id = $CompanyId
@@ -243,6 +281,16 @@ COMMIT;
         -d $DatabaseName `
         -v ON_ERROR_STOP=1 `
         -f $sqlPath
+
+    if (Test-Path -LiteralPath $CleanupSqlPath) {
+        & 'C:\Program Files\PostgreSQL\18\bin\psql.exe' `
+            -h $ConnectionHost `
+            -p $ConnectionPort `
+            -U $Username `
+            -d $DatabaseName `
+            -v ON_ERROR_STOP=1 `
+            -f $CleanupSqlPath
+    }
 
     & 'C:\Program Files\PostgreSQL\18\bin\psql.exe' `
         -h $ConnectionHost `
@@ -275,7 +323,28 @@ COMMIT;
         -F '|' `
         -R "`n" `
         -At `
+        -c "select count(*) from gl_accounts where company_id = $CompanyId and is_active = true and account_code like '10.%';"
+
+    & 'C:\Program Files\PostgreSQL\18\bin\psql.exe' `
+        -h $ConnectionHost `
+        -p $ConnectionPort `
+        -U $Username `
+        -d $DatabaseName `
+        -P pager=off `
+        -F '|' `
+        -R "`n" `
+        -At `
         -c "select account_code, account_name, hierarchy_level, is_posting from gl_accounts where company_id = $CompanyId and account_code in ('20.00000.000','20.00000.600','20.00000.643','80.00000.000','80.00000.600','80.00000.603','81.00000.000','81.00000.600','81.00000.643','20.00000.607') order by account_code;"
+
+    if (Test-Path -LiteralPath $VerificationSqlPath) {
+        & 'C:\Program Files\PostgreSQL\18\bin\psql.exe' `
+            -h $ConnectionHost `
+            -p $ConnectionPort `
+            -U $Username `
+            -d $DatabaseName `
+            -P pager=off `
+            -f $VerificationSqlPath
+    }
 }
 finally {
     $zip.Dispose()

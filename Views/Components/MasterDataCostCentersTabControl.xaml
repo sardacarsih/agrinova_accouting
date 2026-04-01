@@ -297,7 +297,7 @@
                         <StackPanel>
                             <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Level" />
                             <TextBox Margin="0,6,0,0"
-                                     Text="{Binding EstateHierarchyEditorLevel}"
+                                     Text="{Binding EstateHierarchyEditorLevel, Mode=OneWay}"
                                      IsReadOnly="True"
                                      Style="{StaticResource InputTextBoxStyle}" />
                         </StackPanel>

@@ -404,7 +404,7 @@
                                          Style="{StaticResource JournalLinesGridEditingTextBoxStyle}"
                                          VerticalContentAlignment="Center"
                                          IsReadOnly="True"
-                                         Text="{Binding SubledgerDisplay}" />
+                                         Text="{Binding SubledgerDisplay, Mode=OneWay}" />
                                 <Button Grid.Column="1"
                                         Width="26"
                                         Height="24"

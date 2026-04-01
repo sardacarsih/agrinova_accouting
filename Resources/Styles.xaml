@@ -234,11 +234,10 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="20" />
                             </Grid.ColumnDefinitions>
-                            <ContentPresenter x:Name="ComboContentPresenter" VerticalAlignment="Center" HorizontalAlignment="Left" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+                            <ToggleButton Grid.ColumnSpan="2" Focusable="False" ClickMode="Press" Background="Transparent" BorderThickness="0" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" />
+                            <ContentPresenter x:Name="ComboContentPresenter" VerticalAlignment="Center" HorizontalAlignment="Left" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" IsHitTestVisible="False" />
                             <TextBox x:Name="PART_EditableTextBox" Grid.Column="0" Margin="0" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center" Visibility="Hidden" Foreground="{TemplateBinding Foreground}" />
-                            <ToggleButton Grid.Column="1" Focusable="False" ClickMode="Press" Background="Transparent" BorderThickness="0" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                                <Path VerticalAlignment="Center" HorizontalAlignment="Center" Fill="{DynamicResource Brush.TextSecondary}" Stretch="Uniform" Width="10" Height="6" Data="M 0 0 L 5 6 L 10 0 Z" />
-                            </ToggleButton>
+                            <Path Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Fill="{DynamicResource Brush.TextSecondary}" Stretch="Uniform" Width="10" Height="6" Data="M 0 0 L 5 6 L 10 0 Z" IsHitTestVisible="False" />
                         </Grid>
                         <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" PopupAnimation="Fade">
                             <Border Margin="0,4,0,0" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="{DynamicResource Radius.Control}">

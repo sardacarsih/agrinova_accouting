@@ -1,6 +1,8 @@
 <UserControl x:Class="Accounting.Views.Components.MasterDataAccountsTabControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+             xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
     <UserControl.InputBindings>
@@ -116,25 +118,49 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0">
-                <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
-                          ItemsSource="{Binding Accounts}"
-                          SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
-                          AutoGenerateColumns="False"
-                          MinHeight="240"
-                          IsReadOnly="True">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Kode" Binding="{Binding Code}" Width="130" />
-                        <DataGridTextColumn Header="Nama Akun" Binding="{Binding Name}" Width="*" />
-                        <DataGridTextColumn Header="Tipe" Binding="{Binding AccountType}" Width="120" />
-                        <DataGridTextColumn Header="Parent" Binding="{Binding ParentAccountCode}" Width="130" />
-                        <DataGridTextColumn Header="Level" Binding="{Binding HierarchyLevel}" Width="70" />
-                        <DataGridCheckBoxColumn Header="Posting" Binding="{Binding IsPosting}" Width="70" />
-                        <DataGridCheckBoxColumn Header="Aktif" Binding="{Binding IsActive}" Width="70" />
-                        <DataGridCheckBoxColumn Header="Req. BB" Binding="{Binding RequiresSubledger}" Width="80" />
-                        <DataGridTextColumn Header="Tipe BB" Binding="{Binding AllowedSubledgerType}" Width="100" />
-                        <DataGridCheckBoxColumn Header="Req. CC" Binding="{Binding RequiresCostCenter}" Width="80" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                <dxg:GridControl x:Name="AccountsGrid"
+                                 AutoGenerateColumns="None"
+                                 ItemsSource="{Binding Accounts}"
+                                 SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
+                                 SelectionMode="Row"
+                                 MinHeight="240">
+                    <dxg:GridControl.Columns>
+                        <dxg:GridColumn FieldName="Code" Header="Kode" Width="130" />
+                        <dxg:GridColumn FieldName="Name" Header="Nama Akun" Width="*" />
+                        <dxg:GridColumn FieldName="AccountType" Header="Tipe" Width="120" />
+                        <dxg:GridColumn FieldName="ParentAccountCode" Header="Parent" Width="130" />
+                        <dxg:GridColumn FieldName="HierarchyLevel" Header="Level" Width="70" />
+                        <dxg:GridColumn FieldName="IsPosting" Header="Posting" Width="70">
+                            <dxg:GridColumn.EditSettings>
+                                <dxe:CheckEditSettings />
+                            </dxg:GridColumn.EditSettings>
+                        </dxg:GridColumn>
+                        <dxg:GridColumn FieldName="IsActive" Header="Aktif" Width="70">
+                            <dxg:GridColumn.EditSettings>
+                                <dxe:CheckEditSettings />
+                            </dxg:GridColumn.EditSettings>
+                        </dxg:GridColumn>
+                        <dxg:GridColumn FieldName="RequiresSubledger" Header="Req. BB" Width="80">
+                            <dxg:GridColumn.EditSettings>
+                                <dxe:CheckEditSettings />
+                            </dxg:GridColumn.EditSettings>
+                        </dxg:GridColumn>
+                        <dxg:GridColumn FieldName="AllowedSubledgerType" Header="Tipe BB" Width="100" />
+                        <dxg:GridColumn FieldName="RequiresCostCenter" Header="Req. CC" Width="80">
+                            <dxg:GridColumn.EditSettings>
+                                <dxe:CheckEditSettings />
+                            </dxg:GridColumn.EditSettings>
+                        </dxg:GridColumn>
+                    </dxg:GridControl.Columns>
+                    <dxg:GridControl.View>
+                        <dxg:TableView AllowEditing="False"
+                                       AutoWidth="True"
+                                       NavigationStyle="Row"
+                                       ShowGroupPanel="False"
+                                       ShowIndicator="False"
+                                       ShowAutoFilterRow="True" />
+                    </dxg:GridControl.View>
+                </dxg:GridControl>
 
                 <Border IsHitTestVisible="False">
                     <Border.Style>

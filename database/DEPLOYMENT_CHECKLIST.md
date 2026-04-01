@@ -57,3 +57,16 @@ Use this checklist when upgrading an existing accounting database that still enf
 ### Notes
 - Fresh environments that run the latest [init_gl_accounts_master.sql](D:\VSCODE\wpf\database\init_gl_accounts_master.sql) already get the updated `XX.99999.999` rule.
 - The compatibility script is safe to run multiple times.
+
+## Workbook COA Reseed
+
+Use this checklist when reseeding the active COA structure for `company_id = 1` from the workbook source in this repo.
+
+### Checklist
+1. Confirm the application build no longer depends on the legacy runtime `10.*` sample seed path.
+2. Run the workbook-driven reseed runner:
+   - [reseed_gl_accounts_company1_from_workbook.ps1](D:\VSCODE\wpf\scripts\reseed_gl_accounts_company1_from_workbook.ps1)
+3. Run the read-only verification script if it was not executed by the runner:
+   - [verify_gl_accounts_workbook_company1.sql](D:\VSCODE\wpf\database\verify_gl_accounts_workbook_company1.sql)
+4. Verify the expected `20`, `80`, and `81` nodes exist with the correct hierarchy level and posting flags.
+5. Smoke test account master save/import with a multi-level non-posting parent and a posting leaf account.

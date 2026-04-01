@@ -42,10 +42,6 @@ public sealed class AccessSelectionViewModel : ViewModelBase
 
     public bool HasMultipleChoices { get; }
 
-    public bool IsCompanyMulti => CompanyOptions.Count > 1;
-
-    public bool IsLocationMulti => LocationOptions.Count > 1;
-
     public string SelectionHint
     {
         get
@@ -73,20 +69,7 @@ public sealed class AccessSelectionViewModel : ViewModelBase
                     SelectedCompany.Code);
             }
 
-            var lockedParts = new List<string>();
-            if (!IsCompanyMulti)
-            {
-                lockedParts.Add("company akses Anda hanya satu");
-            }
-
-            if (!IsLocationMulti)
-            {
-                lockedParts.Add("lokasi untuk company ini hanya satu");
-            }
-
-            return lockedParts.Count == 0
-                ? "Pilih company dan lokasi yang tersedia untuk melanjutkan."
-                : $"Sebagian konteks terkunci karena {string.Join(" dan ", lockedParts)}.";
+            return "Pilih company dan lokasi yang tersedia untuk melanjutkan.";
         }
     }
 
@@ -206,7 +189,6 @@ public sealed class AccessSelectionViewModel : ViewModelBase
             CompanyOptions.Add(company);
         }
 
-        OnPropertyChanged(nameof(IsCompanyMulti));
         OnPropertyChanged(nameof(SelectionHint));
         if (_options.DefaultCompanyId.HasValue)
         {
@@ -245,8 +227,6 @@ public sealed class AccessSelectionViewModel : ViewModelBase
 
     private void NotifySelectionStateChanged()
     {
-        OnPropertyChanged(nameof(IsCompanyMulti));
-        OnPropertyChanged(nameof(IsLocationMulti));
         OnPropertyChanged(nameof(SelectionHint));
     }
 }

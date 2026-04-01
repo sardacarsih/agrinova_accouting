@@ -709,8 +709,6 @@ WITH cash_accounts AS (
       AND (
           upper(COALESCE(a.report_group, '')) IN ('CASH_BANK', 'KAS_BANK', 'KAS', 'BANK')
           OR upper(COALESCE(a.cashflow_category, '')) LIKE '%CASH%'
-          OR a.account_code = '10.01101.000'
-          OR a.account_code LIKE '10.01101.%'
       )
 ),
 cash_rollup AS (
@@ -924,87 +922,10 @@ WHERE company_id = @company_id
             companyId,
             locationId,
             cancellationToken);
-        var retainedPrefix = ExtractAccountCodePrefix(retainedEarningsCode);
-        var retainedSummaryCode = string.IsNullOrWhiteSpace(retainedPrefix)
-            ? string.Empty
-            : $"{retainedPrefix}.33000.000";
-        var equityRootCode = string.IsNullOrWhiteSpace(retainedPrefix)
-            ? string.Empty
-            : $"{retainedPrefix}.30000.000";
-
-        long? equityRootId = null;
-        if (!string.IsNullOrWhiteSpace(equityRootCode))
+        if (string.IsNullOrWhiteSpace(retainedEarningsCode))
         {
-            await using var equityRootLookup = new NpgsqlCommand(@"
-SELECT id
-FROM gl_accounts
-WHERE company_id = @company_id
-  AND account_code = @account_code
-LIMIT 1;", connection, transaction);
-            equityRootLookup.Parameters.AddWithValue("company_id", companyId);
-            equityRootLookup.Parameters.AddWithValue("account_code", equityRootCode);
-            var equityRoot = await equityRootLookup.ExecuteScalarAsync(cancellationToken);
-            if (equityRoot is not null && equityRoot != DBNull.Value)
-            {
-                equityRootId = Convert.ToInt64(equityRoot);
-            }
-        }
-
-        long? retainedSummaryId = null;
-        if (!string.IsNullOrWhiteSpace(retainedSummaryCode))
-        {
-            await using var summaryLookup = new NpgsqlCommand(@"
-SELECT id
-FROM gl_accounts
-WHERE company_id = @company_id
-  AND account_code = @account_code
-FOR UPDATE;", connection, transaction);
-            summaryLookup.Parameters.AddWithValue("company_id", companyId);
-            summaryLookup.Parameters.AddWithValue("account_code", retainedSummaryCode);
-            var existingSummary = await summaryLookup.ExecuteScalarAsync(cancellationToken);
-            if (existingSummary is not null && existingSummary != DBNull.Value)
-            {
-                retainedSummaryId = Convert.ToInt64(existingSummary);
-            }
-            else
-            {
-                await using var insertSummary = new NpgsqlCommand(@"
-INSERT INTO gl_accounts (
-    company_id,
-    account_code,
-    account_name,
-    account_type,
-    normal_balance,
-    parent_account_id,
-    is_posting,
-    hierarchy_level,
-    is_active,
-    created_by,
-    created_at,
-    updated_by,
-    updated_at)
-VALUES (
-    @company_id,
-    @account_code,
-    'Retained Earnings',
-    'EQUITY',
-    'C',
-    @parent_account_id,
-    FALSE,
-    @hierarchy_level,
-    TRUE,
-    @actor,
-    NOW(),
-    @actor,
-    NOW())
-RETURNING id;", connection, transaction);
-                insertSummary.Parameters.AddWithValue("company_id", companyId);
-                insertSummary.Parameters.AddWithValue("account_code", retainedSummaryCode);
-                insertSummary.Parameters.AddWithValue("parent_account_id", NpgsqlTypes.NpgsqlDbType.Bigint, equityRootId.HasValue ? equityRootId.Value : DBNull.Value);
-                insertSummary.Parameters.AddWithValue("hierarchy_level", equityRootId.HasValue ? 2 : 1);
-                insertSummary.Parameters.AddWithValue("actor", actor);
-                retainedSummaryId = Convert.ToInt64(await insertSummary.ExecuteScalarAsync(cancellationToken));
-            }
+            throw new InvalidOperationException(
+                "Akun laba ditahan belum dikonfigurasi untuk company ini. Seed akun EQUITY retained earnings secara eksplisit; auto-create legacy dinonaktifkan.");
         }
 
         await using (var lookup = new NpgsqlCommand(@"
@@ -1036,43 +957,8 @@ WHERE id = @id;", connection, transaction);
             }
         }
 
-        await using var insert = new NpgsqlCommand(@"
-INSERT INTO gl_accounts (
-    company_id,
-    account_code,
-    account_name,
-    account_type,
-    normal_balance,
-    parent_account_id,
-    is_posting,
-    hierarchy_level,
-    is_active,
-    created_by,
-    created_at,
-    updated_by,
-    updated_at)
-VALUES (
-    @company_id,
-    @account_code,
-    @account_name,
-    'EQUITY',
-    'C',
-    @parent_account_id,
-    TRUE,
-    @hierarchy_level,
-    TRUE,
-    @actor,
-    NOW(),
-    @actor,
-    NOW())
-RETURNING id;", connection, transaction);
-        insert.Parameters.AddWithValue("company_id", companyId);
-        insert.Parameters.AddWithValue("account_code", retainedEarningsCode);
-        insert.Parameters.AddWithValue("account_name", "Laba Ditahan");
-        insert.Parameters.AddWithValue("parent_account_id", NpgsqlTypes.NpgsqlDbType.Bigint, retainedSummaryId.HasValue ? retainedSummaryId.Value : DBNull.Value);
-        insert.Parameters.AddWithValue("hierarchy_level", retainedSummaryId.HasValue ? 3 : 1);
-        insert.Parameters.AddWithValue("actor", actor);
-        return Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken));
+        throw new InvalidOperationException(
+            $"Akun laba ditahan terkonfigurasi dengan kode {retainedEarningsCode}, tetapi record account-nya tidak ditemukan.");
     }
 
     private static async Task<int> InsertLedgerEntriesForJournalAsync(

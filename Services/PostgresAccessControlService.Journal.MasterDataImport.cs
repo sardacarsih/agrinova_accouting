@@ -65,7 +65,9 @@ SELECT id,
        account_code,
        account_type,
        parent_account_id,
-       is_active
+       is_active,
+       COALESCE(hierarchy_level, 1) AS hierarchy_level,
+       COALESCE(is_posting, TRUE) AS is_posting
 FROM gl_accounts
 WHERE company_id = @company_id;", connection, transaction))
             {
@@ -78,7 +80,9 @@ WHERE company_id = @company_id;", connection, transaction))
                         reader.GetString(1).Trim().ToUpperInvariant(),
                         NormalizeAccountType(reader.IsDBNull(2) ? null : reader.GetString(2)),
                         reader.IsDBNull(3) ? null : reader.GetInt64(3),
-                        !reader.IsDBNull(4) && reader.GetBoolean(4)));
+                        !reader.IsDBNull(4) && reader.GetBoolean(4),
+                        reader.GetInt32(5),
+                        !reader.IsDBNull(6) && reader.GetBoolean(6)));
                 }
             }
 
@@ -94,6 +98,7 @@ WHERE company_id = @company_id;", connection, transaction))
                     (x.Code ?? string.Empty).Trim().ToUpperInvariant(),
                     (x.Name ?? string.Empty).Trim(),
                     NormalizeAccountType(x.AccountType),
+                    DeriveAccountTypeFromCode(x.Code),
                     (x.ParentAccountCode ?? string.Empty).Trim().ToUpperInvariant(),
                     x.IsActive,
                     x.RequiresDepartment,
@@ -120,9 +125,18 @@ WHERE company_id = @company_id;", connection, transaction))
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(row.AccountType))
+                if (string.IsNullOrWhiteSpace(row.DerivedAccountType))
                 {
-                    errors.Add(BuildAccountImportError(row.RowNumber, $"AccountType tidak valid untuk akun {row.Code}."));
+                    errors.Add(BuildAccountImportError(row.RowNumber, $"Prefix kode akun tidak dikenali untuk struktur COA aktif: {row.Code}."));
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.ProvidedAccountType) &&
+                    !string.Equals(row.ProvidedAccountType, row.DerivedAccountType, StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add(BuildAccountImportError(
+                        row.RowNumber,
+                        $"AccountType {row.ProvidedAccountType} tidak cocok dengan prefix kode akun {row.Code}. Tipe seharusnya {row.DerivedAccountType}."));
                     continue;
                 }
 
@@ -145,7 +159,7 @@ WHERE company_id = @company_id;", connection, transaction))
                     {
                         foreach (var child in children.Where(x => !fileByCode.ContainsKey(x.Code)))
                         {
-                            if (!string.Equals(child.AccountType, row.AccountType, StringComparison.OrdinalIgnoreCase))
+                            if (!string.Equals(child.AccountType, row.DerivedAccountType, StringComparison.OrdinalIgnoreCase))
                             {
                                 errors.Add(BuildAccountImportError(
                                     row.RowNumber,
@@ -160,19 +174,13 @@ WHERE company_id = @company_id;", connection, transaction))
 
                 if (fileByCode.TryGetValue(row.ParentAccountCode, out var parentFromFile))
                 {
-                    if (!string.IsNullOrWhiteSpace(parentFromFile.ParentAccountCode))
-                    {
-                        errors.Add(BuildAccountImportError(row.RowNumber, $"Parent akun {row.ParentAccountCode} harus akun summary/root."));
-                        continue;
-                    }
-
                     if (!parentFromFile.IsActive)
                     {
                         errors.Add(BuildAccountImportError(row.RowNumber, $"Parent akun {row.ParentAccountCode} nonaktif dan tidak dapat dipilih."));
                         continue;
                     }
 
-                    if (!string.Equals(parentFromFile.AccountType, row.AccountType, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(parentFromFile.DerivedAccountType, row.DerivedAccountType, StringComparison.OrdinalIgnoreCase))
                     {
                         errors.Add(BuildAccountImportError(row.RowNumber, $"Tipe akun child {row.Code} harus sama dengan parent {row.ParentAccountCode}."));
                     }
@@ -186,19 +194,19 @@ WHERE company_id = @company_id;", connection, transaction))
                     continue;
                 }
 
-                if (parentFromDb.ParentAccountId.HasValue)
-                {
-                    errors.Add(BuildAccountImportError(row.RowNumber, $"Parent akun {row.ParentAccountCode} harus akun level 1 (summary)."));
-                    continue;
-                }
-
                 if (!parentFromDb.IsActive)
                 {
                     errors.Add(BuildAccountImportError(row.RowNumber, $"Parent akun {row.ParentAccountCode} nonaktif dan tidak dapat dipilih."));
                     continue;
                 }
 
-                if (!string.Equals(parentFromDb.AccountType, row.AccountType, StringComparison.OrdinalIgnoreCase))
+                if (parentFromDb.IsPosting)
+                {
+                    errors.Add(BuildAccountImportError(row.RowNumber, $"Parent akun {row.ParentAccountCode} harus akun non-posting."));
+                    continue;
+                }
+
+                if (!string.Equals(parentFromDb.AccountType, row.DerivedAccountType, StringComparison.OrdinalIgnoreCase))
                 {
                     errors.Add(BuildAccountImportError(row.RowNumber, $"Tipe akun child {row.Code} harus sama dengan parent {row.ParentAccountCode}."));
                 }
@@ -216,73 +224,91 @@ WHERE company_id = @company_id;", connection, transaction))
             }
 
             var importedIdsByCode = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var importedLevelsByCode = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var createdCount = 0;
             var updatedCount = 0;
+            var childCodesFromFile = importRows
+                .Where(x => !string.IsNullOrWhiteSpace(x.ParentAccountCode))
+                .GroupBy(x => x.ParentAccountCode, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
 
-            foreach (var row in importRows.Where(x => string.IsNullOrWhiteSpace(x.ParentAccountCode)).OrderBy(x => x.Code, StringComparer.OrdinalIgnoreCase))
+            var pendingRows = importRows
+                .OrderBy(x => x.ParentAccountCode, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            while (pendingRows.Count > 0)
             {
-                var accountId = await UpsertImportedAccountAsync(
-                    connection,
-                    transaction,
-                    companyId,
-                    actor,
-                    row,
-                    parentAccountId: null,
-                    isPosting: false,
-                    hierarchyLevel: 1,
-                    existingByCode,
-                    cancellationToken);
+                var processedThisRound = 0;
 
-                importedIdsByCode[row.Code] = accountId;
-                if (existingByCode[row.Code].WasCreated)
+                foreach (var row in pendingRows.ToList())
                 {
-                    createdCount++;
+                    long? parentAccountId = null;
+                    var hierarchyLevel = 1;
+
+                    if (!string.IsNullOrWhiteSpace(row.ParentAccountCode))
+                    {
+                        if (importedIdsByCode.TryGetValue(row.ParentAccountCode, out var importedParentId))
+                        {
+                            parentAccountId = importedParentId;
+                            hierarchyLevel = importedLevelsByCode[row.ParentAccountCode] + 1;
+                        }
+                        else if (existingByCode.TryGetValue(row.ParentAccountCode, out var parentFromDb))
+                        {
+                            parentAccountId = parentFromDb.Id;
+                            hierarchyLevel = parentFromDb.HierarchyLevel + 1;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+
+                    var hasChildrenInFile = childCodesFromFile.ContainsKey(row.Code);
+                    var hasChildrenInDb = existingByCode.TryGetValue(row.Code, out var existingState) &&
+                                          existingChildrenByParentId.ContainsKey(existingState.Id);
+                    var isPosting = !hasChildrenInFile && !hasChildrenInDb;
+
+                    var accountId = await UpsertImportedAccountAsync(
+                        connection,
+                        transaction,
+                        companyId,
+                        actor,
+                        row,
+                        parentAccountId,
+                        isPosting,
+                        hierarchyLevel,
+                        existingByCode,
+                        cancellationToken);
+
+                    importedIdsByCode[row.Code] = accountId;
+                    importedLevelsByCode[row.Code] = hierarchyLevel;
+                    if (existingByCode[row.Code].WasCreated)
+                    {
+                        createdCount++;
+                    }
+                    else
+                    {
+                        updatedCount++;
+                    }
+
+                    pendingRows.Remove(row);
+                    processedThisRound++;
                 }
-                else
-                {
-                    updatedCount++;
-                }
-            }
 
-            foreach (var row in importRows.Where(x => !string.IsNullOrWhiteSpace(x.ParentAccountCode)).OrderBy(x => x.ParentAccountCode, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Code, StringComparer.OrdinalIgnoreCase))
-            {
-                long? parentAccountId = importedIdsByCode.TryGetValue(row.ParentAccountCode, out var importedParentId)
-                    ? importedParentId
-                    : existingByCode.TryGetValue(row.ParentAccountCode, out var parentFromDb)
-                        ? parentFromDb.Id
-                        : null;
-
-                if (!parentAccountId.HasValue)
+                if (processedThisRound <= 0)
                 {
+                    var unresolvedRow = pendingRows
+                        .OrderBy(x => x.RowNumber)
+                        .First();
+
                     await transaction.RollbackAsync(cancellationToken);
                     return new AccountImportExecutionResult
                     {
                         IsSuccess = false,
-                        Message = $"Parent akun {row.ParentAccountCode} tidak berhasil di-resolve.",
-                        Errors = [BuildAccountImportError(row.RowNumber, $"Parent akun {row.ParentAccountCode} tidak berhasil di-resolve.")]
+                        Message = $"Parent akun {unresolvedRow.ParentAccountCode} tidak berhasil di-resolve.",
+                        Errors = [BuildAccountImportError(unresolvedRow.RowNumber, $"Parent akun {unresolvedRow.ParentAccountCode} tidak berhasil di-resolve.")]
                     };
-                }
-
-                var accountId = await UpsertImportedAccountAsync(
-                    connection,
-                    transaction,
-                    companyId,
-                    actor,
-                    row,
-                    parentAccountId,
-                    isPosting: true,
-                    hierarchyLevel: 2,
-                    existingByCode,
-                    cancellationToken);
-
-                importedIdsByCode[row.Code] = accountId;
-                if (existingByCode[row.Code].WasCreated)
-                {
-                    createdCount++;
-                }
-                else
-                {
-                    updatedCount++;
                 }
             }
 
@@ -344,7 +370,7 @@ WHERE company_id = @company_id;", connection, transaction))
         IDictionary<string, ExistingImportedAccountState> existingByCode,
         CancellationToken cancellationToken)
     {
-        var normalBalance = row.AccountType is "LIABILITY" or "EQUITY" or "REVENUE" ? "C" : "D";
+        var normalBalance = row.DerivedAccountType is "LIABILITY" or "EQUITY" or "REVENUE" ? "C" : "D";
         if (existingByCode.TryGetValue(row.Code, out var existing))
         {
             await using var updateCommand = new NpgsqlCommand(@"
@@ -368,7 +394,7 @@ WHERE id = @id
             updateCommand.Parameters.AddWithValue("id", existing.Id);
             updateCommand.Parameters.AddWithValue("company_id", companyId);
             updateCommand.Parameters.AddWithValue("account_name", row.Name);
-            updateCommand.Parameters.AddWithValue("account_type", row.AccountType);
+            updateCommand.Parameters.AddWithValue("account_type", row.DerivedAccountType);
             updateCommand.Parameters.AddWithValue("normal_balance", normalBalance);
             updateCommand.Parameters.AddWithValue("parent_account_id", NpgsqlDbType.Bigint, parentAccountId.HasValue ? parentAccountId.Value : DBNull.Value);
             updateCommand.Parameters.AddWithValue("is_posting", isPosting);
@@ -389,13 +415,15 @@ WHERE id = @id
                 existing.Id,
                 "IMPORT_UPDATE",
                 actor,
-                $"company={companyId};code={row.Code};name={row.Name};type={row.AccountType};normal_balance={normalBalance};active={row.IsActive};parent={row.ParentAccountCode};requires_department={row.RequiresDepartment};requires_project={row.RequiresProject};requires_cost_center={row.RequiresCostCenter};requires_subledger={row.RequiresSubledger};allowed_subledger_type={row.AllowedSubledgerType}",
+                $"company={companyId};code={row.Code};name={row.Name};type={row.DerivedAccountType};normal_balance={normalBalance};active={row.IsActive};parent={row.ParentAccountCode};requires_department={row.RequiresDepartment};requires_project={row.RequiresProject};requires_cost_center={row.RequiresCostCenter};requires_subledger={row.RequiresSubledger};allowed_subledger_type={row.AllowedSubledgerType}",
                 cancellationToken);
 
             existingByCode[row.Code] = existing with
             {
-                AccountType = row.AccountType,
+                AccountType = row.DerivedAccountType,
                 ParentAccountId = parentAccountId,
+                HierarchyLevel = hierarchyLevel,
+                IsPosting = isPosting,
                 IsActive = row.IsActive,
                 WasCreated = false
             };
@@ -445,7 +473,7 @@ RETURNING id;", connection, transaction);
         insertCommand.Parameters.AddWithValue("company_id", companyId);
         insertCommand.Parameters.AddWithValue("account_code", row.Code);
         insertCommand.Parameters.AddWithValue("account_name", row.Name);
-        insertCommand.Parameters.AddWithValue("account_type", row.AccountType);
+        insertCommand.Parameters.AddWithValue("account_type", row.DerivedAccountType);
         insertCommand.Parameters.AddWithValue("normal_balance", normalBalance);
         insertCommand.Parameters.AddWithValue("parent_account_id", NpgsqlDbType.Bigint, parentAccountId.HasValue ? parentAccountId.Value : DBNull.Value);
         insertCommand.Parameters.AddWithValue("is_posting", isPosting);
@@ -466,15 +494,17 @@ RETURNING id;", connection, transaction);
             createdId,
             "IMPORT_CREATE",
             actor,
-            $"company={companyId};code={row.Code};name={row.Name};type={row.AccountType};normal_balance={normalBalance};active={row.IsActive};parent={row.ParentAccountCode};requires_department={row.RequiresDepartment};requires_project={row.RequiresProject};requires_cost_center={row.RequiresCostCenter};requires_subledger={row.RequiresSubledger};allowed_subledger_type={row.AllowedSubledgerType}",
+            $"company={companyId};code={row.Code};name={row.Name};type={row.DerivedAccountType};normal_balance={normalBalance};active={row.IsActive};parent={row.ParentAccountCode};requires_department={row.RequiresDepartment};requires_project={row.RequiresProject};requires_cost_center={row.RequiresCostCenter};requires_subledger={row.RequiresSubledger};allowed_subledger_type={row.AllowedSubledgerType}",
             cancellationToken);
 
         existingByCode[row.Code] = new ExistingImportedAccountState(
             createdId,
             row.Code,
-            row.AccountType,
+            row.DerivedAccountType,
             parentAccountId,
             row.IsActive,
+            hierarchyLevel,
+            isPosting,
             true);
         return createdId;
     }
@@ -485,13 +515,16 @@ RETURNING id;", connection, transaction);
         string AccountType,
         long? ParentAccountId,
         bool IsActive,
+        int HierarchyLevel,
+        bool IsPosting,
         bool WasCreated = false);
 
     private sealed record NormalizedImportAccountRow(
         int RowNumber,
         string Code,
         string Name,
-        string AccountType,
+        string ProvidedAccountType,
+        string DerivedAccountType,
         string ParentAccountCode,
         bool IsActive,
         bool RequiresDepartment,

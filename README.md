@@ -128,11 +128,14 @@ Available database scripts:
 - `migrate_module_to_scope.sql`
 - `purge_inactive_gl_accounts_safe.sql`
 - `reseed_gl_accounts_20_80_81.sql`
-- `reseed_gl_accounts_master_333_generated.sql`
-- `reseed_gl_accounts_numeric_company.sql`
-- `verify_gl_accounts_numeric_company1.sql`
-- `reset_gl_accounts_palm_oil_sample.sql`
+- `verify_gl_accounts_workbook_company1.sql`
 - `assign_uat_users.sql`
+
+Official COA reseed path for `company_id = 1`:
+
+- [`scripts/reseed_gl_accounts_company1_from_workbook.ps1`](D:/VSCODE/wpf/scripts/reseed_gl_accounts_company1_from_workbook.ps1)
+- [`database/reseed_gl_accounts_20_80_81.sql`](D:/VSCODE/wpf/database/reseed_gl_accounts_20_80_81.sql)
+- [`database/verify_gl_accounts_workbook_company1.sql`](D:/VSCODE/wpf/database/verify_gl_accounts_workbook_company1.sql)
 
 ### 3. Default login
 
@@ -208,6 +211,7 @@ GL account codes use the format `99.99999.999`.
 
 - The first segment is a 2-character account type
 - The second and third segments are numeric
+- The supported workbook-driven COA families in this repo are `20`, `80`, and `81`
 - Existing databases that still enforce the old numeric-only prefix rule should run [`database/allow_alphanumeric_account_prefix.sql`](D:/VSCODE/wpf/database/allow_alphanumeric_account_prefix.sql)
 
 ## Screenshots

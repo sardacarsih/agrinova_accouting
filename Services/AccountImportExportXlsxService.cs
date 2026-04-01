@@ -175,18 +175,18 @@ public sealed class AccountImportExportXlsxService
 
         var columnMap = BuildColumnMap(rows[0]);
         if (!columnMap.TryGetValue("CODE", out var codeCol) ||
-            !columnMap.TryGetValue("NAME", out var nameCol) ||
-            !columnMap.TryGetValue("ACCOUNTTYPE", out var accountTypeCol))
+            !columnMap.TryGetValue("NAME", out var nameCol))
         {
             errors.Add(new InventoryImportError
             {
                 SheetName = "Accounts",
                 RowNumber = 1,
-                Message = "Kolom wajib: Code, Name, AccountType."
+                Message = "Kolom wajib: Code, Name."
             });
             return output;
         }
 
+        var accountTypeCol = GetColumnIndex(columnMap, "ACCOUNTTYPE");
         var parentCodeCol = GetColumnIndex(columnMap, "PARENTACCOUNTCODE");
         var isActiveCol = GetColumnIndex(columnMap, "ISACTIVE");
         var requiresDepartmentCol = GetColumnIndex(columnMap, "REQUIRESDEPARTMENT");
@@ -225,13 +225,36 @@ public sealed class AccountImportExportXlsxService
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(accountType))
+            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))
             {
                 errors.Add(new InventoryImportError
                 {
                     SheetName = "Accounts",
                     RowNumber = rowNumber,
-                    Message = "Code, Name, dan AccountType wajib diisi."
+                    Message = "Code dan Name wajib diisi."
+                });
+                continue;
+            }
+
+            if (!CoaAccountCodeRules.TryDeriveAccountType(code, out var derivedAccountType))
+            {
+                errors.Add(new InventoryImportError
+                {
+                    SheetName = "Accounts",
+                    RowNumber = rowNumber,
+                    Message = $"Prefix kode akun tidak dikenali untuk struktur COA aktif: {code}."
+                });
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(accountType) &&
+                !string.Equals(accountType, derivedAccountType, StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add(new InventoryImportError
+                {
+                    SheetName = "Accounts",
+                    RowNumber = rowNumber,
+                    Message = $"AccountType {accountType} tidak cocok dengan prefix kode akun {code}. Tipe seharusnya {derivedAccountType}."
                 });
                 continue;
             }
@@ -319,7 +342,7 @@ public sealed class AccountImportExportXlsxService
                 RowNumber = rowNumber,
                 Code = code,
                 Name = name,
-                AccountType = accountType,
+                AccountType = derivedAccountType,
                 ParentAccountCode = parentAccountCode,
                 IsActive = isActive,
                 RequiresDepartment = requiresDepartment,

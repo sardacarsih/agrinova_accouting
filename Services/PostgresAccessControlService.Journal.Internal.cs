@@ -66,34 +66,14 @@ WHERE le.company_id = @company_id
 
     private static bool IsSegmentedAccountCode(string? accountCode)
     {
-        var code = (accountCode ?? string.Empty).Trim().ToUpperInvariant();
-        if (code.Length != 12 || code[2] != '.' || code[8] != '.')
-        {
-            return false;
-        }
+        return CoaAccountCodeRules.IsSegmentedAccountCode(accountCode);
+    }
 
-        if (!char.IsLetterOrDigit(code[0]) || !char.IsLetterOrDigit(code[1]))
-        {
-            return false;
-        }
-
-        for (var i = 3; i <= 7; i++)
-        {
-            if (!char.IsDigit(code[i]))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 9; i <= 11; i++)
-        {
-            if (!char.IsDigit(code[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
+    private static string DeriveAccountTypeFromCode(string? accountCode)
+    {
+        return CoaAccountCodeRules.TryDeriveAccountType(accountCode, out var accountType)
+            ? accountType
+            : string.Empty;
     }
 
     private static bool TrySplitSegmentedAccountCode(
@@ -253,7 +233,7 @@ WHERE company_id = @company_id;", connection, transaction))
                 }
             }
 
-            var targetIsPosting = !IsSummaryAccountCode(account.Code) && !childCounts.ContainsKey(account.Id);
+            var targetIsPosting = !childCounts.ContainsKey(account.Id);
 
             if (account.ParentAccountId == targetParentId &&
                 account.HierarchyLevel == targetLevel &&
@@ -299,8 +279,13 @@ WHERE id = @id
 SELECT account_code
 FROM gl_accounts
 WHERE company_id = @company_id
-  AND account_code LIKE '__.33000.001'
-ORDER BY is_active DESC, id
+  AND upper(account_type) = 'EQUITY'
+  AND (
+      upper(COALESCE(account_name, '')) LIKE 'LABA DITAHAN%'
+      OR upper(COALESCE(account_name, '')) LIKE 'RETAINED EARNINGS%'
+      OR account_code LIKE '__.33000.001'
+  )
+ORDER BY is_active DESC, is_posting DESC, id
 LIMIT 1;", connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
 
@@ -311,44 +296,7 @@ LIMIT 1;", connection, transaction);
             return existingRetainedCode.Trim().ToUpperInvariant();
         }
 
-        await using var prefixCommand = new NpgsqlCommand(@"
-SELECT account_code
-FROM gl_accounts
-WHERE company_id = @company_id
-  AND account_code LIKE '__.30000.000'
-ORDER BY is_active DESC, id
-LIMIT 1;", connection, transaction);
-        prefixCommand.Parameters.AddWithValue("company_id", companyId);
-
-        var prefixSource = await prefixCommand.ExecuteScalarAsync(cancellationToken);
-        if (prefixSource is string existingPrefixSource)
-        {
-            var prefix = ExtractAccountCodePrefix(existingPrefixSource);
-            if (!string.IsNullOrWhiteSpace(prefix))
-            {
-                return $"{prefix}.33000.001";
-            }
-        }
-
-        await using var fallbackCommand = new NpgsqlCommand(@"
-SELECT account_code
-FROM gl_accounts
-WHERE company_id = @company_id
-ORDER BY id
-LIMIT 1;", connection, transaction);
-        fallbackCommand.Parameters.AddWithValue("company_id", companyId);
-
-        var fallbackSource = await fallbackCommand.ExecuteScalarAsync(cancellationToken);
-        if (fallbackSource is string existingAccountCode)
-        {
-            var prefix = ExtractAccountCodePrefix(existingAccountCode);
-            if (!string.IsNullOrWhiteSpace(prefix))
-            {
-                return $"{prefix}.33000.001";
-            }
-        }
-
-        return RetainedEarningsCode;
+        return string.Empty;
     }
 
     private static DateTime GetPeriodMonthStart(DateTime value)

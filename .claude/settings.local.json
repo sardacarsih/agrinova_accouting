@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(grep -E \"\\\\.cs$\")",
+      "Bash(grep -E \"\\\\.\\(xaml|cs\\)$\")",
+      "Bash(grep -l \"Account\" /d/vscode/wpf/ViewModels/*.cs)"
+    ]
+  }
+}

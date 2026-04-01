@@ -777,7 +777,7 @@ BEGIN
         RETURN;
     END IF;
 
-    RAISE NOTICE 'Legacy location-prefixed sample COA seeding is disabled. Use the numeric corporate COA migration/reseed script instead.';
+    RAISE NOTICE 'Legacy sample COA seeding is disabled. Use the workbook-based reseed script instead.';
     RETURN;
 
     FOREACH v_location_code IN ARRAY ARRAY['HO', 'PK', 'KB']

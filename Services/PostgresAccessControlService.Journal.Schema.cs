@@ -202,27 +202,25 @@ WHERE normal_balance IS NULL
    OR normal_balance = ''
    OR normal_balance NOT IN ('D', 'C');
 
-UPDATE gl_accounts
-SET hierarchy_level = CASE
-    WHEN parent_account_id IS NULL THEN 1
-    WHEN EXISTS (
-        SELECT 1
-        FROM gl_accounts p
-        WHERE p.id = gl_accounts.parent_account_id
-          AND p.parent_account_id IS NOT NULL
-    ) THEN 3
-    ELSE 2
-END
-WHERE hierarchy_level IS DISTINCT FROM CASE
-    WHEN parent_account_id IS NULL THEN 1
-    WHEN EXISTS (
-        SELECT 1
-        FROM gl_accounts p
-        WHERE p.id = gl_accounts.parent_account_id
-          AND p.parent_account_id IS NOT NULL
-    ) THEN 3
-    ELSE 2
-END;
+WITH RECURSIVE account_tree AS (
+    SELECT a.id,
+           1 AS hierarchy_level,
+           ARRAY[a.id] AS visited_ids
+    FROM gl_accounts a
+    WHERE a.parent_account_id IS NULL
+    UNION ALL
+    SELECT c.id,
+           p.hierarchy_level + 1 AS hierarchy_level,
+           p.visited_ids || c.id AS visited_ids
+    FROM gl_accounts c
+    JOIN account_tree p ON p.id = c.parent_account_id
+    WHERE NOT (c.id = ANY(p.visited_ids))
+)
+UPDATE gl_accounts g
+SET hierarchy_level = t.hierarchy_level
+FROM account_tree t
+WHERE g.id = t.id
+  AND g.hierarchy_level IS DISTINCT FROM t.hierarchy_level;
 
 UPDATE gl_accounts
 SET is_posting = NOT EXISTS (
@@ -671,8 +669,7 @@ BEGIN
 END
 $$;
 
--- Legacy location-prefixed COA seeding removed.
--- Numeric company-scoped COA seeding is handled by SeedPalmOilSampleAccountsAsync().
+-- COA seed data is provisioned explicitly through the workbook-based reseed scripts.
 ";
 
             await using var connection = new NpgsqlConnection(_options.ConnectionString);
@@ -682,7 +679,6 @@ $$;
                 CommandTimeout = Math.Max(30, _options.QueryTimeoutSeconds)
             };
             await command.ExecuteNonQueryAsync(cancellationToken);
-            await SeedPalmOilSampleAccountsAsync(connection, cancellationToken);
 
             _journalSchemaEnsured = true;
         }

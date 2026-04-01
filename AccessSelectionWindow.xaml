@@ -48,8 +48,7 @@
                       Background="{DynamicResource Brush.Surface}"
                       Foreground="{DynamicResource Brush.TextPrimary}"
                       ItemsSource="{Binding CompanyOptions}"
-                      SelectedItem="{Binding SelectedCompany, Mode=TwoWay}"
-                      IsEnabled="{Binding IsCompanyMulti}">
+                      SelectedItem="{Binding SelectedCompany, Mode=TwoWay}">
                 <ComboBox.ItemTemplate>
                     <DataTemplate>
                         <TextBlock Foreground="{DynamicResource Brush.TextPrimary}">
@@ -76,8 +75,7 @@
                       Background="{DynamicResource Brush.Surface}"
                       Foreground="{DynamicResource Brush.TextPrimary}"
                       ItemsSource="{Binding LocationOptions}"
-                      SelectedItem="{Binding SelectedLocation, Mode=TwoWay}"
-                      IsEnabled="{Binding IsLocationMulti}">
+                      SelectedItem="{Binding SelectedLocation, Mode=TwoWay}">
                 <ComboBox.ItemTemplate>
                     <DataTemplate>
                         <TextBlock Foreground="{DynamicResource Brush.TextPrimary}">

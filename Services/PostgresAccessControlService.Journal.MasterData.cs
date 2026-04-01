@@ -276,12 +276,18 @@ LIMIT @limit OFFSET @offset;", connection))
                 return new AccessOperationResult(false, "Format kode akun harus XX.99999.999.");
             }
 
-            var normalizedType = NormalizeAccountType(account.AccountType);
+            var normalizedType = DeriveAccountTypeFromCode(normalizedCode);
+            if (string.IsNullOrWhiteSpace(normalizedType))
+            {
+                return new AccessOperationResult(false, $"Prefix kode akun tidak dikenali untuk struktur COA aktif: {normalizedCode[..2]}.");
+            }
+
             var normalizedSubledgerType = NormalizeSubledgerType(account.AllowedSubledgerType);
             var requiresSubledger = account.RequiresSubledger || !string.IsNullOrWhiteSpace(normalizedSubledgerType);
 
             long? parentAccountId = account.ParentAccountId is > 0 ? account.ParentAccountId : null;
             var parentAccountCode = string.Empty;
+            var hierarchyLevel = 1;
 
             if (parentAccountId.HasValue)
             {
@@ -293,9 +299,10 @@ LIMIT @limit OFFSET @offset;", connection))
                 await using var parentLookup = new NpgsqlCommand(@"
 SELECT id,
        account_code,
-       parent_account_id,
        is_active,
-       account_type
+       account_type,
+       COALESCE(hierarchy_level, 1) AS hierarchy_level,
+       COALESCE(is_posting, TRUE) AS is_posting
 FROM gl_accounts
 WHERE id = @id
   AND company_id = @company_id;", connection, transaction);
@@ -307,12 +314,13 @@ WHERE id = @id
                     return new AccessOperationResult(false, "Parent akun tidak ditemukan.");
                 }
 
-                var parentHasParent = !parentReader.IsDBNull(2);
-                var parentIsActive = !parentReader.IsDBNull(3) && parentReader.GetBoolean(3);
-                var parentAccountType = NormalizeAccountType(parentReader.IsDBNull(4) ? null : parentReader.GetString(4));
-                if (parentHasParent)
+                var parentIsActive = !parentReader.IsDBNull(2) && parentReader.GetBoolean(2);
+                var parentAccountType = NormalizeAccountType(parentReader.IsDBNull(3) ? null : parentReader.GetString(3));
+                var parentHierarchyLevel = parentReader.GetInt32(4);
+                var parentIsPosting = !parentReader.IsDBNull(5) && parentReader.GetBoolean(5);
+                if (parentIsPosting)
                 {
-                    return new AccessOperationResult(false, "Parent akun harus akun level 1 (summary).");
+                    return new AccessOperationResult(false, "Parent akun harus akun non-posting.");
                 }
 
                 if (!parentIsActive)
@@ -333,14 +341,52 @@ WHERE id = @id
                 }
 
                 normalizedType = parentAccountType;
-            }
-            else if (string.IsNullOrWhiteSpace(normalizedType))
-            {
-                return new AccessOperationResult(false, "Tipe akun wajib dipilih.");
+                hierarchyLevel = parentHierarchyLevel + 1;
+
+                if (account.Id > 0)
+                {
+                    await using var cycleCheck = new NpgsqlCommand(@"
+WITH RECURSIVE parent_chain AS (
+    SELECT id,
+           parent_account_id
+    FROM gl_accounts
+    WHERE id = @parent_account_id
+      AND company_id = @company_id
+    UNION ALL
+    SELECT g.id,
+           g.parent_account_id
+    FROM gl_accounts g
+    JOIN parent_chain p ON p.parent_account_id = g.id
+    WHERE g.company_id = @company_id
+)
+SELECT COUNT(1)
+FROM parent_chain
+WHERE id = @account_id;", connection, transaction);
+                    cycleCheck.Parameters.AddWithValue("parent_account_id", parentAccountId.Value);
+                    cycleCheck.Parameters.AddWithValue("company_id", companyId);
+                    cycleCheck.Parameters.AddWithValue("account_id", account.Id);
+                    var cycleCount = Convert.ToInt32(await cycleCheck.ExecuteScalarAsync(cancellationToken));
+                    if (cycleCount > 0)
+                    {
+                        return new AccessOperationResult(false, "Parent akun tidak valid karena membentuk siklus hierarki.");
+                    }
+                }
             }
 
-            var isPosting = parentAccountId.HasValue;
-            var hierarchyLevel = isPosting ? 2 : 1;
+            var hasChildren = false;
+            if (account.Id > 0)
+            {
+                await using var childCountCommand = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND parent_account_id = @account_id;", connection, transaction);
+                childCountCommand.Parameters.AddWithValue("company_id", companyId);
+                childCountCommand.Parameters.AddWithValue("account_id", account.Id);
+                hasChildren = Convert.ToInt32(await childCountCommand.ExecuteScalarAsync(cancellationToken)) > 0;
+            }
+
+            var isPosting = !hasChildren && account.IsPosting;
             var normalBalance = normalizedType is "LIABILITY" or "EQUITY" or "REVENUE" ? "C" : "D";
 
             long accountId;

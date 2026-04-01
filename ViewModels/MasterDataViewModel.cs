@@ -407,14 +407,12 @@ public sealed partial class MasterDataViewModel : ViewModelBase
                 AccountDraft.ParentAccountId = null;
                 AccountDraft.ParentAccountCode = string.Empty;
                 AccountDraft.HierarchyLevel = 1;
-                AccountDraft.IsPosting = false;
             }
             else
             {
                 AccountDraft.ParentAccountId = value.Id;
                 AccountDraft.ParentAccountCode = value.Code;
-                AccountDraft.HierarchyLevel = 2;
-                AccountDraft.IsPosting = true;
+                AccountDraft.HierarchyLevel = Math.Max(1, value.HierarchyLevel + 1);
             }
 
             NotifyAccountFormChanged();
@@ -790,8 +788,23 @@ public sealed partial class MasterDataViewModel : ViewModelBase
         AccountDraft is null
             ? "Pilih akun dari daftar atau klik Akun Baru untuk mulai input."
             : IsAccountCreateMode
-                ? "Lengkapi kode, nama, tipe akun, dan parent jika akun turunan."
-                : "Perubahan tersimpan pada akun terpilih. Gunakan Nonaktifkan jika akun tidak digunakan lagi.";
+                ? "Lengkapi kode dan nama akun. Tipe akun diturunkan otomatis dari 2 digit pertama kode."
+                : "Perubahan tersimpan pada akun terpilih. Parent boleh multi-level selama parent bertipe non-posting.";
+
+    public string DerivedAccountTypeText
+    {
+        get
+        {
+            if (AccountDraft is null)
+            {
+                return "-";
+            }
+
+            return string.IsNullOrWhiteSpace(AccountDraft.AccountType)
+                ? "Belum dikenali"
+                : AccountDraft.AccountType;
+        }
+    }
 
     public string DerivedParentAccountCode
     {
@@ -804,7 +817,7 @@ public sealed partial class MasterDataViewModel : ViewModelBase
 
             if (!AccountDraft.ParentAccountId.HasValue)
             {
-                return "(Summary Root)";
+                return "(Root)";
             }
 
             return string.IsNullOrWhiteSpace(AccountDraft.ParentAccountCode)
@@ -822,9 +835,7 @@ public sealed partial class MasterDataViewModel : ViewModelBase
                 return "-";
             }
 
-            return AccountDraft.HierarchyLevel <= 1
-                ? "1 (Summary)"
-                : "2 (Posting)";
+            return $"{Math.Max(1, AccountDraft.HierarchyLevel)} ({(AccountDraft.IsPosting ? "Posting" : "Non-Posting")})";
         }
     }
 
@@ -1212,10 +1223,13 @@ public sealed partial class MasterDataViewModel : ViewModelBase
 
     public void NotifyAccountFormChanged()
     {
+        ApplyDerivedAccountDraftState();
+
         OnPropertyChanged(nameof(IsAccountCreateMode));
         OnPropertyChanged(nameof(IsAccountEditMode));
         OnPropertyChanged(nameof(AccountEditorTitle));
         OnPropertyChanged(nameof(AccountEditorSubtitle));
+        OnPropertyChanged(nameof(DerivedAccountTypeText));
         OnPropertyChanged(nameof(DerivedParentAccountCode));
         OnPropertyChanged(nameof(DerivedHierarchyLevelText));
         OnPropertyChanged(nameof(DerivedPostingModeText));
@@ -1298,11 +1312,11 @@ public sealed partial class MasterDataViewModel : ViewModelBase
             CompanyId = _companyId,
             Code = string.Empty,
             Name = string.Empty,
-            AccountType = "ASSET",
+            AccountType = string.Empty,
             ParentAccountId = null,
             ParentAccountCode = string.Empty,
             HierarchyLevel = 1,
-            IsPosting = false,
+            IsPosting = true,
             IsActive = true
         };
         SelectedParentAccountOption = null;
@@ -1548,7 +1562,7 @@ public sealed partial class MasterDataViewModel : ViewModelBase
         ReplaceCollection(
             ParentAccountOptions,
             source
-                .Where(x => x.IsActive && (!x.ParentAccountId.HasValue || x.HierarchyLevel <= 1))
+                .Where(x => x.IsActive && !x.IsPosting)
                 .OrderBy(x => x.Code));
         SyncSelectedParentAccountOption();
     }
@@ -1584,14 +1598,12 @@ public sealed partial class MasterDataViewModel : ViewModelBase
             AccountDraft.ParentAccountId = null;
             AccountDraft.ParentAccountCode = string.Empty;
             AccountDraft.HierarchyLevel = 1;
-            AccountDraft.IsPosting = false;
             return;
         }
 
         AccountDraft.ParentAccountId = SelectedParentAccountOption.Id;
         AccountDraft.ParentAccountCode = SelectedParentAccountOption.Code;
-        AccountDraft.HierarchyLevel = 2;
-        AccountDraft.IsPosting = true;
+        AccountDraft.HierarchyLevel = Math.Max(1, SelectedParentAccountOption.HierarchyLevel + 1);
     }
 
     private void NewPeriod()
@@ -2010,9 +2022,9 @@ public sealed partial class MasterDataViewModel : ViewModelBase
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(AccountDraft.AccountType))
+        if (!CoaAccountCodeRules.TryDeriveAccountType(AccountDraft.Code, out var derivedAccountType))
         {
-            message = "Tipe akun wajib dipilih.";
+            message = "Prefix kode akun tidak dikenali untuk struktur COA aktif.";
             return false;
         }
 
@@ -2030,13 +2042,19 @@ public sealed partial class MasterDataViewModel : ViewModelBase
                 return false;
             }
 
-            if (SelectedParentAccountOption.ParentAccountId.HasValue)
+            if (SelectedParentAccountOption.IsPosting)
             {
-                message = "Parent akun harus akun level 1 (summary).";
+                message = "Parent akun harus akun non-posting.";
                 return false;
             }
 
-            if (!string.Equals(AccountDraft.AccountType, SelectedParentAccountOption.AccountType, StringComparison.OrdinalIgnoreCase))
+            if (WouldCreateAccountCycle(AccountDraft.Id, SelectedParentAccountOption.Id))
+            {
+                message = "Parent akun tidak valid karena membentuk siklus hierarki.";
+                return false;
+            }
+
+            if (!string.Equals(derivedAccountType, SelectedParentAccountOption.AccountType, StringComparison.OrdinalIgnoreCase))
             {
                 message = "Tipe akun child harus sama dengan parent.";
                 return false;
@@ -2099,36 +2117,72 @@ public sealed partial class MasterDataViewModel : ViewModelBase
         };
     }
 
+    private void ApplyDerivedAccountDraftState()
+    {
+        if (AccountDraft is null)
+        {
+            return;
+        }
+
+        AccountDraft.AccountType = CoaAccountCodeRules.TryDeriveAccountType(AccountDraft.Code, out var derivedAccountType)
+            ? derivedAccountType
+            : string.Empty;
+
+        if (SelectedParentAccountOption is null)
+        {
+            AccountDraft.ParentAccountId = null;
+            AccountDraft.ParentAccountCode = string.Empty;
+            AccountDraft.HierarchyLevel = 1;
+        }
+        else
+        {
+            AccountDraft.ParentAccountId = SelectedParentAccountOption.Id;
+            AccountDraft.ParentAccountCode = SelectedParentAccountOption.Code;
+            AccountDraft.HierarchyLevel = Math.Max(1, SelectedParentAccountOption.HierarchyLevel + 1);
+        }
+
+        if (HasExistingAccountChildren(AccountDraft.Id))
+        {
+            AccountDraft.IsPosting = false;
+        }
+    }
+
+    private bool HasExistingAccountChildren(long accountId)
+    {
+        return accountId > 0 && Accounts.Any(x => x.ParentAccountId == accountId);
+    }
+
+    private bool WouldCreateAccountCycle(long accountId, long selectedParentId)
+    {
+        if (accountId <= 0 || selectedParentId <= 0)
+        {
+            return false;
+        }
+
+        var currentParentId = selectedParentId;
+        var visited = new HashSet<long>();
+        while (currentParentId > 0 && visited.Add(currentParentId))
+        {
+            if (currentParentId == accountId)
+            {
+                return true;
+            }
+
+            var currentParent = Accounts.FirstOrDefault(x => x.Id == currentParentId);
+            if (currentParent?.ParentAccountId is not long nextParentId)
+            {
+                break;
+            }
+
+            currentParentId = nextParentId;
+        }
+
+        return false;
+    }
+
     private static bool IsSegmentedAccountCode(string? accountCode)
     {
-        var code = (accountCode ?? string.Empty).Trim().ToUpperInvariant();
-        if (code.Length != 12 || code[2] != '.' || code[8] != '.')
-        {
-            return false;
-        }
-
-        if (!char.IsDigit(code[0]) || !char.IsDigit(code[1]))
-        {
-            return false;
-        }
-
-        for (var i = 3; i <= 7; i++)
-        {
-            if (!char.IsDigit(code[i]))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 9; i <= 11; i++)
-        {
-            if (!char.IsDigit(code[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return CoaAccountCodeRules.IsSegmentedAccountCode(accountCode);
     }
 
     private static void ReplaceCollection<T>(ObservableCollection<T> target, IEnumerable<T> source)
