@@ -93,15 +93,102 @@ public interface IAccessControlService
         string actorUsername,
         CancellationToken cancellationToken = default);
 
+    Task<AccountImportExecutionResult> ImportAccountMasterDataAsync(
+        long companyId,
+        AccountImportBundle bundle,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
     Task<List<ManagedAccountingPeriod>> GetAccountingPeriodsAsync(
         long companyId,
         long locationId,
         string actorUsername = "",
         CancellationToken cancellationToken = default);
 
+    Task<EstateHierarchyWorkspace> GetEstateHierarchyAsync(
+        long companyId,
+        long locationId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SaveEstateAsync(
+        long companyId,
+        long locationId,
+        ManagedEstate estate,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SaveDivisionAsync(
+        long companyId,
+        long locationId,
+        ManagedDivision division,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SaveBlockAsync(
+        long companyId,
+        long locationId,
+        ManagedBlock block,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SoftDeleteEstateAsync(
+        long companyId,
+        long locationId,
+        long estateId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SoftDeleteDivisionAsync(
+        long companyId,
+        long locationId,
+        long divisionId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SoftDeleteBlockAsync(
+        long companyId,
+        long locationId,
+        long blockId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<EstateHierarchyImportExecutionResult> ImportEstateHierarchyAsync(
+        long companyId,
+        long locationId,
+        EstateHierarchyImportBundle bundle,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
     Task<List<ManagedCostCenter>> GetCostCentersAsync(
         long companyId,
         long locationId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default);
+
+    Task<List<ManagedCostCenter>> GetBlockCostCentersAsync(
+        long companyId,
+        long locationId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default);
+
+    Task<List<ManagedSubledgerReference>> GetVendorsAsync(
+        long companyId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default);
+
+    Task<List<ManagedSubledgerReference>> GetCustomersAsync(
+        long companyId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default);
+
+    Task<List<ManagedSubledgerReference>> GetEmployeesAsync(
+        long companyId,
         bool includeInactive = false,
         string actorUsername = "",
         CancellationToken cancellationToken = default);
@@ -117,6 +204,12 @@ public interface IAccessControlService
         long companyId,
         long locationId,
         long costCenterId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SyncCostCentersFromBlocksAsync(
+        long companyId,
+        long locationId,
         string actorUsername,
         CancellationToken cancellationToken = default);
 

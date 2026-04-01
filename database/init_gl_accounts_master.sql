@@ -64,6 +64,7 @@ ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_department BOOLEAN NOT
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_project BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_cost_center BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS requires_partner BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS allowed_subledger_type VARCHAR(20) NOT NULL DEFAULT '';
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS is_control_account BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE gl_accounts ADD COLUMN IF NOT EXISTS created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM';
@@ -105,17 +106,7 @@ SET account_code = UPPER(BTRIM(account_code)),
 UPDATE gl_accounts
 SET account_type = CASE
     WHEN UPPER(BTRIM(account_type)) IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE') THEN UPPER(BTRIM(account_type))
-    WHEN account_code ~ '^[A-Z0-9]{2}\.[0-9]{5}\.[0-9]{3}$' AND SUBSTRING(account_code FROM 4 FOR 1) = '1' THEN 'ASSET'
-    WHEN account_code ~ '^[A-Z0-9]{2}\.[0-9]{5}\.[0-9]{3}$' AND SUBSTRING(account_code FROM 4 FOR 1) = '2' THEN 'LIABILITY'
-    WHEN account_code ~ '^[A-Z0-9]{2}\.[0-9]{5}\.[0-9]{3}$' AND SUBSTRING(account_code FROM 4 FOR 1) = '3' THEN 'EQUITY'
-    WHEN account_code ~ '^[A-Z0-9]{2}\.[0-9]{5}\.[0-9]{3}$' AND SUBSTRING(account_code FROM 4 FOR 1) = '4' THEN 'REVENUE'
-    WHEN account_code ~ '^[A-Z0-9]{2}\.[0-9]{5}\.[0-9]{3}$' AND SUBSTRING(account_code FROM 4 FOR 1) = '5' THEN 'EXPENSE'
-    WHEN LEFT(account_code, 1) = '1' THEN 'ASSET'
-    WHEN LEFT(account_code, 1) = '2' THEN 'LIABILITY'
-    WHEN LEFT(account_code, 1) = '3' THEN 'EQUITY'
-    WHEN LEFT(account_code, 1) = '4' THEN 'REVENUE'
-    WHEN LEFT(account_code, 1) = '5' THEN 'EXPENSE'
-    ELSE CASE WHEN UPPER(normal_balance) = 'C' THEN 'LIABILITY' ELSE 'ASSET' END
+    ELSE 'ASSET'
 END
 WHERE account_type IS NULL
    OR BTRIM(account_type) = ''
@@ -263,6 +254,11 @@ ALTER TABLE gl_accounts
         (account_type IN ('LIABILITY', 'EQUITY', 'REVENUE') AND normal_balance = 'C')
     );
 
+ALTER TABLE gl_accounts DROP CONSTRAINT IF EXISTS chk_gl_accounts_allowed_subledger_type;
+ALTER TABLE gl_accounts
+    ADD CONSTRAINT chk_gl_accounts_allowed_subledger_type
+    CHECK (allowed_subledger_type IN ('', 'VENDOR', 'CUSTOMER', 'EMPLOYEE'));
+
 CREATE OR REPLACE FUNCTION gl_accounts_normalize_label(p_account_code TEXT)
 RETURNS TEXT
 LANGUAGE SQL
@@ -279,6 +275,7 @@ DECLARE
     v_parent_level INT;
     v_parent_path LTREE;
     v_parent_is_posting BOOLEAN;
+    v_parent_account_type VARCHAR(20);
     v_cycle_exists BOOLEAN;
     v_label TEXT;
 BEGIN
@@ -297,7 +294,7 @@ BEGIN
     END IF;
 
     IF NEW.account_code !~ '^[A-Z0-9]{2}\.[0-9]{5}\.[0-9]{3}$' THEN
-        RAISE EXCEPTION 'Invalid account_code format %. Expected XX.XXXXX.XXX.', NEW.account_code;
+        RAISE EXCEPTION 'Invalid account_code format %. Expected XX.99999.999.', NEW.account_code;
     END IF;
 
     IF (NEW.account_type IN ('ASSET', 'EXPENSE') AND NEW.normal_balance <> 'D')
@@ -316,8 +313,8 @@ BEGIN
         NEW.account_level := 1;
         NEW.full_path := TEXT2LTREE(v_label);
     ELSE
-        SELECT account_level, full_path, is_posting
-        INTO v_parent_level, v_parent_path, v_parent_is_posting
+        SELECT account_level, full_path, is_posting, account_type
+        INTO v_parent_level, v_parent_path, v_parent_is_posting, v_parent_account_type
         FROM gl_accounts
         WHERE id = NEW.parent_account_id
           AND company_id = NEW.company_id;
@@ -328,6 +325,16 @@ BEGIN
 
         IF v_parent_is_posting THEN
             RAISE EXCEPTION 'Parent account % is posting and cannot have children.', NEW.parent_account_id;
+        END IF;
+
+        IF COALESCE(v_parent_account_type, '') = '' THEN
+            RAISE EXCEPTION 'Parent account % has invalid account_type.', NEW.parent_account_id;
+        END IF;
+
+        IF NEW.account_type <> v_parent_account_type THEN
+            RAISE EXCEPTION 'Child account_type % must match parent account_type %.',
+                NEW.account_type,
+                v_parent_account_type;
         END IF;
 
         IF NEW.id IS NOT NULL THEN
@@ -473,51 +480,145 @@ CREATE INDEX IF NOT EXISTS idx_gl_accounts_company_posting_active
 CREATE INDEX IF NOT EXISTS idx_gl_accounts_full_path_gist
     ON gl_accounts USING GIST(full_path);
 
-CREATE TABLE IF NOT EXISTS gl_cost_centers (
+CREATE TABLE IF NOT EXISTS estates (
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE CASCADE,
     location_id BIGINT NOT NULL REFERENCES org_locations(id) ON DELETE CASCADE,
-    parent_id BIGINT NULL REFERENCES gl_cost_centers(id) ON DELETE RESTRICT,
-    cost_center_code VARCHAR(80) NOT NULL,
-    cost_center_name VARCHAR(200) NOT NULL DEFAULT '',
-    estate_code VARCHAR(40) NOT NULL DEFAULT '',
-    estate_name VARCHAR(120) NOT NULL DEFAULT '',
-    division_code VARCHAR(40) NOT NULL DEFAULT '',
-    division_name VARCHAR(120) NOT NULL DEFAULT '',
-    block_code VARCHAR(40) NOT NULL DEFAULT '',
-    block_name VARCHAR(120) NOT NULL DEFAULT '',
-    level VARCHAR(20) NOT NULL DEFAULT 'BLOCK',
-    is_posting BOOLEAN NOT NULL DEFAULT TRUE,
+    code VARCHAR(40) NOT NULL,
+    name VARCHAR(120) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
     updated_by VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_gl_cost_centers_scope_code UNIQUE (company_id, location_id, cost_center_code),
-    CONSTRAINT uq_gl_cost_centers_scope_natural UNIQUE (company_id, location_id, estate_code, division_code, block_code),
-    CONSTRAINT chk_gl_cost_centers_level CHECK (level IN ('ESTATE', 'DIVISION', 'BLOCK')),
-    CONSTRAINT chk_gl_cost_centers_estate_required CHECK (BTRIM(estate_code) <> ''),
-    CONSTRAINT chk_gl_cost_centers_level_shape CHECK (
-        (level = 'ESTATE' AND BTRIM(division_code) = '' AND BTRIM(block_code) = '')
-        OR (level = 'DIVISION' AND BTRIM(division_code) <> '' AND BTRIM(block_code) = '')
-        OR (level = 'BLOCK' AND BTRIM(division_code) <> '' AND BTRIM(block_code) <> '')
-    )
+    CONSTRAINT uq_estates_scope_code UNIQUE (company_id, location_id, code)
 );
 
-CREATE INDEX IF NOT EXISTS idx_gl_cost_centers_scope_level
-    ON gl_cost_centers(company_id, location_id, level, cost_center_code);
+CREATE TABLE IF NOT EXISTS divisions (
+    id BIGSERIAL PRIMARY KEY,
+    estate_id BIGINT NOT NULL REFERENCES estates(id) ON DELETE CASCADE,
+    code VARCHAR(40) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_divisions_estate_code UNIQUE (estate_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS blocks (
+    id BIGSERIAL PRIMARY KEY,
+    division_id BIGINT NOT NULL REFERENCES divisions(id) ON DELETE CASCADE,
+    code VARCHAR(40) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_blocks_division_code UNIQUE (division_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_estates_scope_active
+    ON estates(company_id, location_id, is_active, code);
+
+CREATE INDEX IF NOT EXISTS idx_divisions_estate_active
+    ON divisions(estate_id, is_active, code);
+
+CREATE INDEX IF NOT EXISTS idx_blocks_division_active
+    ON blocks(division_id, is_active, code);
+
+DO $$
+BEGIN
+    DROP INDEX IF EXISTS idx_gl_cost_centers_scope_level;
+    DROP INDEX IF EXISTS idx_gl_cost_centers_scope_source;
+
+    IF TO_REGCLASS('gl_cost_centers') IS NOT NULL THEN
+        DROP TABLE gl_cost_centers;
+    END IF;
+END
+$$;
+
+CREATE TABLE IF NOT EXISTS gl_vendors (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE CASCADE,
+    vendor_code VARCHAR(80) NOT NULL,
+    vendor_name VARCHAR(200) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_gl_vendors_company_code UNIQUE (company_id, vendor_code),
+    CONSTRAINT chk_gl_vendors_code_not_blank CHECK (BTRIM(vendor_code) <> ''),
+    CONSTRAINT chk_gl_vendors_name_not_blank CHECK (BTRIM(vendor_name) <> '')
+);
+
+CREATE TABLE IF NOT EXISTS gl_customers (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE CASCADE,
+    customer_code VARCHAR(80) NOT NULL,
+    customer_name VARCHAR(200) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_gl_customers_company_code UNIQUE (company_id, customer_code),
+    CONSTRAINT chk_gl_customers_code_not_blank CHECK (BTRIM(customer_code) <> ''),
+    CONSTRAINT chk_gl_customers_name_not_blank CHECK (BTRIM(customer_name) <> '')
+);
+
+CREATE TABLE IF NOT EXISTS gl_employees (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE CASCADE,
+    employee_code VARCHAR(80) NOT NULL,
+    employee_name VARCHAR(200) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_gl_employees_company_code UNIQUE (company_id, employee_code),
+    CONSTRAINT chk_gl_employees_code_not_blank CHECK (BTRIM(employee_code) <> ''),
+    CONSTRAINT chk_gl_employees_name_not_blank CHECK (BTRIM(employee_name) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_gl_vendors_company_active
+    ON gl_vendors(company_id, is_active, vendor_code);
+
+CREATE INDEX IF NOT EXISTS idx_gl_customers_company_active
+    ON gl_customers(company_id, is_active, customer_code);
+
+CREATE INDEX IF NOT EXISTS idx_gl_employees_company_active
+    ON gl_employees(company_id, is_active, employee_code);
 
 DO $$
 BEGIN
     IF TO_REGCLASS('gl_journal_details') IS NOT NULL THEN
-        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS cost_center_id BIGINT;
+        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS block_id BIGINT;
+        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS subledger_type VARCHAR(20) NOT NULL DEFAULT '';
+        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS subledger_id BIGINT;
+        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS subledger_code VARCHAR(80) NOT NULL DEFAULT '';
+        ALTER TABLE gl_journal_details ADD COLUMN IF NOT EXISTS subledger_name VARCHAR(200) NOT NULL DEFAULT '';
     END IF;
 
     IF TO_REGCLASS('gl_ledger_entries') IS NOT NULL THEN
-        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS cost_center_id BIGINT;
+        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS block_id BIGINT;
+        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS subledger_type VARCHAR(20) NOT NULL DEFAULT '';
+        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS subledger_id BIGINT;
+        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS subledger_code VARCHAR(80) NOT NULL DEFAULT '';
+        ALTER TABLE gl_ledger_entries ADD COLUMN IF NOT EXISTS subledger_name VARCHAR(200) NOT NULL DEFAULT '';
     END IF;
 END
 $$;
+
+CREATE INDEX IF NOT EXISTS idx_gl_journal_details_subledger
+    ON gl_journal_details(subledger_type, subledger_id, subledger_code);
+
+CREATE INDEX IF NOT EXISTS idx_gl_ledger_entries_subledger
+    ON gl_ledger_entries(subledger_type, subledger_id, subledger_code);
 
 DO $$
 BEGIN
@@ -525,24 +626,24 @@ BEGIN
        AND NOT EXISTS (
             SELECT 1
             FROM pg_constraint
-            WHERE conname = 'fk_gl_journal_details_cost_center'
+            WHERE conname = 'fk_gl_journal_details_block'
               AND conrelid = 'gl_journal_details'::regclass
        ) THEN
         ALTER TABLE gl_journal_details
-            ADD CONSTRAINT fk_gl_journal_details_cost_center
-            FOREIGN KEY (cost_center_id) REFERENCES gl_cost_centers(id) ON DELETE RESTRICT;
+            ADD CONSTRAINT fk_gl_journal_details_block
+            FOREIGN KEY (block_id) REFERENCES blocks(id) ON DELETE RESTRICT;
     END IF;
 
     IF TO_REGCLASS('gl_ledger_entries') IS NOT NULL
        AND NOT EXISTS (
             SELECT 1
             FROM pg_constraint
-            WHERE conname = 'fk_gl_ledger_entries_cost_center'
+            WHERE conname = 'fk_gl_ledger_entries_block'
               AND conrelid = 'gl_ledger_entries'::regclass
        ) THEN
         ALTER TABLE gl_ledger_entries
-            ADD CONSTRAINT fk_gl_ledger_entries_cost_center
-            FOREIGN KEY (cost_center_id) REFERENCES gl_cost_centers(id) ON DELETE RESTRICT;
+            ADD CONSTRAINT fk_gl_ledger_entries_block
+            FOREIGN KEY (block_id) REFERENCES blocks(id) ON DELETE RESTRICT;
     END IF;
 END
 $$;
@@ -552,14 +653,15 @@ BEGIN
     IF TO_REGCLASS('gl_journal_details') IS NOT NULL
        AND TO_REGCLASS('gl_journal_headers') IS NOT NULL THEN
         UPDATE gl_journal_details d
-        SET cost_center_id = cc.id
-        FROM gl_journal_headers h,
-             gl_cost_centers cc
+        SET block_id = b.id
+        FROM gl_journal_headers h
+        JOIN estates e ON e.company_id = h.company_id
+                      AND e.location_id = h.location_id
+        JOIN divisions dv ON dv.estate_id = e.id
+        JOIN blocks b ON b.division_id = dv.id
         WHERE d.header_id = h.id
-          AND cc.company_id = h.company_id
-          AND cc.location_id = h.location_id
-          AND UPPER(cc.cost_center_code) = UPPER(d.cost_center_code)
-          AND d.cost_center_id IS NULL
+          AND UPPER(d.cost_center_code) = UPPER(e.code || '-' || dv.code || '-' || b.code)
+          AND d.block_id IS NULL
           AND BTRIM(COALESCE(d.cost_center_code, '')) <> '';
     END IF;
 END
@@ -576,11 +678,9 @@ DECLARE
     v_is_posting BOOLEAN;
     v_is_active BOOLEAN;
     v_requires_cost_center BOOLEAN;
-    v_cost_center_company_id BIGINT;
-    v_cost_center_location_id BIGINT;
-    v_cost_center_code VARCHAR(80);
-    v_cost_center_is_posting BOOLEAN;
-    v_cost_center_is_active BOOLEAN;
+    v_block_id BIGINT;
+    v_block_code VARCHAR(80);
+    v_block_is_active BOOLEAN;
 BEGIN
     SELECT h.company_id, h.location_id
     INTO v_header_company_id, v_header_location_id
@@ -612,44 +712,34 @@ BEGIN
         RAISE EXCEPTION 'Account % is inactive and cannot be used in journal details.', NEW.account_id;
     END IF;
 
-    IF NEW.cost_center_id IS NOT NULL THEN
-        SELECT cc.company_id,
-               cc.location_id,
-               cc.cost_center_code,
-               cc.is_posting,
-               cc.is_active
-        INTO v_cost_center_company_id,
-             v_cost_center_location_id,
-             v_cost_center_code,
-             v_cost_center_is_posting,
-             v_cost_center_is_active
-        FROM gl_cost_centers cc
-        WHERE cc.id = NEW.cost_center_id;
+    IF NEW.block_id IS NOT NULL THEN
+        SELECT b.id,
+               UPPER(BTRIM(e.code)) || '-' || UPPER(BTRIM(d.code)) || '-' || UPPER(BTRIM(b.code)),
+               COALESCE(e.is_active, FALSE) AND COALESCE(d.is_active, FALSE) AND COALESCE(b.is_active, FALSE)
+        INTO v_block_id,
+             v_block_code,
+             v_block_is_active
+        FROM blocks b
+        JOIN divisions d ON d.id = b.division_id
+        JOIN estates e ON e.id = d.estate_id
+        WHERE b.id = NEW.block_id
+          AND e.company_id = v_header_company_id
+          AND e.location_id = v_header_location_id;
 
         IF NOT FOUND THEN
-            RAISE EXCEPTION 'Cost center % not found.', NEW.cost_center_id;
+            RAISE EXCEPTION 'Block % not found in journal scope.', NEW.block_id;
         END IF;
 
-        IF v_cost_center_company_id <> v_header_company_id
-           OR v_cost_center_location_id <> v_header_location_id THEN
-            RAISE EXCEPTION 'Cost center % is outside journal scope.', NEW.cost_center_id;
+        IF NOT v_block_is_active THEN
+            RAISE EXCEPTION 'Block % is inactive.', NEW.block_id;
         END IF;
 
-        IF NOT v_cost_center_is_active THEN
-            RAISE EXCEPTION 'Cost center % is inactive.', NEW.cost_center_id;
-        END IF;
-
-        IF NOT v_cost_center_is_posting THEN
-            RAISE EXCEPTION 'Cost center % is non-posting.', NEW.cost_center_id;
-        END IF;
-
-        NEW.cost_center_code := COALESCE(v_cost_center_code, '');
+        NEW.cost_center_code := COALESCE(v_block_code, NEW.cost_center_code, '');
     END IF;
 
     IF v_requires_cost_center
-       AND NEW.cost_center_id IS NULL
-       AND BTRIM(COALESCE(NEW.cost_center_code, '')) = '' THEN
-        RAISE EXCEPTION 'Account % requires cost center.', NEW.account_id;
+       AND NEW.block_id IS NULL THEN
+        RAISE EXCEPTION 'Account % requires block.', NEW.account_id;
     END IF;
 
     RETURN NEW;
@@ -662,7 +752,7 @@ BEGIN
        AND TO_REGCLASS('gl_journal_headers') IS NOT NULL THEN
         EXECUTE 'DROP TRIGGER IF EXISTS trg_gl_journal_details_biu_validate_account ON gl_journal_details';
         EXECUTE 'CREATE TRIGGER trg_gl_journal_details_biu_validate_account
-                 BEFORE INSERT OR UPDATE OF account_id, header_id, cost_center_id, cost_center_code
+                 BEFORE INSERT OR UPDATE OF account_id, header_id, block_id, cost_center_code
                  ON gl_journal_details
                  FOR EACH ROW
                  EXECUTE FUNCTION gl_journal_details_biu_validate_account()';
@@ -686,6 +776,9 @@ BEGIN
     IF v_company_id IS NULL THEN
         RETURN;
     END IF;
+
+    RAISE NOTICE 'Legacy location-prefixed sample COA seeding is disabled. Use the numeric corporate COA migration/reseed script instead.';
+    RETURN;
 
     FOREACH v_location_code IN ARRAY ARRAY['HO', 'PK', 'KB']
     LOOP

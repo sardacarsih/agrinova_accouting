@@ -28,7 +28,12 @@ public sealed partial class JournalManagementViewModel
             Credit = 0m,
             DepartmentCode = sourceLine?.DepartmentCode ?? string.Empty,
             ProjectCode = sourceLine?.ProjectCode ?? string.Empty,
+            SubledgerType = sourceLine?.SubledgerType ?? string.Empty,
+            SubledgerId = sourceLine?.SubledgerId,
+            SubledgerCode = sourceLine?.SubledgerCode ?? string.Empty,
+            SubledgerName = sourceLine?.SubledgerName ?? string.Empty,
             CostCenterId = sourceLine?.CostCenterId,
+            BlockId = sourceLine?.BlockId,
             CostCenterCode = sourceLine?.CostCenterCode ?? string.Empty
         };
 
@@ -168,6 +173,50 @@ public sealed partial class JournalManagementViewModel
     }
 
 
+    private void OpenBlockPicker(object? parameter)
+    {
+        var targetLine = parameter as JournalLineEditor ?? SelectedInputLine;
+        if (!TryPrepareBlockPicker(targetLine, out var activeBlocks, out var initialFilter))
+        {
+            return;
+        }
+
+        var picker = new Accounting.BlockSelectionWindow(activeBlocks, initialFilter)
+        {
+            Owner = Application.Current?.MainWindow
+        };
+
+        if (picker.ShowDialog() != true || picker.SelectedBlock is null)
+        {
+            return;
+        }
+
+        ApplySelectedBlockToLine(targetLine, picker.SelectedBlock);
+    }
+
+
+    private void OpenSubledgerPicker(object? parameter)
+    {
+        var targetLine = parameter as JournalLineEditor ?? SelectedInputLine;
+        if (!TryPrepareSubledgerPicker(targetLine, out var activeSubledgers, out var initialFilter, out var title))
+        {
+            return;
+        }
+
+        var picker = new Accounting.SubledgerSelectionWindow(title, activeSubledgers, initialFilter)
+        {
+            Owner = Application.Current?.MainWindow
+        };
+
+        if (picker.ShowDialog() != true || picker.SelectedSubledger is null)
+        {
+            return;
+        }
+
+        ApplySelectedSubledgerToLine(targetLine, picker.SelectedSubledger);
+    }
+
+
     public bool TryPrepareAccountPicker(
         JournalLineEditor? targetLine,
         out IReadOnlyList<ManagedAccount> activeAccounts,
@@ -215,6 +264,123 @@ public sealed partial class JournalManagementViewModel
     }
 
 
+    public bool TryPrepareBlockPicker(
+        JournalLineEditor? targetLine,
+        out IReadOnlyList<ManagedCostCenter> activeBlocks,
+        out string initialFilter)
+    {
+        initialFilter = targetLine?.CostCenterCode ?? string.Empty;
+
+        if (targetLine is null)
+        {
+            StatusMessage = "Pilih baris jurnal terlebih dahulu.";
+            activeBlocks = Array.Empty<ManagedCostCenter>();
+            return false;
+        }
+
+        var blocks = BlockCostCenters
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.CostCenterCode)
+            .ToList();
+
+        if (blocks.Count == 0)
+        {
+            StatusMessage = "Tidak ada blok aktif yang bisa dipilih.";
+            activeBlocks = Array.Empty<ManagedCostCenter>();
+            return false;
+        }
+
+        activeBlocks = blocks;
+        return true;
+    }
+
+
+    public bool ApplySelectedBlockToLine(JournalLineEditor? targetLine, ManagedCostCenter? selectedBlock)
+    {
+        if (targetLine is null || selectedBlock is null)
+        {
+            return false;
+        }
+
+        SelectedInputLine = targetLine;
+        targetLine.CostCenterId = null;
+        targetLine.BlockId = selectedBlock.BlockId ?? selectedBlock.Id;
+        targetLine.CostCenterCode = selectedBlock.CostCenterCode;
+        UpdateLineValidationState(targetLine);
+        return true;
+    }
+
+
+    public bool TryPrepareSubledgerPicker(
+        JournalLineEditor? targetLine,
+        out IReadOnlyList<ManagedSubledgerReference> activeSubledgers,
+        out string initialFilter,
+        out string title)
+    {
+        initialFilter = targetLine?.SubledgerCode ?? string.Empty;
+        title = "Pilih Buku Bantu";
+
+        if (targetLine is null)
+        {
+            StatusMessage = "Pilih baris jurnal terlebih dahulu.";
+            activeSubledgers = Array.Empty<ManagedSubledgerReference>();
+            return false;
+        }
+
+        if (!_accountLookupByCode.TryGetValue(targetLine.AccountCode ?? string.Empty, out var account) ||
+            !account.RequiresSubledger)
+        {
+            StatusMessage = "Akun pada baris ini tidak membutuhkan buku bantu.";
+            activeSubledgers = Array.Empty<ManagedSubledgerReference>();
+            return false;
+        }
+
+        var requiredType = account.AllowedSubledgerType?.Trim().ToUpperInvariant() ?? string.Empty;
+        IReadOnlyList<ManagedSubledgerReference> candidates = requiredType switch
+        {
+            "VENDOR" => Vendors.Where(x => x.IsActive).OrderBy(x => x.Code).ToList(),
+            "CUSTOMER" => Customers.Where(x => x.IsActive).OrderBy(x => x.Code).ToList(),
+            "EMPLOYEE" => Employees.Where(x => x.IsActive).OrderBy(x => x.Code).ToList(),
+            _ => Array.Empty<ManagedSubledgerReference>()
+        };
+
+        title = requiredType switch
+        {
+            "VENDOR" => "Pilih Vendor",
+            "CUSTOMER" => "Pilih Customer",
+            "EMPLOYEE" => "Pilih Karyawan",
+            _ => "Pilih Buku Bantu"
+        };
+
+        if (candidates.Count == 0)
+        {
+            StatusMessage = $"Tidak ada master {title.Replace("Pilih ", string.Empty).ToLowerInvariant()} aktif yang bisa dipilih.";
+            activeSubledgers = Array.Empty<ManagedSubledgerReference>();
+            return false;
+        }
+
+        activeSubledgers = candidates;
+        return true;
+    }
+
+
+    public bool ApplySelectedSubledgerToLine(JournalLineEditor? targetLine, ManagedSubledgerReference? selectedSubledger)
+    {
+        if (targetLine is null || selectedSubledger is null)
+        {
+            return false;
+        }
+
+        SelectedInputLine = targetLine;
+        targetLine.SubledgerType = selectedSubledger.SubledgerType;
+        targetLine.SubledgerId = selectedSubledger.Id;
+        targetLine.SubledgerCode = selectedSubledger.Code;
+        targetLine.SubledgerName = selectedSubledger.Name;
+        UpdateLineValidationState(targetLine);
+        return true;
+    }
+
+
     private void InputLineOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not JournalLineEditor line)
@@ -232,6 +398,7 @@ public sealed partial class JournalManagementViewModel
             nameof(JournalLineEditor.Credit) or
             nameof(JournalLineEditor.DepartmentCode) or
             nameof(JournalLineEditor.ProjectCode) or
+            nameof(JournalLineEditor.SubledgerCode) or
             nameof(JournalLineEditor.CostCenterCode))
         {
             UpdateLineValidationState(line);
@@ -307,7 +474,7 @@ public sealed partial class JournalManagementViewModel
 
         try
         {
-            _lineValidationService.SyncAccountLine(line, _accountLookupByCode, _costCenterLookupByCode);
+            _lineValidationService.SyncAccountLine(line, _accountLookupByCode, _costCenterLookupByCode, _subledgerLookupByKey);
         }
         finally
         {
@@ -318,7 +485,7 @@ public sealed partial class JournalManagementViewModel
 
     private void UpdateLineValidationState(JournalLineEditor line)
     {
-        _lineValidationService.ValidateLine(line, _accountLookupByCode, _costCenterLookupByCode);
+        _lineValidationService.ValidateLine(line, _accountLookupByCode, _costCenterLookupByCode, _subledgerLookupByKey);
     }
 
 

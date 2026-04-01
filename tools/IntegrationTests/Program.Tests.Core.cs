@@ -2674,6 +2674,863 @@ WHERE company_id = @company_id
         }
     }
 
+    private static async Task TestSyncCostCentersFromBlocksAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var location = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)
+            ?? accessOptions.Locations[0];
+        var locationId = location.Id;
+        var locationPrefix = new string((location.Code ?? string.Empty)
+            .Trim()
+            .ToUpperInvariant()
+            .Where(char.IsLetterOrDigit)
+            .Take(2)
+            .ToArray());
+        if (locationPrefix.Length < 2)
+        {
+            locationPrefix = "HO";
+        }
+
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(19);
+        var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
+        var assetAccount = workspace.Accounts.FirstOrDefault(x =>
+            x.IsPosting &&
+            string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
+        Assert(assetAccount is not null, "Posting asset account is required for cost center sync journal test.");
+
+        var allAccounts = await service.GetAccountsAsync(companyId, includeInactive: false, actorUsername: "admin");
+        var expenseParent = allAccounts.FirstOrDefault(x =>
+            !x.IsPosting &&
+            x.IsActive &&
+            string.Equals(x.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase));
+        Assert(expenseParent is not null, "Expense parent account is required for cost center sync journal test.");
+
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var estateCode = $"ES{Math.Abs(stamp % 100000):00000}";
+        var divisionCode = $"D{Math.Abs(stamp % 100):00}";
+        var blockCode = $"B{Math.Abs((stamp / 10) % 100):00}";
+        var expectedCostCenterCode = $"{estateCode}-{divisionCode}-{blockCode}";
+        var journalNo = $"ITEST-CCSYNC-{stamp}";
+        var expenseCode = $"{locationPrefix}.5{Math.Abs((stamp / 1000) % 10000):0000}.{Math.Abs(stamp % 1000):000}";
+
+        long? estateId = null;
+        long? divisionId = null;
+        long? blockId = null;
+        long? accountId = null;
+        long? journalId = null;
+
+        try
+        {
+            await service.GetCostCentersAsync(companyId, locationId, includeInactive: true, actorUsername: "admin");
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_BLOCK_SYNC_OPEN");
+
+            var saveAccountResult = await service.SaveAccountAsync(
+                companyId,
+                new ManagedAccount
+                {
+                    Id = 0,
+                    Code = expenseCode,
+                    Name = $"Block Sync Account {stamp}",
+                    AccountType = "EXPENSE",
+                    ParentAccountId = expenseParent!.Id,
+                    RequiresCostCenter = true,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveAccountResult.IsSuccess && saveAccountResult.EntityId.HasValue,
+                $"Failed to create sync cost-center-required account: {saveAccountResult.Message}");
+            accountId = saveAccountResult.EntityId!.Value;
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using (var estateCommand = new NpgsqlCommand(@"
+INSERT INTO estates (
+    company_id,
+    location_id,
+    code,
+    name,
+    is_active,
+    created_by,
+    updated_by)
+VALUES (
+    @company_id,
+    @location_id,
+    @code,
+    @name,
+    TRUE,
+    'ITEST',
+    'ITEST')
+RETURNING id;", connection))
+                {
+                    estateCommand.Parameters.AddWithValue("company_id", companyId);
+                    estateCommand.Parameters.AddWithValue("location_id", locationId);
+                    estateCommand.Parameters.AddWithValue("code", estateCode);
+                    estateCommand.Parameters.AddWithValue("name", $"Estate {estateCode}");
+                    estateId = Convert.ToInt64(await estateCommand.ExecuteScalarAsync());
+                }
+
+                await using (var divisionCommand = new NpgsqlCommand(@"
+INSERT INTO divisions (
+    estate_id,
+    code,
+    name,
+    is_active,
+    created_by,
+    updated_by)
+VALUES (
+    @estate_id,
+    @code,
+    @name,
+    TRUE,
+    'ITEST',
+    'ITEST')
+RETURNING id;", connection))
+                {
+                    divisionCommand.Parameters.AddWithValue("estate_id", estateId!.Value);
+                    divisionCommand.Parameters.AddWithValue("code", divisionCode);
+                    divisionCommand.Parameters.AddWithValue("name", $"Division {divisionCode}");
+                    divisionId = Convert.ToInt64(await divisionCommand.ExecuteScalarAsync());
+                }
+
+                await using (var blockCommand = new NpgsqlCommand(@"
+INSERT INTO blocks (
+    division_id,
+    code,
+    name,
+    is_active,
+    created_by,
+    updated_by)
+VALUES (
+    @division_id,
+    @code,
+    @name,
+    TRUE,
+    'ITEST',
+    'ITEST')
+RETURNING id;", connection))
+                {
+                    blockCommand.Parameters.AddWithValue("division_id", divisionId!.Value);
+                    blockCommand.Parameters.AddWithValue("code", blockCode);
+                    blockCommand.Parameters.AddWithValue("name", $"Block {blockCode}");
+                    blockId = Convert.ToInt64(await blockCommand.ExecuteScalarAsync());
+                }
+            }
+
+            var syncResult = await service.SyncCostCentersFromBlocksAsync(companyId, locationId, "admin");
+            Assert(syncResult.IsSuccess, $"Initial block sync should succeed: {syncResult.Message}");
+
+            var workspaceAfterSync = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
+            var syncedCostCenter = workspaceAfterSync.CostCenters.FirstOrDefault(x =>
+                string.Equals(x.CostCenterCode, expectedCostCenterCode, StringComparison.OrdinalIgnoreCase));
+            Assert(syncedCostCenter is not null, "Journal workspace should read synced block cost center from gl_cost_centers.");
+            Assert(syncedCostCenter!.IsPosting, "Synced block cost center should be posting.");
+            Assert(syncedCostCenter.IsActive, "Synced block cost center should be active after initial sync.");
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using (var countCommand = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM gl_cost_centers
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND upper(cost_center_code) = @cost_center_code
+  AND upper(coalesce(source_table, '')) = 'BLOCKS'
+  AND source_id = @source_id;", connection))
+                {
+                    countCommand.Parameters.AddWithValue("company_id", companyId);
+                    countCommand.Parameters.AddWithValue("location_id", locationId);
+                    countCommand.Parameters.AddWithValue("cost_center_code", expectedCostCenterCode);
+                    countCommand.Parameters.AddWithValue("source_id", blockId!.Value);
+                    var syncedCount = Convert.ToInt32(await countCommand.ExecuteScalarAsync());
+                    Assert(syncedCount == 1, $"Expected one synced gl_cost_centers row, got {syncedCount}.");
+                }
+            }
+
+            var rerunResult = await service.SyncCostCentersFromBlocksAsync(companyId, locationId, "admin");
+            Assert(rerunResult.IsSuccess, $"Rerun block sync should remain idempotent: {rerunResult.Message}");
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using (var countCommand = new NpgsqlCommand(@"
+SELECT COUNT(1)
+FROM gl_cost_centers
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND upper(cost_center_code) = @cost_center_code
+  AND upper(coalesce(source_table, '')) = 'BLOCKS'
+  AND source_id = @source_id;", connection))
+                {
+                    countCommand.Parameters.AddWithValue("company_id", companyId);
+                    countCommand.Parameters.AddWithValue("location_id", locationId);
+                    countCommand.Parameters.AddWithValue("cost_center_code", expectedCostCenterCode);
+                    countCommand.Parameters.AddWithValue("source_id", blockId!.Value);
+                    var syncedCount = Convert.ToInt32(await countCommand.ExecuteScalarAsync());
+                    Assert(syncedCount == 1, $"Expected synced row count to remain 1 after rerun, got {syncedCount}.");
+                }
+            }
+
+            var saveResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = journalNo,
+                    JournalDate = targetMonth.AddDays(10),
+                    PeriodMonth = targetMonth,
+                    Description = "Synced block cost center should pass"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = expenseCode,
+                        Description = "Expense with synced block cost center",
+                        Debit = 175m,
+                        Credit = 0m,
+                        CostCenterCode = expectedCostCenterCode
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount!.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 175m
+                    }
+                },
+                "admin");
+            Assert(
+                saveResult.IsSuccess && saveResult.EntityId.HasValue,
+                $"Draft save should pass with synced cost center: {saveResult.Message}");
+            journalId = saveResult.EntityId!.Value;
+
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await using (var deactivateSource = new NpgsqlCommand(
+                    "UPDATE blocks SET is_active = FALSE, updated_by = 'ITEST', updated_at = NOW() WHERE id = @id;",
+                    connection))
+                {
+                    deactivateSource.Parameters.AddWithValue("id", blockId!.Value);
+                    await deactivateSource.ExecuteNonQueryAsync();
+                }
+            }
+
+            var deactivateSyncResult = await service.SyncCostCentersFromBlocksAsync(companyId, locationId, "admin");
+            Assert(deactivateSyncResult.IsSuccess, $"Sync after block deactivation should succeed: {deactivateSyncResult.Message}");
+
+            var costCentersAfterDeactivate = await service.GetCostCentersAsync(companyId, locationId, includeInactive: true, actorUsername: "admin");
+            var inactiveCostCenter = costCentersAfterDeactivate.FirstOrDefault(x =>
+                string.Equals(x.CostCenterCode, expectedCostCenterCode, StringComparison.OrdinalIgnoreCase));
+            Assert(inactiveCostCenter is not null, "Synced block cost center should remain queryable when includeInactive=true.");
+            Assert(!inactiveCostCenter!.IsActive, "Synced block cost center should become inactive after source deactivation.");
+
+            var invalidAfterDeactivate = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = $"{journalNo}-INACTIVE",
+                    JournalDate = targetMonth.AddDays(11),
+                    PeriodMonth = targetMonth,
+                    Description = "Inactive synced block should fail"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = expenseCode,
+                        Description = "Expense with inactive synced block",
+                        Debit = 80m,
+                        Credit = 0m,
+                        CostCenterCode = expectedCostCenterCode
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 80m
+                    }
+                },
+                "admin");
+            Assert(!invalidAfterDeactivate.IsSuccess, "Inactive synced block should be rejected for new journal draft.");
+            Assert(
+                invalidAfterDeactivate.Message.Contains("inactive", StringComparison.OrdinalIgnoreCase) ||
+                invalidAfterDeactivate.Message.Contains("nonaktif", StringComparison.OrdinalIgnoreCase) ||
+                invalidAfterDeactivate.Message.Contains("valid", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected message when using inactive synced block: {invalidAfterDeactivate.Message}");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (journalId.HasValue)
+            {
+                await using (var deleteLedger = new NpgsqlCommand(
+                    "DELETE FROM gl_ledger_entries WHERE journal_id = @journal_id;",
+                    connection))
+                {
+                    deleteLedger.Parameters.AddWithValue("journal_id", journalId.Value);
+                    await deleteLedger.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteDetails = new NpgsqlCommand(
+                    "DELETE FROM gl_journal_details WHERE header_id = @header_id;",
+                    connection))
+                {
+                    deleteDetails.Parameters.AddWithValue("header_id", journalId.Value);
+                    await deleteDetails.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteHeader = new NpgsqlCommand(
+                    "DELETE FROM gl_journal_headers WHERE id = @id;",
+                    connection))
+                {
+                    deleteHeader.Parameters.AddWithValue("id", journalId.Value);
+                    await deleteHeader.ExecuteNonQueryAsync();
+                }
+            }
+
+            await using (var deleteJournalAudit = new NpgsqlCommand(
+                @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'JOURNAL'
+  AND details ILIKE @journal_no;",
+                connection))
+            {
+                deleteJournalAudit.Parameters.AddWithValue("journal_no", $"%{journalNo}%");
+                await deleteJournalAudit.ExecuteNonQueryAsync();
+            }
+
+            if (accountId.HasValue)
+            {
+                await using (var deleteAccountAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'ACCOUNT' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteAccountAudit.Parameters.AddWithValue("entity_id", accountId.Value);
+                    await deleteAccountAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteAccount = new NpgsqlCommand(
+                    "DELETE FROM gl_accounts WHERE id = @id;",
+                    connection))
+                {
+                    deleteAccount.Parameters.AddWithValue("id", accountId.Value);
+                    await deleteAccount.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (blockId.HasValue)
+            {
+                await using (var deleteSyncedCostCenter = new NpgsqlCommand(
+                    @"DELETE FROM gl_cost_centers
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND upper(coalesce(source_table, '')) = 'BLOCKS'
+  AND source_id = @source_id;",
+                    connection))
+                {
+                    deleteSyncedCostCenter.Parameters.AddWithValue("company_id", companyId);
+                    deleteSyncedCostCenter.Parameters.AddWithValue("location_id", locationId);
+                    deleteSyncedCostCenter.Parameters.AddWithValue("source_id", blockId.Value);
+                    await deleteSyncedCostCenter.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (blockId.HasValue)
+            {
+                await using var deleteBlock = new NpgsqlCommand("DELETE FROM blocks WHERE id = @id;", connection);
+                deleteBlock.Parameters.AddWithValue("id", blockId.Value);
+                await deleteBlock.ExecuteNonQueryAsync();
+            }
+
+            if (divisionId.HasValue)
+            {
+                await using var deleteDivision = new NpgsqlCommand("DELETE FROM divisions WHERE id = @id;", connection);
+                deleteDivision.Parameters.AddWithValue("id", divisionId.Value);
+                await deleteDivision.ExecuteNonQueryAsync();
+            }
+
+            if (estateId.HasValue)
+            {
+                await using var deleteEstate = new NpgsqlCommand("DELETE FROM estates WHERE id = @id;", connection);
+                deleteEstate.Parameters.AddWithValue("id", estateId.Value);
+                await deleteEstate.ExecuteNonQueryAsync();
+            }
+
+            if (previousPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_BLOCK_SYNC_RESTORE");
+            }
+            else
+            {
+                await using var deletePeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deletePeriod.Parameters.AddWithValue("company_id", companyId);
+                deletePeriod.Parameters.AddWithValue("location_id", locationId);
+                deletePeriod.Parameters.AddWithValue("period_month", targetMonth);
+                await deletePeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
+    private static async Task TestAccountImportCreatesAndRoundTripsXlsxAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
+        var childSuffix = (int)(Math.Abs(stamp % 999) + 1);
+        var rootCode = $"HO.3{middleSegment:0000}.000";
+        var childCode = $"HO.3{middleSegment:0000}.{childSuffix:000}";
+        var exportPath = Path.Combine(Path.GetTempPath(), $"agrinova-account-import-roundtrip-{stamp}.xlsx");
+        var xlsxService = new AccountImportExportXlsxService();
+
+        try
+        {
+            var importResult = await service.ImportAccountMasterDataAsync(
+                companyId,
+                new AccountImportBundle
+                {
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = rootCode,
+                            Name = $"Imported Root {stamp}",
+                            AccountType = "ASSET",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = childCode,
+                            Name = $"Imported Child {stamp}",
+                            AccountType = "ASSET",
+                            ParentAccountCode = rootCode,
+                            IsActive = true,
+                            RequiresSubledger = true,
+                            AllowedSubledgerType = "VENDOR"
+                        }
+                    ]
+                },
+                "admin");
+
+            Assert(importResult.IsSuccess, $"Account import should succeed: {importResult.Message}");
+            Assert(importResult.CreatedCount == 2, $"Expected 2 created accounts, got {importResult.CreatedCount}.");
+            Assert(importResult.UpdatedCount == 0, $"Expected 0 updated accounts, got {importResult.UpdatedCount}.");
+
+            var importedAccounts = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
+            var root = importedAccounts.FirstOrDefault(x => string.Equals(x.Code, rootCode, StringComparison.OrdinalIgnoreCase));
+            var child = importedAccounts.FirstOrDefault(x => string.Equals(x.Code, childCode, StringComparison.OrdinalIgnoreCase));
+
+            Assert(root is not null, $"Imported root account {rootCode} should exist.");
+            Assert(child is not null, $"Imported child account {childCode} should exist.");
+            Assert(!root!.IsPosting, "Imported root account should remain summary/non-posting.");
+            Assert(child!.IsPosting, "Imported child account should be posting.");
+            Assert(child.ParentAccountId == root.Id, "Imported child account should resolve the imported root as parent.");
+            Assert(child.RequiresSubledger, "Imported child account should preserve RequiresSubledger.");
+            Assert(
+                string.Equals(child.AllowedSubledgerType, "VENDOR", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected imported child subledger type: {child.AllowedSubledgerType}.");
+
+            var exportResult = xlsxService.Export(exportPath, [root, child]);
+            Assert(exportResult.IsSuccess, $"Account export should succeed: {exportResult.Message}");
+            Assert(File.Exists(exportPath), "Account export should create the XLSX file.");
+
+            var parseResult = xlsxService.Parse(exportPath);
+            Assert(parseResult.IsSuccess, $"Exported XLSX should parse back successfully: {parseResult.Message}");
+            Assert(parseResult.Bundle.Accounts.Count == 2, $"Expected 2 parsed accounts, got {parseResult.Bundle.Accounts.Count}.");
+
+            var parsedRoot = parseResult.Bundle.Accounts.FirstOrDefault(x => string.Equals(x.Code, rootCode, StringComparison.OrdinalIgnoreCase));
+            var parsedChild = parseResult.Bundle.Accounts.FirstOrDefault(x => string.Equals(x.Code, childCode, StringComparison.OrdinalIgnoreCase));
+            Assert(parsedRoot is not null, $"Round-tripped root account {rootCode} should be present.");
+            Assert(parsedChild is not null, $"Round-tripped child account {childCode} should be present.");
+            Assert(
+                string.Equals(parsedChild!.ParentAccountCode, rootCode, StringComparison.OrdinalIgnoreCase),
+                $"Round-tripped child parent should remain {rootCode}, got {parsedChild.ParentAccountCode}.");
+            Assert(
+                string.Equals(parsedChild.AllowedSubledgerType, "VENDOR", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected round-tripped subledger type: {parsedChild.AllowedSubledgerType}.");
+        }
+        finally
+        {
+            if (File.Exists(exportPath))
+            {
+                File.Delete(exportPath);
+            }
+
+            await using var connection = await OpenConnectionAsync();
+            await CleanupAccountsByCodesAsync(connection, companyId, [childCode, rootCode]);
+        }
+    }
+
+    private static async Task TestAccountImportUpdatesExistingAccountsWithoutBreakingHierarchyAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
+        var childSuffix = (int)(Math.Abs(stamp % 999) + 1);
+        var rootCode = $"HO.4{middleSegment:0000}.000";
+        var childCode = $"HO.4{middleSegment:0000}.{childSuffix:000}";
+
+        try
+        {
+            var initialImport = await service.ImportAccountMasterDataAsync(
+                companyId,
+                new AccountImportBundle
+                {
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = rootCode,
+                            Name = $"Update Root Initial {stamp}",
+                            AccountType = "EXPENSE",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = childCode,
+                            Name = $"Update Child Initial {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = rootCode,
+                            IsActive = true
+                        }
+                    ]
+                },
+                "admin");
+            Assert(initialImport.IsSuccess, $"Initial account import should succeed: {initialImport.Message}");
+
+            var updateImport = await service.ImportAccountMasterDataAsync(
+                companyId,
+                new AccountImportBundle
+                {
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = rootCode,
+                            Name = $"Update Root Final {stamp}",
+                            AccountType = "EXPENSE",
+                            IsActive = true,
+                            RequiresProject = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = childCode,
+                            Name = $"Update Child Final {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = rootCode,
+                            IsActive = false,
+                            RequiresCostCenter = true,
+                            RequiresSubledger = true,
+                            AllowedSubledgerType = "CUSTOMER"
+                        }
+                    ]
+                },
+                "admin");
+
+            Assert(updateImport.IsSuccess, $"Account update import should succeed: {updateImport.Message}");
+            Assert(updateImport.CreatedCount == 0, $"Expected 0 created accounts during update import, got {updateImport.CreatedCount}.");
+            Assert(updateImport.UpdatedCount == 2, $"Expected 2 updated accounts during update import, got {updateImport.UpdatedCount}.");
+
+            var importedAccounts = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
+            var root = importedAccounts.FirstOrDefault(x => string.Equals(x.Code, rootCode, StringComparison.OrdinalIgnoreCase));
+            var child = importedAccounts.FirstOrDefault(x => string.Equals(x.Code, childCode, StringComparison.OrdinalIgnoreCase));
+
+            Assert(root is not null, $"Updated root account {rootCode} should exist.");
+            Assert(child is not null, $"Updated child account {childCode} should exist.");
+            Assert(
+                string.Equals(root!.Name, $"Update Root Final {stamp}", StringComparison.Ordinal),
+                $"Unexpected updated root name: {root.Name}.");
+            Assert(root.RequiresProject, "Updated root account should preserve RequiresProject.");
+            Assert(
+                string.Equals(child!.Name, $"Update Child Final {stamp}", StringComparison.Ordinal),
+                $"Unexpected updated child name: {child.Name}.");
+            Assert(child.ParentAccountId == root.Id, "Updated child account should keep the same root parent.");
+            Assert(child.RequiresCostCenter, "Updated child account should preserve RequiresCostCenter.");
+            Assert(child.RequiresSubledger, "Updated child account should preserve RequiresSubledger.");
+            Assert(!child.IsActive, "Updated child account should preserve inactive state.");
+            Assert(
+                string.Equals(child.AllowedSubledgerType, "CUSTOMER", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected updated child subledger type: {child.AllowedSubledgerType}.");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+            await CleanupAccountsByCodesAsync(connection, companyId, [childCode, rootCode]);
+        }
+    }
+
+    private static async Task TestAccountImportRejectsInvalidParentRowsAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var activeRootCode = $"HO.1{Math.Abs((stamp / 1000) % 10000):0000}.000";
+        var inactiveRootCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.000";
+        var missingParentChildCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs(stamp % 997) + 1):000}";
+        var inactiveParentChildCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs((stamp + 1) % 997) + 1):000}";
+        var mismatchedChildCode = $"HO.1{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs((stamp + 2) % 997) + 1):000}";
+        long? inactiveRootId = null;
+
+        try
+        {
+            var activeRootSave = await service.SaveAccountAsync(
+                companyId,
+                new ManagedAccount
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = activeRootCode,
+                    Name = $"Active Parent {stamp}",
+                    AccountType = "ASSET",
+                    HierarchyLevel = 1,
+                    IsPosting = false,
+                    IsActive = true
+                },
+                "admin");
+            Assert(activeRootSave.IsSuccess, $"Failed to create active parent account: {activeRootSave.Message}");
+
+            var inactiveRootSave = await service.SaveAccountAsync(
+                companyId,
+                new ManagedAccount
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = inactiveRootCode,
+                    Name = $"Inactive Parent {stamp}",
+                    AccountType = "EXPENSE",
+                    HierarchyLevel = 1,
+                    IsPosting = false,
+                    IsActive = true
+                },
+                "admin");
+            Assert(inactiveRootSave.IsSuccess && inactiveRootSave.EntityId.HasValue, $"Failed to create inactive parent account: {inactiveRootSave.Message}");
+            inactiveRootId = inactiveRootSave.EntityId!.Value;
+
+            var deactivateInactiveRoot = await service.SoftDeleteAccountAsync(companyId, inactiveRootId.Value, "admin");
+            Assert(deactivateInactiveRoot.IsSuccess, $"Failed to deactivate parent account: {deactivateInactiveRoot.Message}");
+
+            var importResult = await service.ImportAccountMasterDataAsync(
+                companyId,
+                new AccountImportBundle
+                {
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = missingParentChildCode,
+                            Name = $"Missing Parent {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = "HO.59999.999",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = inactiveParentChildCode,
+                            Name = $"Inactive Parent {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = inactiveRootCode,
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 4,
+                            Code = mismatchedChildCode,
+                            Name = $"Type Mismatch {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = activeRootCode,
+                            IsActive = true
+                        }
+                    ]
+                },
+                "admin");
+
+            Assert(!importResult.IsSuccess, "Invalid account import should fail.");
+            Assert(importResult.Errors.Count == 3, $"Expected 3 row-level validation errors, got {importResult.Errors.Count}.");
+            Assert(
+                importResult.Errors.Any(error =>
+                    error.RowNumber == 2 &&
+                    error.Message.Contains("tidak ditemukan", StringComparison.OrdinalIgnoreCase)),
+                "Missing parent row should return a 'tidak ditemukan' validation error.");
+            Assert(
+                importResult.Errors.Any(error =>
+                    error.RowNumber == 3 &&
+                    error.Message.Contains("nonaktif", StringComparison.OrdinalIgnoreCase)),
+                "Inactive parent row should return a 'nonaktif' validation error.");
+            Assert(
+                importResult.Errors.Any(error =>
+                    error.RowNumber == 4 &&
+                    error.Message.Contains("Tipe akun child", StringComparison.OrdinalIgnoreCase)),
+                "Type mismatch row should return a child-account-type validation error.");
+
+            var importedAccounts = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
+            Assert(
+                importedAccounts.All(x =>
+                    !string.Equals(x.Code, missingParentChildCode, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(x.Code, inactiveParentChildCode, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(x.Code, mismatchedChildCode, StringComparison.OrdinalIgnoreCase)),
+                "Invalid account rows must not be persisted when import validation fails.");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+            await CleanupAccountsByCodesAsync(
+                connection,
+                companyId,
+                [mismatchedChildCode, inactiveParentChildCode, missingParentChildCode, inactiveRootCode, activeRootCode]);
+        }
+    }
+
+    private static async Task TestAccountImportRejectsUnauthorizedActorAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var roleCode = $"ITEST_NO_ACC_IMPORT_{stamp}";
+        var username = $"itest_noaccimport_{stamp}";
+        var rootCode = $"HO.6{Math.Abs(stamp % 10000):0000}.000";
+
+        long? roleId = null;
+        long? userId = null;
+
+        try
+        {
+            var roleSaveResult = await service.SaveRoleAsync(
+                new ManagedRole
+                {
+                    Id = 0,
+                    Code = roleCode,
+                    Name = "No Account Import Permission Role",
+                    IsSuperRole = false,
+                    IsActive = true
+                },
+                Array.Empty<long>(),
+                "admin");
+            Assert(roleSaveResult.IsSuccess && roleSaveResult.EntityId.HasValue, "Failed to create restricted role.");
+            roleId = roleSaveResult.EntityId!.Value;
+
+            var userSaveResult = await service.SaveUserAsync(
+                new ManagedUser
+                {
+                    Id = 0,
+                    Username = username,
+                    FullName = "No Account Import User",
+                    Email = $"{username}@local",
+                    IsActive = true,
+                    DefaultCompanyId = companyId,
+                    DefaultLocationId = locationId
+                },
+                "Admin@123",
+                [roleId.Value],
+                [companyId],
+                [locationId],
+                "admin");
+            Assert(userSaveResult.IsSuccess && userSaveResult.EntityId.HasValue, "Failed to create restricted user.");
+            userId = userSaveResult.EntityId!.Value;
+
+            var importResult = await service.ImportAccountMasterDataAsync(
+                companyId,
+                new AccountImportBundle
+                {
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = rootCode,
+                            Name = $"Unauthorized Import {stamp}",
+                            AccountType = "EXPENSE",
+                            IsActive = true
+                        }
+                    ]
+                },
+                username);
+
+            Assert(!importResult.IsSuccess, "Unauthorized actor should be rejected for account import.");
+            Assert(
+                importResult.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected unauthorized account-import message containing izin, got: {importResult.Message}");
+
+            var accounts = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
+            Assert(
+                accounts.All(x => !string.Equals(x.Code, rootCode, StringComparison.OrdinalIgnoreCase)),
+                "Unauthorized account import must not persist new accounts.");
+        }
+        finally
+        {
+            await using (var connection = await OpenConnectionAsync())
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, [rootCode]);
+
+                if (userId.HasValue)
+                {
+                    await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
+                    {
+                        deleteRoles.Parameters.AddWithValue("id", userId.Value);
+                        await deleteRoles.ExecuteNonQueryAsync();
+                    }
+
+                    await using (var deleteUser = new NpgsqlCommand("DELETE FROM app_users WHERE id = @id;", connection))
+                    {
+                        deleteUser.Parameters.AddWithValue("id", userId.Value);
+                        await deleteUser.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            if (roleId.HasValue)
+            {
+                await service.DeleteRoleAsync(roleId.Value, "admin");
+            }
+        }
+    }
+
     private static async Task TestAccountSaveAndSoftDeleteAsync()
     {
         var service = CreateService();
@@ -2842,6 +3699,609 @@ WHERE company_id = @company_id
                 await service.DeleteRoleAsync(roleId.Value, "admin");
             }
         }
+    }
+
+    private static async Task TestJournalRequiresActiveBlockAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(18);
+        var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
+
+        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
+        var assetAccount = workspace.Accounts.FirstOrDefault(x =>
+            x.IsPosting &&
+            string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
+        Assert(assetAccount is not null, "Posting asset account is required for block journal test.");
+
+        var allAccounts = await service.GetAccountsAsync(companyId, includeInactive: false, actorUsername: "admin");
+        var expenseParent = allAccounts.FirstOrDefault(x =>
+            !x.IsPosting &&
+            x.IsActive &&
+            string.Equals(x.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase));
+        Assert(expenseParent is not null, "Expense parent account is required for block journal test.");
+
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var estateCode = $"E{Math.Abs((stamp / 100) % 100000):00000}";
+        var divisionCode = $"D{Math.Abs((stamp / 10) % 100):00}";
+        var blockCode = $"B{Math.Abs(stamp % 100):00}";
+        var expectedBlockCode = $"{estateCode}-{divisionCode}-{blockCode}";
+        var accountCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs(stamp % 997) + 1):000}";
+        var journalNo = $"ITEST-BLOCK-{stamp}";
+
+        long? accountId = null;
+        long? estateId = null;
+        long? divisionId = null;
+        long? blockId = null;
+        long? journalId = null;
+
+        try
+        {
+            await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_BLOCK_REQUIRED_OPEN");
+
+            var saveAccountResult = await service.SaveAccountAsync(
+                companyId,
+                new ManagedAccount
+                {
+                    Id = 0,
+                    Code = accountCode,
+                    Name = $"Block Required Account {stamp}",
+                    AccountType = "EXPENSE",
+                    ParentAccountId = expenseParent!.Id,
+                    RequiresCostCenter = true,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveAccountResult.IsSuccess && saveAccountResult.EntityId.HasValue, $"Failed to create block-required account: {saveAccountResult.Message}");
+            accountId = saveAccountResult.EntityId!.Value;
+
+            var estateSave = await service.SaveEstateAsync(
+                companyId,
+                locationId,
+                new ManagedEstate
+                {
+                    Code = estateCode,
+                    Name = $"Estate {estateCode}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(estateSave.IsSuccess && estateSave.EntityId.HasValue, $"Failed to create estate: {estateSave.Message}");
+            estateId = estateSave.EntityId!.Value;
+
+            var divisionSave = await service.SaveDivisionAsync(
+                companyId,
+                locationId,
+                new ManagedDivision
+                {
+                    EstateCode = estateCode,
+                    Code = divisionCode,
+                    Name = $"Division {divisionCode}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(divisionSave.IsSuccess && divisionSave.EntityId.HasValue, $"Failed to create division: {divisionSave.Message}");
+            divisionId = divisionSave.EntityId!.Value;
+
+            var blockSave = await service.SaveBlockAsync(
+                companyId,
+                locationId,
+                new ManagedBlock
+                {
+                    EstateCode = estateCode,
+                    DivisionCode = divisionCode,
+                    Code = blockCode,
+                    Name = $"Block {blockCode}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(blockSave.IsSuccess && blockSave.EntityId.HasValue, $"Failed to create block: {blockSave.Message}");
+            blockId = blockSave.EntityId!.Value;
+
+            var hierarchy = await service.GetEstateHierarchyAsync(companyId, locationId, includeInactive: true, actorUsername: "admin");
+            var savedBlock = hierarchy.Estates
+                .SelectMany(x => x.Divisions)
+                .SelectMany(x => x.Blocks)
+                .FirstOrDefault(x => x.Id == blockId.Value);
+            Assert(savedBlock is not null, "Saved block should be returned by hierarchy workspace.");
+            Assert(
+                string.Equals(savedBlock!.CostCenterCode, expectedBlockCode, StringComparison.Ordinal),
+                $"Unexpected block code from hierarchy workspace: {savedBlock.CostCenterCode}");
+
+            var missingBlockResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = $"{journalNo}-MISS",
+                    JournalDate = targetMonth.AddDays(5),
+                    PeriodMonth = targetMonth,
+                    Description = "Missing block should fail"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = accountCode,
+                        Description = "Expense without block",
+                        Debit = 100m,
+                        Credit = 0m
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount!.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 100m
+                    }
+                },
+                "admin");
+            Assert(!missingBlockResult.IsSuccess, "Draft save should fail when required block is missing.");
+            Assert(
+                missingBlockResult.Message.Contains("blok", StringComparison.OrdinalIgnoreCase) ||
+                missingBlockResult.Message.Contains("block", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected missing-block message: {missingBlockResult.Message}");
+
+            var invalidBlockResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = $"{journalNo}-DIV",
+                    JournalDate = targetMonth.AddDays(6),
+                    PeriodMonth = targetMonth,
+                    Description = "Division code should fail as non-posting block"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = accountCode,
+                        Description = "Expense with division code",
+                        Debit = 100m,
+                        Credit = 0m,
+                        CostCenterCode = $"{estateCode}-{divisionCode}"
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 100m
+                    }
+                },
+                "admin");
+            Assert(!invalidBlockResult.IsSuccess, "Draft save should fail when a non-block code is used.");
+            Assert(
+                invalidBlockResult.Message.Contains("blok", StringComparison.OrdinalIgnoreCase) ||
+                invalidBlockResult.Message.Contains("valid", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected invalid-block message: {invalidBlockResult.Message}");
+
+            var saveResult = await service.SaveJournalDraftAsync(
+                new ManagedJournalHeader
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    JournalNo = journalNo,
+                    JournalDate = targetMonth.AddDays(7),
+                    PeriodMonth = targetMonth,
+                    Description = "Posting block should pass"
+                },
+                new[]
+                {
+                    new ManagedJournalLine
+                    {
+                        LineNo = 1,
+                        AccountCode = accountCode,
+                        Description = "Expense with posting block",
+                        Debit = 250m,
+                        Credit = 0m,
+                        CostCenterCode = expectedBlockCode
+                    },
+                    new ManagedJournalLine
+                    {
+                        LineNo = 2,
+                        AccountCode = assetAccount.Code,
+                        Description = "Balancing asset",
+                        Debit = 0m,
+                        Credit = 250m
+                    }
+                },
+                "admin");
+            Assert(saveResult.IsSuccess && saveResult.EntityId.HasValue, $"Draft save should pass with posting block: {saveResult.Message}");
+            journalId = saveResult.EntityId!.Value;
+
+            var submitResult = await service.SubmitJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(submitResult.IsSuccess, $"Failed to submit journal with block: {submitResult.Message}");
+            var approveResult = await service.ApproveJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(approveResult.IsSuccess, $"Failed to approve journal with block: {approveResult.Message}");
+            var postResult = await service.PostJournalAsync(journalId.Value, companyId, locationId, "admin");
+            Assert(postResult.IsSuccess, $"Failed to post journal with block: {postResult.Message}");
+
+            var subLedgerRows = await service.GetSubLedgerAsync(companyId, locationId, targetMonth, accountCode, actorUsername: "admin");
+            var postedRow = subLedgerRows.FirstOrDefault(x =>
+                string.Equals(x.JournalNo, journalNo, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(x.CostCenterCode, expectedBlockCode, StringComparison.OrdinalIgnoreCase));
+            Assert(postedRow is not null, "Subledger should return the posted journal row with block dimensions.");
+            Assert(string.Equals(postedRow!.EstateCode, estateCode, StringComparison.OrdinalIgnoreCase), "Unexpected estate code in subledger row.");
+            Assert(string.Equals(postedRow.DivisionCode, divisionCode, StringComparison.OrdinalIgnoreCase), "Unexpected division code in subledger row.");
+            Assert(string.Equals(postedRow.BlockCode, blockCode, StringComparison.OrdinalIgnoreCase), "Unexpected block code in subledger row.");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (journalId.HasValue)
+            {
+                await using (var deleteLedger = new NpgsqlCommand("DELETE FROM gl_ledger_entries WHERE journal_id = @journal_id;", connection))
+                {
+                    deleteLedger.Parameters.AddWithValue("journal_id", journalId.Value);
+                    await deleteLedger.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteDetails = new NpgsqlCommand("DELETE FROM gl_journal_details WHERE header_id = @header_id;", connection))
+                {
+                    deleteDetails.Parameters.AddWithValue("header_id", journalId.Value);
+                    await deleteDetails.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteHeader = new NpgsqlCommand("DELETE FROM gl_journal_headers WHERE id = @id;", connection))
+                {
+                    deleteHeader.Parameters.AddWithValue("id", journalId.Value);
+                    await deleteHeader.ExecuteNonQueryAsync();
+                }
+            }
+
+            await using (var deleteJournalAudit = new NpgsqlCommand(
+                @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'JOURNAL'
+  AND details ILIKE @journal_no;",
+                connection))
+            {
+                deleteJournalAudit.Parameters.AddWithValue("journal_no", $"%{journalNo}%");
+                await deleteJournalAudit.ExecuteNonQueryAsync();
+            }
+
+            if (accountId.HasValue)
+            {
+                await using (var deleteAccountAudit = new NpgsqlCommand("DELETE FROM sec_audit_logs WHERE entity_type = 'ACCOUNT' AND entity_id = @entity_id;", connection))
+                {
+                    deleteAccountAudit.Parameters.AddWithValue("entity_id", accountId.Value);
+                    await deleteAccountAudit.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteAccount = new NpgsqlCommand("DELETE FROM gl_accounts WHERE id = @id;", connection))
+                {
+                    deleteAccount.Parameters.AddWithValue("id", accountId.Value);
+                    await deleteAccount.ExecuteNonQueryAsync();
+                }
+            }
+
+            await CleanupEstateHierarchyByCodesAsync(connection, companyId, locationId, estateCode, divisionCode, blockCode);
+
+            if (previousPeriod.Exists)
+            {
+                await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_BLOCK_REQUIRED_RESTORE");
+            }
+            else
+            {
+                await using var deletePeriod = new NpgsqlCommand(
+                    @"DELETE FROM gl_accounting_periods
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND period_month = @period_month;",
+                    connection);
+                deletePeriod.Parameters.AddWithValue("company_id", companyId);
+                deletePeriod.Parameters.AddWithValue("location_id", locationId);
+                deletePeriod.Parameters.AddWithValue("period_month", targetMonth);
+                await deletePeriod.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
+    private static async Task TestEstateHierarchyImportRoundTripsAndFeedsJournalWorkspaceAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var estateCode = $"E{Math.Abs((stamp / 100) % 100000):00000}";
+        var divisionCode = $"D{Math.Abs((stamp / 10) % 100):00}";
+        var blockCode = $"B{Math.Abs(stamp % 100):00}";
+        var expectedBlockCode = $"{estateCode}-{divisionCode}-{blockCode}";
+        var exportPath = Path.Combine(Path.GetTempPath(), $"agrinova-estate-hierarchy-{stamp}.xlsx");
+        var restrictedRoleCode = $"ITEST_NO_ESTATE_IMPORT_{stamp}";
+        var restrictedUsername = $"itest_noestateimport_{stamp}";
+        var restrictedEstateCode = $"Z{Math.Abs((stamp / 1000) % 100000):00000}";
+        var xlsxService = new EstateHierarchyImportExportXlsxService();
+
+        long? roleId = null;
+        long? userId = null;
+
+        try
+        {
+            var importResult = await service.ImportEstateHierarchyAsync(
+                companyId,
+                locationId,
+                new EstateHierarchyImportBundle
+                {
+                    Estates =
+                    [
+                        new EstateImportRow
+                        {
+                            RowNumber = 2,
+                            Code = estateCode,
+                            Name = $"Estate {estateCode}",
+                            IsActive = true
+                        }
+                    ],
+                    Divisions =
+                    [
+                        new DivisionImportRow
+                        {
+                            RowNumber = 2,
+                            EstateCode = estateCode,
+                            Code = divisionCode,
+                            Name = $"Division {divisionCode}",
+                            IsActive = true
+                        }
+                    ],
+                    Blocks =
+                    [
+                        new BlockImportRow
+                        {
+                            RowNumber = 2,
+                            EstateCode = estateCode,
+                            DivisionCode = divisionCode,
+                            Code = blockCode,
+                            Name = $"Block {blockCode}",
+                            IsActive = true
+                        }
+                    ]
+                },
+                "admin");
+
+            Assert(importResult.IsSuccess, $"Estate hierarchy import should succeed: {importResult.Message}");
+            Assert(importResult.ImportedEstateCount == 1, $"Expected 1 imported estate, got {importResult.ImportedEstateCount}.");
+            Assert(importResult.ImportedDivisionCount == 1, $"Expected 1 imported division, got {importResult.ImportedDivisionCount}.");
+            Assert(importResult.ImportedBlockCount == 1, $"Expected 1 imported block, got {importResult.ImportedBlockCount}.");
+
+            var hierarchy = await service.GetEstateHierarchyAsync(companyId, locationId, includeInactive: true, actorUsername: "admin");
+            var importedEstate = hierarchy.Estates.FirstOrDefault(x => string.Equals(x.Code, estateCode, StringComparison.OrdinalIgnoreCase));
+            Assert(importedEstate is not null, "Imported estate should be present in hierarchy workspace.");
+            var importedDivision = importedEstate!.Divisions.FirstOrDefault(x => string.Equals(x.Code, divisionCode, StringComparison.OrdinalIgnoreCase));
+            Assert(importedDivision is not null, "Imported division should be present in hierarchy workspace.");
+            var importedBlock = importedDivision!.Blocks.FirstOrDefault(x => string.Equals(x.Code, blockCode, StringComparison.OrdinalIgnoreCase));
+            Assert(importedBlock is not null, "Imported block should be present in hierarchy workspace.");
+            Assert(
+                string.Equals(importedBlock!.CostCenterCode, expectedBlockCode, StringComparison.Ordinal),
+                $"Unexpected imported block code: {importedBlock.CostCenterCode}");
+
+            var journalWorkspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
+            var journalBlock = journalWorkspace.CostCenters.FirstOrDefault(x =>
+                string.Equals(x.CostCenterCode, expectedBlockCode, StringComparison.OrdinalIgnoreCase));
+            Assert(journalBlock is not null, "Journal workspace should project imported hierarchy blocks.");
+            Assert(journalBlock!.IsDirectBlockSource, "Journal workspace block projection should be direct-block sourced.");
+            Assert(journalBlock.BlockId.HasValue && journalBlock.BlockId.Value > 0, "Journal workspace block projection should expose block id.");
+
+            var exportResult = xlsxService.Export(exportPath, hierarchy);
+            Assert(exportResult.IsSuccess, $"Hierarchy export should succeed: {exportResult.Message}");
+            Assert(File.Exists(exportPath), "Hierarchy export should create an XLSX file.");
+
+            var parseResult = xlsxService.Parse(exportPath);
+            Assert(parseResult.IsSuccess, $"Exported hierarchy workbook should parse successfully: {parseResult.Message}");
+            Assert(
+                parseResult.Bundle.Estates.Any(x => string.Equals(x.Code, estateCode, StringComparison.OrdinalIgnoreCase)),
+                "Round-tripped workbook should contain the imported estate.");
+            Assert(
+                parseResult.Bundle.Divisions.Any(x =>
+                    string.Equals(x.EstateCode, estateCode, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(x.Code, divisionCode, StringComparison.OrdinalIgnoreCase)),
+                "Round-tripped workbook should contain the imported division.");
+            Assert(
+                parseResult.Bundle.Blocks.Any(x =>
+                    string.Equals(x.EstateCode, estateCode, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(x.DivisionCode, divisionCode, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(x.Code, blockCode, StringComparison.OrdinalIgnoreCase)),
+                "Round-tripped workbook should contain the imported block.");
+
+            var roleSaveResult = await service.SaveRoleAsync(
+                new ManagedRole
+                {
+                    Id = 0,
+                    Code = restrictedRoleCode,
+                    Name = "No Estate Import Permission Role",
+                    IsSuperRole = false,
+                    IsActive = true
+                },
+                Array.Empty<long>(),
+                "admin");
+            Assert(roleSaveResult.IsSuccess && roleSaveResult.EntityId.HasValue, "Failed to create restricted role for hierarchy import test.");
+            roleId = roleSaveResult.EntityId!.Value;
+
+            var userSaveResult = await service.SaveUserAsync(
+                new ManagedUser
+                {
+                    Id = 0,
+                    Username = restrictedUsername,
+                    FullName = "No Estate Import User",
+                    Email = $"{restrictedUsername}@local",
+                    IsActive = true,
+                    DefaultCompanyId = companyId,
+                    DefaultLocationId = locationId
+                },
+                "Admin@123",
+                [roleId.Value],
+                [companyId],
+                [locationId],
+                "admin");
+            Assert(userSaveResult.IsSuccess && userSaveResult.EntityId.HasValue, "Failed to create restricted user for hierarchy import test.");
+            userId = userSaveResult.EntityId!.Value;
+
+            var unauthorizedImportResult = await service.ImportEstateHierarchyAsync(
+                companyId,
+                locationId,
+                new EstateHierarchyImportBundle
+                {
+                    Estates =
+                    [
+                        new EstateImportRow
+                        {
+                            RowNumber = 2,
+                            Code = restrictedEstateCode,
+                            Name = $"Restricted Estate {restrictedEstateCode}",
+                            IsActive = true
+                        }
+                    ]
+                },
+                restrictedUsername);
+            Assert(!unauthorizedImportResult.IsSuccess, "Unauthorized actor should be rejected for estate hierarchy import.");
+            Assert(
+                unauthorizedImportResult.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected unauthorized hierarchy-import message containing izin, got: {unauthorizedImportResult.Message}");
+
+            var hierarchyAfterUnauthorizedAttempt = await service.GetEstateHierarchyAsync(companyId, locationId, includeInactive: true, actorUsername: "admin");
+            Assert(
+                hierarchyAfterUnauthorizedAttempt.Estates.All(x => !string.Equals(x.Code, restrictedEstateCode, StringComparison.OrdinalIgnoreCase)),
+                "Unauthorized hierarchy import must not persist a new estate.");
+        }
+        finally
+        {
+            if (File.Exists(exportPath))
+            {
+                File.Delete(exportPath);
+            }
+
+            await using var connection = await OpenConnectionAsync();
+            await CleanupEstateHierarchyByCodesAsync(connection, companyId, locationId, estateCode, divisionCode, blockCode);
+            await CleanupEstateHierarchyByCodesAsync(connection, companyId, locationId, restrictedEstateCode, string.Empty, string.Empty);
+
+            if (userId.HasValue)
+            {
+                await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
+                {
+                    deleteRoles.Parameters.AddWithValue("id", userId.Value);
+                    await deleteRoles.ExecuteNonQueryAsync();
+                }
+
+                await using (var deleteUser = new NpgsqlCommand("DELETE FROM app_users WHERE id = @id;", connection))
+                {
+                    deleteUser.Parameters.AddWithValue("id", userId.Value);
+                    await deleteUser.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (roleId.HasValue)
+            {
+                await service.DeleteRoleAsync(roleId.Value, "admin");
+            }
+        }
+    }
+
+    private static async Task CleanupEstateHierarchyByCodesAsync(
+        NpgsqlConnection connection,
+        long companyId,
+        long locationId,
+        string estateCode,
+        string divisionCode,
+        string blockCode)
+    {
+        await using (var deleteBlockAudits = new NpgsqlCommand(
+            @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'BLOCK'
+  AND details ILIKE @pattern;",
+            connection))
+        {
+            deleteBlockAudits.Parameters.AddWithValue("pattern", $"%estate={estateCode};division={divisionCode};code={blockCode}%");
+            await deleteBlockAudits.ExecuteNonQueryAsync();
+        }
+
+        await using (var deleteDivisionAudits = new NpgsqlCommand(
+            @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'DIVISION'
+  AND details ILIKE @pattern;",
+            connection))
+        {
+            deleteDivisionAudits.Parameters.AddWithValue("pattern", $"%estate={estateCode};code={divisionCode}%");
+            await deleteDivisionAudits.ExecuteNonQueryAsync();
+        }
+
+        await using (var deleteEstateAudits = new NpgsqlCommand(
+            @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'ESTATE'
+  AND details ILIKE @pattern;",
+            connection))
+        {
+            deleteEstateAudits.Parameters.AddWithValue("pattern", $"%code={estateCode}%");
+            await deleteEstateAudits.ExecuteNonQueryAsync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(blockCode))
+        {
+            await using var deleteBlock = new NpgsqlCommand(@"
+DELETE FROM blocks
+WHERE id IN (
+    SELECT b.id
+    FROM blocks b
+    JOIN divisions d ON d.id = b.division_id
+    JOIN estates e ON e.id = d.estate_id
+    WHERE e.company_id = @company_id
+      AND e.location_id = @location_id
+      AND upper(btrim(e.code)) = @estate_code
+      AND upper(btrim(d.code)) = @division_code
+      AND upper(btrim(b.code)) = @block_code);", connection);
+            deleteBlock.Parameters.AddWithValue("company_id", companyId);
+            deleteBlock.Parameters.AddWithValue("location_id", locationId);
+            deleteBlock.Parameters.AddWithValue("estate_code", estateCode.ToUpperInvariant());
+            deleteBlock.Parameters.AddWithValue("division_code", divisionCode.ToUpperInvariant());
+            deleteBlock.Parameters.AddWithValue("block_code", blockCode.ToUpperInvariant());
+            await deleteBlock.ExecuteNonQueryAsync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(divisionCode))
+        {
+            await using var deleteDivision = new NpgsqlCommand(@"
+DELETE FROM divisions
+WHERE id IN (
+    SELECT d.id
+    FROM divisions d
+    JOIN estates e ON e.id = d.estate_id
+    WHERE e.company_id = @company_id
+      AND e.location_id = @location_id
+      AND upper(btrim(e.code)) = @estate_code
+      AND upper(btrim(d.code)) = @division_code);", connection);
+            deleteDivision.Parameters.AddWithValue("company_id", companyId);
+            deleteDivision.Parameters.AddWithValue("location_id", locationId);
+            deleteDivision.Parameters.AddWithValue("estate_code", estateCode.ToUpperInvariant());
+            deleteDivision.Parameters.AddWithValue("division_code", divisionCode.ToUpperInvariant());
+            await deleteDivision.ExecuteNonQueryAsync();
+        }
+
+        await using var deleteEstate = new NpgsqlCommand(@"
+DELETE FROM estates
+WHERE company_id = @company_id
+  AND location_id = @location_id
+  AND upper(btrim(code)) = @estate_code;", connection);
+        deleteEstate.Parameters.AddWithValue("company_id", companyId);
+        deleteEstate.Parameters.AddWithValue("location_id", locationId);
+        deleteEstate.Parameters.AddWithValue("estate_code", estateCode.ToUpperInvariant());
+        await deleteEstate.ExecuteNonQueryAsync();
     }
 
 }

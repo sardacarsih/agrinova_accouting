@@ -17,7 +17,7 @@ public sealed class PeriodCloseChecklistItem
     public string Message { get; init; } = string.Empty;
 }
 
-public sealed class MasterDataViewModel : ViewModelBase
+public sealed partial class MasterDataViewModel : ViewModelBase
 {
     private const int AccountDefaultPageSize = 50;
     private const string AccountStatusActive = "Aktif";
@@ -25,12 +25,17 @@ public sealed class MasterDataViewModel : ViewModelBase
     private const string AccountStatusInactive = "Nonaktif";
 
     private readonly IAccessControlService _accessControlService;
+    private readonly AccountImportExportXlsxService _accountImportExportXlsxService = new();
+    private readonly EstateHierarchyImportExportXlsxService _estateHierarchyImportExportXlsxService = new();
     private readonly string _actorUsername;
     private readonly long _companyId;
     private readonly long _locationId;
     private readonly Func<string, bool> _confirmClosePeriod;
     private readonly RelayCommand _saveAccountCommand;
     private readonly RelayCommand _deactivateAccountCommand;
+    private readonly RelayCommand _editAccountCommand;
+    private readonly RelayCommand _closeMasterDataModalCommand;
+    private readonly RelayCommand _openCostCenterDetailCommand;
     private readonly RelayCommand _nextCloseWizardStepCommand;
     private readonly RelayCommand _previousCloseWizardStepCommand;
     private readonly RelayCommand _validateCloseWizardChecklistCommand;
@@ -38,14 +43,36 @@ public sealed class MasterDataViewModel : ViewModelBase
     private readonly RelayCommand _cancelCloseWizardCommand;
     private readonly RelayCommand _previousAccountPageCommand;
     private readonly RelayCommand _nextAccountPageCommand;
+    private readonly RelayCommand _exportAccountsCommand;
+    private readonly RelayCommand _importAccountsCommand;
+    private readonly RelayCommand _newEstateCommand;
+    private readonly RelayCommand _newDivisionCommand;
+    private readonly RelayCommand _newBlockCommand;
+    private readonly RelayCommand _editEstateHierarchyCommand;
+    private readonly RelayCommand _deactivateEstateHierarchyCommand;
+    private readonly RelayCommand _saveEstateHierarchyCommand;
+    private readonly RelayCommand _cancelEstateHierarchyEditCommand;
+    private readonly RelayCommand _importEstateHierarchyCommand;
+    private readonly RelayCommand _exportEstateHierarchyCommand;
 
     private ManagedAccount? _selectedAccount;
     private ManagedAccountingPeriod? _selectedAccountingPeriod;
+    private ManagedAccount? _accountDraft;
+    private ManagedCostCenter? _selectedCostCenter;
+    private ManagedCostCenter? _costCenterDetail;
+    private object? _selectedEstateHierarchyItem;
+    private ManagedEstate? _selectedEstateHierarchyEstate;
+    private ManagedDivision? _selectedEstateHierarchyDivision;
+    private ManagedBlock? _selectedEstateHierarchyBlock;
     private DateTime _periodMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private string _periodNote = string.Empty;
     private string _statusMessage = string.Empty;
     private string _accountSearchText = string.Empty;
+    private string _costCenterSearchText = string.Empty;
+    private string _estateHierarchySearchText = string.Empty;
     private string _selectedAccountStatusFilter = AccountStatusActive;
+    private string _selectedCostCenterStatusFilter = AccountStatusActive;
+    private string _selectedEstateHierarchyStatusFilter = AccountStatusActive;
     private int _accountPage = 1;
     private int _accountTotalCount;
     private ManagedAccount? _selectedParentAccountOption;
@@ -60,7 +87,17 @@ public sealed class MasterDataViewModel : ViewModelBase
     private bool _closeWizardActionSucceeded;
     private bool _isBusy;
     private bool _isLoaded;
+    private bool _isMasterDataModalOpen;
+    private bool _isEstateHierarchyEditorOpen;
     private string _selectedMasterDataSubmenu = "coa";
+    private string _activeMasterDataModal = string.Empty;
+    private string _estateHierarchyEditorLevel = "ESTATE";
+    private long _estateHierarchyEditorEntityId;
+    private string _estateHierarchyEditorEstateCode = string.Empty;
+    private string _estateHierarchyEditorDivisionCode = string.Empty;
+    private string _estateHierarchyEditorCode = string.Empty;
+    private string _estateHierarchyEditorName = string.Empty;
+    private bool _estateHierarchyEditorIsActive = true;
 
     public MasterDataViewModel(
         IAccessControlService accessControlService,
@@ -79,6 +116,10 @@ public sealed class MasterDataViewModel : ViewModelBase
         CanManageAccountingPeriod = canManageAccountingPeriod;
 
         Accounts = new ObservableCollection<ManagedAccount>();
+        CostCenters = new ObservableCollection<ManagedCostCenter>();
+        VisibleCostCenters = new ObservableCollection<ManagedCostCenter>();
+        EstateHierarchyEstates = new ObservableCollection<ManagedEstate>();
+        VisibleEstateHierarchyEstates = new ObservableCollection<ManagedEstate>();
         ParentAccountOptions = new ObservableCollection<ManagedAccount>();
         AccountingPeriods = new ObservableCollection<ManagedAccountingPeriod>();
         AccountingPeriodAuditLogs = new ObservableCollection<ManagedAuditLog>();
@@ -90,6 +131,13 @@ public sealed class MasterDataViewModel : ViewModelBase
             "REVENUE",
             "EXPENSE"
         };
+        SubledgerTypeOptions = new ObservableCollection<string>
+        {
+            string.Empty,
+            "VENDOR",
+            "CUSTOMER",
+            "EMPLOYEE"
+        };
         AccountStatusFilterOptions = new ObservableCollection<string>
         {
             AccountStatusActive,
@@ -97,6 +145,8 @@ public sealed class MasterDataViewModel : ViewModelBase
             AccountStatusInactive
         };
         ClosePeriodChecklistItems = new ObservableCollection<PeriodCloseChecklistItem>();
+        AccountImportErrorPanel = new InventoryImportErrorPanelState("Error Import Master Akun");
+        EstateHierarchyImportErrorPanel = new InventoryImportErrorPanelState("Error Import Estate/Division/Blok");
 
         RefreshCommand = new RelayCommand(() => _ = LoadDataAsync());
 
@@ -105,11 +155,39 @@ public sealed class MasterDataViewModel : ViewModelBase
         SaveAccountCommand = _saveAccountCommand;
         _deactivateAccountCommand = new RelayCommand(() => _ = DeactivateAccountAsync(), () => CanDeactivateAccount);
         DeactivateAccountCommand = _deactivateAccountCommand;
+        _editAccountCommand = new RelayCommand(OpenEditAccountModal, () => CanEditAccount);
+        EditAccountCommand = _editAccountCommand;
+        _closeMasterDataModalCommand = new RelayCommand(CloseMasterDataModal);
+        CloseMasterDataModalCommand = _closeMasterDataModalCommand;
+        _openCostCenterDetailCommand = new RelayCommand(OpenCostCenterDetailModal, () => CanOpenCostCenterDetail);
+        OpenCostCenterDetailCommand = _openCostCenterDetailCommand;
         RebuildAccountHierarchyCommand = new RelayCommand(() => _ = RebuildAccountHierarchyAsync());
         _previousAccountPageCommand = new RelayCommand(() => _ = GoToPreviousAccountPageAsync(), () => CanGoToPreviousAccountPage && !IsBusy);
         PreviousAccountPageCommand = _previousAccountPageCommand;
         _nextAccountPageCommand = new RelayCommand(() => _ = GoToNextAccountPageAsync(), () => CanGoToNextAccountPage && !IsBusy);
         NextAccountPageCommand = _nextAccountPageCommand;
+        _exportAccountsCommand = new RelayCommand(() => _ = ExportAccountsAsync(), () => CanExportAccounts);
+        ExportAccountsCommand = _exportAccountsCommand;
+        _importAccountsCommand = new RelayCommand(() => _ = ImportAccountsAsync(), () => CanImportAccounts);
+        ImportAccountsCommand = _importAccountsCommand;
+        _newEstateCommand = new RelayCommand(OpenNewEstateEditor, () => CanCreateEstate);
+        NewEstateCommand = _newEstateCommand;
+        _newDivisionCommand = new RelayCommand(OpenNewDivisionEditor, () => CanCreateDivision);
+        NewDivisionCommand = _newDivisionCommand;
+        _newBlockCommand = new RelayCommand(OpenNewBlockEditor, () => CanCreateBlock);
+        NewBlockCommand = _newBlockCommand;
+        _editEstateHierarchyCommand = new RelayCommand(OpenEditEstateHierarchyEditor, () => CanEditEstateHierarchy);
+        EditEstateHierarchyCommand = _editEstateHierarchyCommand;
+        _deactivateEstateHierarchyCommand = new RelayCommand(() => _ = DeactivateEstateHierarchyAsync(), () => CanDeactivateEstateHierarchy);
+        DeactivateEstateHierarchyCommand = _deactivateEstateHierarchyCommand;
+        _saveEstateHierarchyCommand = new RelayCommand(() => _ = SaveEstateHierarchyAsync(), () => CanSaveEstateHierarchy);
+        SaveEstateHierarchyCommand = _saveEstateHierarchyCommand;
+        _cancelEstateHierarchyEditCommand = new RelayCommand(CancelEstateHierarchyEdit);
+        CancelEstateHierarchyEditCommand = _cancelEstateHierarchyEditCommand;
+        _importEstateHierarchyCommand = new RelayCommand(() => _ = ImportEstateHierarchyAsync(), () => CanImportEstateHierarchy);
+        ImportEstateHierarchyCommand = _importEstateHierarchyCommand;
+        _exportEstateHierarchyCommand = new RelayCommand(() => _ = ExportEstateHierarchyAsync(), () => CanExportEstateHierarchy);
+        ExportEstateHierarchyCommand = _exportEstateHierarchyCommand;
 
         NewPeriodCommand = new RelayCommand(NewPeriod);
         OpenPeriodCommand = new RelayCommand(() => _ = SetPeriodStateAsync(isOpen: true));
@@ -148,6 +226,7 @@ public sealed class MasterDataViewModel : ViewModelBase
             }
 
             OnPropertyChanged(nameof(IsMasterAccountListSelected));
+            OnPropertyChanged(nameof(IsMasterCostCenterSelected));
             OnPropertyChanged(nameof(IsMasterPeriodSelected));
             OnPropertyChanged(nameof(IsMasterPlaceholderSelected));
             OnPropertyChanged(nameof(MasterPlaceholderTitle));
@@ -156,6 +235,8 @@ public sealed class MasterDataViewModel : ViewModelBase
     }
 
     public bool IsMasterAccountListSelected => string.Equals(SelectedMasterDataSubmenu, "coa", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsMasterCostCenterSelected => string.Equals(SelectedMasterDataSubmenu, "cost_centers", StringComparison.OrdinalIgnoreCase);
 
     public bool IsMasterPeriodSelected =>
         string.Equals(SelectedMasterDataSubmenu, "buka_tutup_periode", StringComparison.OrdinalIgnoreCase) ||
@@ -180,6 +261,14 @@ public sealed class MasterDataViewModel : ViewModelBase
     };
 
     public ObservableCollection<ManagedAccount> Accounts { get; }
+
+    public ObservableCollection<ManagedCostCenter> CostCenters { get; }
+
+    public ObservableCollection<ManagedCostCenter> VisibleCostCenters { get; }
+
+    public ObservableCollection<ManagedEstate> EstateHierarchyEstates { get; }
+
+    public ObservableCollection<ManagedEstate> VisibleEstateHierarchyEstates { get; }
     
     public ObservableCollection<ManagedAccount> ParentAccountOptions { get; }
 
@@ -193,6 +282,12 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     public ObservableCollection<string> AccountTypeOptions { get; }
 
+    public ObservableCollection<string> SubledgerTypeOptions { get; }
+
+    public InventoryImportErrorPanelState AccountImportErrorPanel { get; }
+
+    public InventoryImportErrorPanelState EstateHierarchyImportErrorPanel { get; }
+
     public ICommand RefreshCommand { get; }
 
     public ICommand NewAccountCommand { get; }
@@ -201,11 +296,39 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     public ICommand DeactivateAccountCommand { get; }
 
+    public ICommand EditAccountCommand { get; }
+
+    public ICommand CloseMasterDataModalCommand { get; }
+
+    public ICommand OpenCostCenterDetailCommand { get; }
+
     public ICommand RebuildAccountHierarchyCommand { get; }
 
     public ICommand PreviousAccountPageCommand { get; }
 
     public ICommand NextAccountPageCommand { get; }
+
+    public ICommand ExportAccountsCommand { get; }
+
+    public ICommand ImportAccountsCommand { get; }
+
+    public ICommand NewEstateCommand { get; }
+
+    public ICommand NewDivisionCommand { get; }
+
+    public ICommand NewBlockCommand { get; }
+
+    public ICommand EditEstateHierarchyCommand { get; }
+
+    public ICommand DeactivateEstateHierarchyCommand { get; }
+
+    public ICommand SaveEstateHierarchyCommand { get; }
+
+    public ICommand CancelEstateHierarchyEditCommand { get; }
+
+    public ICommand ImportEstateHierarchyCommand { get; }
+
+    public ICommand ExportEstateHierarchyCommand { get; }
 
     public ICommand NewPeriodCommand { get; }
 
@@ -237,6 +360,24 @@ public sealed class MasterDataViewModel : ViewModelBase
 
             SyncSelectedParentAccountOption();
             OnPropertyChanged(nameof(HasSelectedAccount));
+            OnPropertyChanged(nameof(CanEditAccount));
+            OnPropertyChanged(nameof(CanDeactivateAccount));
+            _editAccountCommand.RaiseCanExecuteChanged();
+            _deactivateAccountCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public ManagedAccount? AccountDraft
+    {
+        get => _accountDraft;
+        private set
+        {
+            if (!SetProperty(ref _accountDraft, value))
+            {
+                return;
+            }
+
+            SyncSelectedParentAccountOption();
             NotifyAccountFormChanged();
         }
     }
@@ -256,28 +397,73 @@ public sealed class MasterDataViewModel : ViewModelBase
                 return;
             }
 
-            if (SelectedAccount is null)
+            if (AccountDraft is null)
             {
                 return;
             }
 
             if (value is null)
             {
-                SelectedAccount.ParentAccountId = null;
-                SelectedAccount.ParentAccountCode = string.Empty;
-                SelectedAccount.HierarchyLevel = 1;
-                SelectedAccount.IsPosting = false;
+                AccountDraft.ParentAccountId = null;
+                AccountDraft.ParentAccountCode = string.Empty;
+                AccountDraft.HierarchyLevel = 1;
+                AccountDraft.IsPosting = false;
             }
             else
             {
-                SelectedAccount.ParentAccountId = value.Id;
-                SelectedAccount.ParentAccountCode = value.Code;
-                SelectedAccount.HierarchyLevel = 2;
-                SelectedAccount.IsPosting = true;
+                AccountDraft.ParentAccountId = value.Id;
+                AccountDraft.ParentAccountCode = value.Code;
+                AccountDraft.HierarchyLevel = 2;
+                AccountDraft.IsPosting = true;
             }
 
             NotifyAccountFormChanged();
         }
+    }
+
+    public ManagedCostCenter? SelectedCostCenter
+    {
+        get => _selectedCostCenter;
+        set
+        {
+            if (!SetProperty(ref _selectedCostCenter, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanOpenCostCenterDetail));
+            _openCostCenterDetailCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public ManagedCostCenter? CostCenterDetail
+    {
+        get => _costCenterDetail;
+        private set => SetProperty(ref _costCenterDetail, value);
+    }
+
+    public object? SelectedEstateHierarchyItem
+    {
+        get => _selectedEstateHierarchyItem;
+        private set => SetProperty(ref _selectedEstateHierarchyItem, value);
+    }
+
+    public ManagedEstate? SelectedEstateHierarchyEstate
+    {
+        get => _selectedEstateHierarchyEstate;
+        private set => SetProperty(ref _selectedEstateHierarchyEstate, value);
+    }
+
+    public ManagedDivision? SelectedEstateHierarchyDivision
+    {
+        get => _selectedEstateHierarchyDivision;
+        private set => SetProperty(ref _selectedEstateHierarchyDivision, value);
+    }
+
+    public ManagedBlock? SelectedEstateHierarchyBlock
+    {
+        get => _selectedEstateHierarchyBlock;
+        private set => SetProperty(ref _selectedEstateHierarchyBlock, value);
     }
 
     public ManagedAccountingPeriod? SelectedAccountingPeriod
@@ -302,6 +488,8 @@ public sealed class MasterDataViewModel : ViewModelBase
     }
 
     public bool HasSelectedAccount => SelectedAccount is not null && SelectedAccount.Id > 0;
+
+    public bool HasSelectedCostCenter => SelectedCostCenter is not null;
 
     public bool HasSelectedAccountingPeriod => SelectedAccountingPeriod is not null;
 
@@ -331,6 +519,64 @@ public sealed class MasterDataViewModel : ViewModelBase
             }
 
             _ = LoadAccountPageAsync(1, SelectedAccount?.Id);
+        }
+    }
+
+    public string CostCenterSearchText
+    {
+        get => _costCenterSearchText;
+        set
+        {
+            if (!SetProperty(ref _costCenterSearchText, value ?? string.Empty))
+            {
+                return;
+            }
+
+            ApplyCostCenterFilter();
+        }
+    }
+
+    public string SelectedCostCenterStatusFilter
+    {
+        get => _selectedCostCenterStatusFilter;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) ? AccountStatusActive : value.Trim();
+            if (!SetProperty(ref _selectedCostCenterStatusFilter, normalized))
+            {
+                return;
+            }
+
+            ApplyCostCenterFilter();
+        }
+    }
+
+    public string EstateHierarchySearchText
+    {
+        get => _estateHierarchySearchText;
+        set
+        {
+            if (!SetProperty(ref _estateHierarchySearchText, value ?? string.Empty))
+            {
+                return;
+            }
+
+            ApplyEstateHierarchyFilter();
+        }
+    }
+
+    public string SelectedEstateHierarchyStatusFilter
+    {
+        get => _selectedEstateHierarchyStatusFilter;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) ? AccountStatusActive : value.Trim();
+            if (!SetProperty(ref _selectedEstateHierarchyStatusFilter, normalized))
+            {
+                return;
+            }
+
+            ApplyEstateHierarchyFilter();
         }
     }
 
@@ -391,19 +637,157 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     public int VisibleAccountsCount => Accounts.Count;
 
-    public bool IsAccountCreateMode => SelectedAccount is not null && SelectedAccount.Id <= 0;
+    public bool IsAccountCreateMode => AccountDraft is not null && AccountDraft.Id <= 0;
 
-    public bool IsAccountEditMode => SelectedAccount is not null && SelectedAccount.Id > 0;
+    public bool IsAccountEditMode => AccountDraft is not null && AccountDraft.Id > 0;
+
+    public bool IsMasterDataModalOpen
+    {
+        get => _isMasterDataModalOpen;
+        private set
+        {
+            if (!SetProperty(ref _isMasterDataModalOpen, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsAccountModalOpen));
+            OnPropertyChanged(nameof(IsCostCenterDetailModalOpen));
+        }
+    }
+
+    public bool IsAccountModalOpen => IsMasterDataModalOpen && string.Equals(_activeMasterDataModal, "account", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsCostCenterDetailModalOpen => IsMasterDataModalOpen && string.Equals(_activeMasterDataModal, "cost_center_detail", StringComparison.OrdinalIgnoreCase);
+
+    public bool CanExportAccounts => !IsBusy && _companyId > 0;
+
+    public bool CanImportAccounts => !IsBusy && _companyId > 0;
+
+    public string ExportAccountsTooltip => CanExportAccounts
+        ? "Export seluruh master akun company aktif ke XLSX."
+        : "Master akun sedang sibuk atau company tidak valid.";
+
+    public string ImportAccountsTooltip => CanImportAccounts
+        ? "Import master akun dari XLSX dengan mode upsert only."
+        : "Master akun sedang sibuk atau company tidak valid.";
+
+    public bool CanCreateEstate => !IsBusy && _companyId > 0 && _locationId > 0;
+
+    public bool CanCreateDivision => !IsBusy && SelectedEstateHierarchyEstate is not null;
+
+    public bool CanCreateBlock => !IsBusy && SelectedEstateHierarchyDivision is not null;
+
+    public bool CanEditEstateHierarchy => !IsBusy && HasSelectedEstateHierarchyItem;
+
+    public bool CanDeactivateEstateHierarchy => !IsBusy && HasSelectedEstateHierarchyItem;
+
+    public bool CanImportEstateHierarchy => !IsBusy && _companyId > 0 && _locationId > 0;
+
+    public bool CanExportEstateHierarchy => !IsBusy && _companyId > 0 && _locationId > 0;
+
+    public bool CanSaveEstateHierarchy =>
+        !IsBusy &&
+        IsEstateHierarchyEditorOpen &&
+        !string.IsNullOrWhiteSpace(EstateHierarchyEditorLevel) &&
+        !string.IsNullOrWhiteSpace(EstateHierarchyEditorCode) &&
+        !string.IsNullOrWhiteSpace(EstateHierarchyEditorName) &&
+        (string.Equals(EstateHierarchyEditorLevel, "ESTATE", StringComparison.OrdinalIgnoreCase) ||
+         !string.IsNullOrWhiteSpace(EstateHierarchyEditorEstateCode)) &&
+        (string.Equals(EstateHierarchyEditorLevel, "BLOCK", StringComparison.OrdinalIgnoreCase)
+            ? !string.IsNullOrWhiteSpace(EstateHierarchyEditorDivisionCode)
+            : true);
+
+    public string ExportEstateHierarchyTooltip => CanExportEstateHierarchy
+        ? "Export seluruh master estate/division/blok ke XLSX."
+        : "Hierarchy estate/division/blok sedang sibuk atau company/lokasi tidak valid.";
+
+    public string ImportEstateHierarchyTooltip => CanImportEstateHierarchy
+        ? "Import hierarchy estate/division/blok dari workbook XLSX 3 sheet."
+        : "Hierarchy estate/division/blok sedang sibuk atau company/lokasi tidak valid.";
+
+    public string EstateHierarchyEditorTitle =>
+        EstateHierarchyEditorLevel switch
+        {
+            "DIVISION" => _estateHierarchyEditorEntityId > 0 ? "Edit Divisi" : "Divisi Baru",
+            "BLOCK" => _estateHierarchyEditorEntityId > 0 ? "Edit Blok" : "Blok Baru",
+            _ => _estateHierarchyEditorEntityId > 0 ? "Edit Estate" : "Estate Baru"
+        };
+
+    public string EstateHierarchyEditorSubtitle =>
+        EstateHierarchyEditorLevel switch
+        {
+            "DIVISION" => "Divisi terhubung ke estate terpilih dan parent tidak dapat dipindahkan dari editor ini.",
+            "BLOCK" => "Blok terhubung ke divisi terpilih dan menjadi level posting untuk jurnal.",
+            _ => "Estate adalah level teratas hierarchy lokasi."
+        };
+
+    public string SelectedEstateHierarchyLevelLabel =>
+        SelectedEstateHierarchyItem switch
+        {
+            ManagedBlock => "Blok",
+            ManagedDivision => "Divisi",
+            ManagedEstate => "Estate",
+            _ => "-"
+        };
+
+    public string SelectedEstateHierarchyCode =>
+        SelectedEstateHierarchyItem switch
+        {
+            ManagedBlock block => block.CostCenterCode,
+            ManagedDivision division => $"{division.EstateCode}-{division.Code}",
+            ManagedEstate estate => estate.Code,
+            _ => "-"
+        };
+
+    public string SelectedEstateHierarchyName =>
+        SelectedEstateHierarchyItem switch
+        {
+            ManagedBlock block => block.Name,
+            ManagedDivision division => division.Name,
+            ManagedEstate estate => estate.Name,
+            _ => "Pilih node hierarchy di panel kiri."
+        };
+
+    public string SelectedEstateHierarchyParentLabel =>
+        SelectedEstateHierarchyItem switch
+        {
+            ManagedBlock block => $"{block.EstateCode} / {block.DivisionCode}",
+            ManagedDivision division => division.EstateCode,
+            ManagedEstate => "(Root)",
+            _ => "-"
+        };
+
+    public string SelectedEstateHierarchyStatusText =>
+        SelectedEstateHierarchyItem switch
+        {
+            ManagedBlock block => block.IsActive ? "Aktif" : "Nonaktif",
+            ManagedDivision division => division.IsActive ? "Aktif" : "Nonaktif",
+            ManagedEstate estate => estate.IsActive ? "Aktif" : "Nonaktif",
+            _ => "-"
+        };
+
+    public bool CanEditAccount => !IsBusy && SelectedAccount is not null;
+
+    public bool CanOpenCostCenterDetail => !IsBusy && SelectedCostCenter is not null;
+
+    public int VisibleCostCentersCount => VisibleCostCenters.Count;
+
+    public int VisibleEstatesCount => VisibleEstateHierarchyEstates.Count;
+
+    public int VisibleDivisionsCount => VisibleEstateHierarchyEstates.Sum(x => x.Divisions.Count);
+
+    public int VisibleBlocksCount => VisibleEstateHierarchyEstates.Sum(x => x.Divisions.Sum(y => y.Blocks.Count));
 
     public string AccountEditorTitle =>
-        SelectedAccount is null
+        AccountDraft is null
             ? "Editor Master Akun"
             : IsAccountCreateMode
                 ? "Buat Akun Baru"
                 : "Edit Akun";
 
     public string AccountEditorSubtitle =>
-        SelectedAccount is null
+        AccountDraft is null
             ? "Pilih akun dari daftar atau klik Akun Baru untuk mulai input."
             : IsAccountCreateMode
                 ? "Lengkapi kode, nama, tipe akun, dan parent jika akun turunan."
@@ -413,19 +797,19 @@ public sealed class MasterDataViewModel : ViewModelBase
     {
         get
         {
-            if (SelectedAccount is null)
+            if (AccountDraft is null)
             {
                 return "-";
             }
 
-            if (!SelectedAccount.ParentAccountId.HasValue)
+            if (!AccountDraft.ParentAccountId.HasValue)
             {
                 return "(Summary Root)";
             }
 
-            return string.IsNullOrWhiteSpace(SelectedAccount.ParentAccountCode)
+            return string.IsNullOrWhiteSpace(AccountDraft.ParentAccountCode)
                 ? "-"
-                : SelectedAccount.ParentAccountCode;
+                : AccountDraft.ParentAccountCode;
         }
     }
 
@@ -433,12 +817,12 @@ public sealed class MasterDataViewModel : ViewModelBase
     {
         get
         {
-            if (SelectedAccount is null)
+            if (AccountDraft is null)
             {
                 return "-";
             }
 
-            return SelectedAccount.HierarchyLevel <= 1
+            return AccountDraft.HierarchyLevel <= 1
                 ? "1 (Summary)"
                 : "2 (Posting)";
         }
@@ -448,12 +832,112 @@ public sealed class MasterDataViewModel : ViewModelBase
     {
         get
         {
-            if (SelectedAccount is null)
+            if (AccountDraft is null)
             {
                 return "-";
             }
 
-            return SelectedAccount.IsPosting ? "Posting" : "Non-Posting";
+            return AccountDraft.IsPosting ? "Posting" : "Non-Posting";
+        }
+    }
+
+    public bool HasSelectedEstateHierarchyItem => SelectedEstateHierarchyItem is not null;
+
+    public bool IsEstateHierarchyEditorOpen
+    {
+        get => _isEstateHierarchyEditorOpen;
+        private set
+        {
+            if (!SetProperty(ref _isEstateHierarchyEditorOpen, value))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
+        }
+    }
+
+    public string EstateHierarchyEditorLevel
+    {
+        get => _estateHierarchyEditorLevel;
+        private set
+        {
+            if (!SetProperty(ref _estateHierarchyEditorLevel, value))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
+        }
+    }
+
+    public string EstateHierarchyEditorEstateCode
+    {
+        get => _estateHierarchyEditorEstateCode;
+        set
+        {
+            if (!SetProperty(ref _estateHierarchyEditorEstateCode, value ?? string.Empty))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
+        }
+    }
+
+    public string EstateHierarchyEditorDivisionCode
+    {
+        get => _estateHierarchyEditorDivisionCode;
+        set
+        {
+            if (!SetProperty(ref _estateHierarchyEditorDivisionCode, value ?? string.Empty))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
+        }
+    }
+
+    public string EstateHierarchyEditorCode
+    {
+        get => _estateHierarchyEditorCode;
+        set
+        {
+            if (!SetProperty(ref _estateHierarchyEditorCode, value ?? string.Empty))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
+        }
+    }
+
+    public string EstateHierarchyEditorName
+    {
+        get => _estateHierarchyEditorName;
+        set
+        {
+            if (!SetProperty(ref _estateHierarchyEditorName, value ?? string.Empty))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
+        }
+    }
+
+    public bool EstateHierarchyEditorIsActive
+    {
+        get => _estateHierarchyEditorIsActive;
+        set
+        {
+            if (!SetProperty(ref _estateHierarchyEditorIsActive, value))
+            {
+                return;
+            }
+
+            NotifyEstateHierarchyEditorChanged();
         }
     }
 
@@ -476,8 +960,7 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     public bool CanDeactivateAccount =>
         !IsBusy &&
-        SelectedAccount is { Id: > 0 } &&
-        SelectedAccount.IsActive;
+        ((AccountDraft is { Id: > 0, IsActive: true }) || (SelectedAccount is { Id: > 0, IsActive: true }));
 
     public DateTime PeriodMonth
     {
@@ -657,13 +1140,41 @@ public sealed class MasterDataViewModel : ViewModelBase
             OnPropertyChanged(nameof(ClosePeriodTooltip));
             OnPropertyChanged(nameof(CanMoveToNextCloseWizardStep));
             OnPropertyChanged(nameof(CanMoveToPreviousCloseWizardStep));
-            OnPropertyChanged(nameof(CanConfirmCloseWizard));
-            NotifyAccountFormChanged();
-            _previousAccountPageCommand.RaiseCanExecuteChanged();
-            _nextAccountPageCommand.RaiseCanExecuteChanged();
-            RaiseCloseWizardCanExecuteChanged();
-        }
-    }
+              OnPropertyChanged(nameof(CanConfirmCloseWizard));
+              OnPropertyChanged(nameof(CanEditAccount));
+              OnPropertyChanged(nameof(CanOpenCostCenterDetail));
+              OnPropertyChanged(nameof(CanExportAccounts));
+              OnPropertyChanged(nameof(CanImportAccounts));
+              OnPropertyChanged(nameof(CanCreateEstate));
+              OnPropertyChanged(nameof(CanCreateDivision));
+              OnPropertyChanged(nameof(CanCreateBlock));
+              OnPropertyChanged(nameof(CanEditEstateHierarchy));
+              OnPropertyChanged(nameof(CanDeactivateEstateHierarchy));
+              OnPropertyChanged(nameof(CanSaveEstateHierarchy));
+              OnPropertyChanged(nameof(CanImportEstateHierarchy));
+              OnPropertyChanged(nameof(CanExportEstateHierarchy));
+              OnPropertyChanged(nameof(ExportAccountsTooltip));
+              OnPropertyChanged(nameof(ImportAccountsTooltip));
+              OnPropertyChanged(nameof(ExportEstateHierarchyTooltip));
+              OnPropertyChanged(nameof(ImportEstateHierarchyTooltip));
+              NotifyAccountFormChanged();
+              _previousAccountPageCommand.RaiseCanExecuteChanged();
+              _nextAccountPageCommand.RaiseCanExecuteChanged();
+              _editAccountCommand.RaiseCanExecuteChanged();
+              _openCostCenterDetailCommand.RaiseCanExecuteChanged();
+              _exportAccountsCommand.RaiseCanExecuteChanged();
+              _importAccountsCommand.RaiseCanExecuteChanged();
+              _newEstateCommand.RaiseCanExecuteChanged();
+              _newDivisionCommand.RaiseCanExecuteChanged();
+              _newBlockCommand.RaiseCanExecuteChanged();
+              _editEstateHierarchyCommand.RaiseCanExecuteChanged();
+              _deactivateEstateHierarchyCommand.RaiseCanExecuteChanged();
+              _saveEstateHierarchyCommand.RaiseCanExecuteChanged();
+              _importEstateHierarchyCommand.RaiseCanExecuteChanged();
+              _exportEstateHierarchyCommand.RaiseCanExecuteChanged();
+              RaiseCloseWizardCanExecuteChanged();
+          }
+      }
 
     public string OpenPeriodTooltip =>
         !CanManageAccountingPeriod
@@ -692,6 +1203,10 @@ public sealed class MasterDataViewModel : ViewModelBase
     public void NavigateToMasterDataSubmenu(string? subCode)
     {
         var normalized = string.IsNullOrWhiteSpace(subCode) ? "coa" : subCode.Trim().ToLowerInvariant();
+        if (IsMasterDataModalOpen)
+        {
+            CloseMasterDataModal();
+        }
         SelectedMasterDataSubmenu = normalized;
     }
 
@@ -708,9 +1223,13 @@ public sealed class MasterDataViewModel : ViewModelBase
         OnPropertyChanged(nameof(AccountValidationMessage));
         OnPropertyChanged(nameof(CanSaveAccount));
         OnPropertyChanged(nameof(CanDeactivateAccount));
+        OnPropertyChanged(nameof(IsAccountModalOpen));
+        OnPropertyChanged(nameof(IsCostCenterDetailModalOpen));
 
         _saveAccountCommand.RaiseCanExecuteChanged();
         _deactivateAccountCommand.RaiseCanExecuteChanged();
+        _editAccountCommand.RaiseCanExecuteChanged();
+        _openCostCenterDetailCommand.RaiseCanExecuteChanged();
     }
 
     private async Task LoadDataAsync(long? selectedAccountId = null, DateTime? selectedPeriodMonth = null, bool forceReload = false)
@@ -723,18 +1242,21 @@ public sealed class MasterDataViewModel : ViewModelBase
         try
         {
             IsBusy = true;
-            StatusMessage = "Memuat master data akun dan periode...";
+            StatusMessage = "Memuat master data akun, hierarchy estate/blok, dan periode...";
             var accountTask = _accessControlService.SearchAccountsAsync(
                 _companyId,
                 BuildAccountSearchFilter(AccountPage),
                 _actorUsername);
             var parentTask = _accessControlService.GetAccountsAsync(_companyId, includeInactive: false, actorUsername: _actorUsername);
             var periodTask = _accessControlService.GetAccountingPeriodsAsync(_companyId, _locationId, _actorUsername);
+            var hierarchyTask = _accessControlService.GetEstateHierarchyAsync(_companyId, _locationId, includeInactive: true, actorUsername: _actorUsername);
             var auditTask = _accessControlService.GetAuditLogsAsync("ACCOUNTING_PERIOD", 300);
-            await Task.WhenAll(accountTask, parentTask, periodTask, auditTask);
+            await Task.WhenAll(accountTask, parentTask, periodTask, hierarchyTask, auditTask);
 
             ApplyAccountSearchResult(accountTask.Result, selectedAccountId);
             UpdateParentAccountOptions(parentTask.Result);
+            ReplaceCollection(EstateHierarchyEstates, hierarchyTask.Result.Estates.OrderBy(x => x.Code));
+            ApplyEstateHierarchyFilter();
             ReplaceCollection(AccountingPeriods, periodTask.Result.OrderByDescending(x => x.PeriodMonth));
             ReplaceCollection(
                 AccountingPeriodAuditLogs,
@@ -751,7 +1273,7 @@ public sealed class MasterDataViewModel : ViewModelBase
                 ?? AccountingPeriods.FirstOrDefault();
 
             _isLoaded = true;
-            StatusMessage = "Master data akun dan periode siap digunakan.";
+            StatusMessage = "Master data akun, hierarchy estate/blok, dan periode siap digunakan.";
         }
         catch (Exception ex)
         {
@@ -760,7 +1282,7 @@ public sealed class MasterDataViewModel : ViewModelBase
                 "LoadDataFailed",
                 $"action=load_master_data company_id={_companyId} location_id={_locationId}",
                 ex);
-            StatusMessage = "Gagal memuat master data akun/periode.";
+            StatusMessage = "Gagal memuat master data akun/hierarchy/periode.";
         }
         finally
         {
@@ -770,7 +1292,7 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     private void NewAccount()
     {
-        SelectedAccount = new ManagedAccount
+        AccountDraft = new ManagedAccount
         {
             Id = 0,
             CompanyId = _companyId,
@@ -784,8 +1306,53 @@ public sealed class MasterDataViewModel : ViewModelBase
             IsActive = true
         };
         SelectedParentAccountOption = null;
+        OpenModal("account");
 
         StatusMessage = "Input akun baru siap.";
+    }
+
+    private void OpenEditAccountModal()
+    {
+        if (SelectedAccount is null)
+        {
+            StatusMessage = "Pilih akun yang ingin diedit.";
+            return;
+        }
+
+        AccountDraft = CloneAccount(SelectedAccount);
+        SyncSelectedParentAccountOption();
+        OpenModal("account");
+        StatusMessage = $"Akun {SelectedAccount.Code} siap diedit.";
+    }
+
+    private void OpenCostCenterDetailModal()
+    {
+        if (SelectedCostCenter is null)
+        {
+            StatusMessage = "Pilih blok yang ingin dilihat.";
+            return;
+        }
+
+        CostCenterDetail = SelectedCostCenter;
+        OpenModal("cost_center_detail");
+        StatusMessage = $"Detail blok {SelectedCostCenter.CostCenterCode} siap ditampilkan.";
+    }
+
+    private void CloseMasterDataModal()
+    {
+        IsMasterDataModalOpen = false;
+        _activeMasterDataModal = string.Empty;
+        AccountDraft = null;
+        CostCenterDetail = null;
+        SelectedParentAccountOption = null;
+        NotifyAccountFormChanged();
+    }
+
+    private void OpenModal(string modalName)
+    {
+        _activeMasterDataModal = modalName;
+        IsMasterDataModalOpen = true;
+        NotifyAccountFormChanged();
     }
 
     private async Task SaveAccountAsync()
@@ -799,7 +1366,7 @@ public sealed class MasterDataViewModel : ViewModelBase
             return;
         }
 
-        if (SelectedAccount is null)
+        if (AccountDraft is null)
         {
             StatusMessage = "Pilih atau buat akun terlebih dahulu.";
             return;
@@ -814,11 +1381,12 @@ public sealed class MasterDataViewModel : ViewModelBase
         {
             IsBusy = true;
             var periodMonth = SelectedAccountingPeriod?.PeriodMonth ?? PeriodMonth;
-            var result = await _accessControlService.SaveAccountAsync(_companyId, SelectedAccount, _actorUsername);
+            var result = await _accessControlService.SaveAccountAsync(_companyId, AccountDraft, _actorUsername);
             StatusMessage = result.Message;
 
             if (result.IsSuccess)
             {
+                CloseMasterDataModal();
                 await LoadDataAsync(result.EntityId, periodMonth, forceReload: true);
             }
         }
@@ -836,7 +1404,8 @@ public sealed class MasterDataViewModel : ViewModelBase
             return;
         }
 
-        if (SelectedAccount is null)
+        var targetAccount = AccountDraft?.Id > 0 ? AccountDraft : SelectedAccount;
+        if (targetAccount is null)
         {
             StatusMessage = "Pilih akun aktif terlebih dahulu.";
             return;
@@ -850,13 +1419,14 @@ public sealed class MasterDataViewModel : ViewModelBase
         try
         {
             IsBusy = true;
-            var selectedId = SelectedAccount.Id;
+            var selectedId = targetAccount.Id;
             var periodMonth = SelectedAccountingPeriod?.PeriodMonth ?? PeriodMonth;
             var result = await _accessControlService.SoftDeleteAccountAsync(_companyId, selectedId, _actorUsername);
             StatusMessage = result.Message;
 
             if (result.IsSuccess)
             {
+                CloseMasterDataModal();
                 await LoadDataAsync(selectedId, periodMonth, forceReload: true);
             }
         }
@@ -988,7 +1558,7 @@ public sealed class MasterDataViewModel : ViewModelBase
         _isSyncingParentSelection = true;
         try
         {
-            if (SelectedAccount?.ParentAccountId is not long parentId || parentId <= 0)
+            if (AccountDraft?.ParentAccountId is not long parentId || parentId <= 0)
             {
                 SelectedParentAccountOption = null;
                 return;
@@ -1004,24 +1574,24 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     private void ApplyParentSelectionToSelectedAccount()
     {
-        if (SelectedAccount is null)
+        if (AccountDraft is null)
         {
             return;
         }
 
         if (SelectedParentAccountOption is null)
         {
-            SelectedAccount.ParentAccountId = null;
-            SelectedAccount.ParentAccountCode = string.Empty;
-            SelectedAccount.HierarchyLevel = 1;
-            SelectedAccount.IsPosting = false;
+            AccountDraft.ParentAccountId = null;
+            AccountDraft.ParentAccountCode = string.Empty;
+            AccountDraft.HierarchyLevel = 1;
+            AccountDraft.IsPosting = false;
             return;
         }
 
-        SelectedAccount.ParentAccountId = SelectedParentAccountOption.Id;
-        SelectedAccount.ParentAccountCode = SelectedParentAccountOption.Code;
-        SelectedAccount.HierarchyLevel = 2;
-        SelectedAccount.IsPosting = true;
+        AccountDraft.ParentAccountId = SelectedParentAccountOption.Id;
+        AccountDraft.ParentAccountCode = SelectedParentAccountOption.Code;
+        AccountDraft.HierarchyLevel = 2;
+        AccountDraft.IsPosting = true;
     }
 
     private void NewPeriod()
@@ -1416,33 +1986,45 @@ public sealed class MasterDataViewModel : ViewModelBase
 
     private bool IsAccountFormValid(out string message)
     {
-        if (SelectedAccount is null)
+        if (AccountDraft is null)
         {
             message = "Pilih akun dari daftar atau klik Akun Baru.";
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(SelectedAccount.Code))
+        if (string.IsNullOrWhiteSpace(AccountDraft.Code))
         {
             message = "Kode akun wajib diisi.";
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(SelectedAccount.Name))
+        if (string.IsNullOrWhiteSpace(AccountDraft.Name))
         {
             message = "Nama akun wajib diisi.";
             return false;
         }
 
-        if (!IsSegmentedAccountCode(SelectedAccount.Code))
+        if (!IsSegmentedAccountCode(AccountDraft.Code))
         {
-            message = "Format kode akun harus XX.XXXXX.XXX.";
+            message = "Format kode akun harus 99.99999.999.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(AccountDraft.AccountType))
+        {
+            message = "Tipe akun wajib dipilih.";
+            return false;
+        }
+
+        if (AccountDraft.RequiresSubledger && string.IsNullOrWhiteSpace(AccountDraft.AllowedSubledgerType))
+        {
+            message = "Jenis buku bantu wajib dipilih jika akun mewajibkan buku bantu.";
             return false;
         }
 
         if (SelectedParentAccountOption is not null)
         {
-            if (SelectedAccount.Id > 0 && SelectedParentAccountOption.Id == SelectedAccount.Id)
+            if (AccountDraft.Id > 0 && SelectedParentAccountOption.Id == AccountDraft.Id)
             {
                 message = "Parent akun tidak boleh akun itu sendiri.";
                 return false;
@@ -1453,10 +2035,68 @@ public sealed class MasterDataViewModel : ViewModelBase
                 message = "Parent akun harus akun level 1 (summary).";
                 return false;
             }
+
+            if (!string.Equals(AccountDraft.AccountType, SelectedParentAccountOption.AccountType, StringComparison.OrdinalIgnoreCase))
+            {
+                message = "Tipe akun child harus sama dengan parent.";
+                return false;
+            }
         }
 
         message = string.Empty;
         return true;
+    }
+
+    private void ApplyCostCenterFilter()
+    {
+        IEnumerable<ManagedCostCenter> query = CostCenters;
+
+        var keyword = (CostCenterSearchText ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            query = query.Where(x =>
+                x.CostCenterCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                x.CostCenterName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                x.EstateCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                x.DivisionCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                x.BlockCode.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                x.BlockName.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.Equals(SelectedCostCenterStatusFilter, AccountStatusActive, StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(x => x.IsActive);
+        }
+        else if (string.Equals(SelectedCostCenterStatusFilter, AccountStatusInactive, StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(x => !x.IsActive);
+        }
+
+        ReplaceCollection(VisibleCostCenters, query.OrderBy(x => x.CostCenterCode));
+        SelectedCostCenter = VisibleCostCenters.FirstOrDefault();
+        OnPropertyChanged(nameof(VisibleCostCentersCount));
+    }
+
+    private static ManagedAccount CloneAccount(ManagedAccount source)
+    {
+        return new ManagedAccount
+        {
+            Id = source.Id,
+            CompanyId = source.CompanyId,
+            Code = source.Code,
+            Name = source.Name,
+            AccountType = source.AccountType,
+            ParentAccountId = source.ParentAccountId,
+            ParentAccountCode = source.ParentAccountCode,
+            HierarchyLevel = source.HierarchyLevel,
+            IsPosting = source.IsPosting,
+            IsActive = source.IsActive,
+            RequiresDepartment = source.RequiresDepartment,
+            RequiresProject = source.RequiresProject,
+            RequiresCostCenter = source.RequiresCostCenter,
+            RequiresSubledger = source.RequiresSubledger,
+            AllowedSubledgerType = source.AllowedSubledgerType
+        };
     }
 
     private static bool IsSegmentedAccountCode(string? accountCode)
@@ -1467,7 +2107,7 @@ public sealed class MasterDataViewModel : ViewModelBase
             return false;
         }
 
-        if (!char.IsLetterOrDigit(code[0]) || !char.IsLetterOrDigit(code[1]))
+        if (!char.IsDigit(code[0]) || !char.IsDigit(code[1]))
         {
             return false;
         }

@@ -492,6 +492,66 @@ WHERE upper(warehouse_code) = ANY(@warehouse_codes);",
         await deleteWarehouses.ExecuteNonQueryAsync();
     }
 
+    private static async Task CleanupAccountsByCodesAsync(
+        NpgsqlConnection connection,
+        long companyId,
+        IReadOnlyCollection<string> accountCodes)
+    {
+        var normalizedAccountCodes = (accountCodes ?? Array.Empty<string>())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalizedAccountCodes.Length == 0)
+        {
+            return;
+        }
+
+        var accountIds = new List<long>();
+        await using (var selectAccounts = new NpgsqlCommand(
+            @"SELECT id
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND upper(account_code) = ANY(@account_codes)
+ORDER BY hierarchy_level DESC, id DESC;",
+            connection))
+        {
+            selectAccounts.Parameters.AddWithValue("company_id", companyId);
+            selectAccounts.Parameters.Add(new NpgsqlParameter("account_codes", NpgsqlDbType.Array | NpgsqlDbType.Text)
+            {
+                Value = normalizedAccountCodes
+            });
+
+            await using var reader = await selectAccounts.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                accountIds.Add(reader.GetInt64(0));
+            }
+        }
+
+        foreach (var accountId in accountIds)
+        {
+            await using (var deleteAudit = new NpgsqlCommand(
+                @"DELETE FROM sec_audit_logs
+WHERE entity_type = 'ACCOUNT'
+  AND entity_id = @entity_id;",
+                connection))
+            {
+                deleteAudit.Parameters.AddWithValue("entity_id", accountId);
+                await deleteAudit.ExecuteNonQueryAsync();
+            }
+
+            await using (var deleteAccount = new NpgsqlCommand(
+                @"DELETE FROM gl_accounts
+WHERE id = @id;",
+                connection))
+            {
+                deleteAccount.Parameters.AddWithValue("id", accountId);
+                await deleteAccount.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
     private static async Task RestoreCentralSyncSystemSettingsAsync(
         string? masterCompanyId,
         string? baseUrl,

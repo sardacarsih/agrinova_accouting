@@ -813,7 +813,12 @@ WHERE details ILIKE @category_code
                 "admin");
             Assert(saveLocationCostingResult.IsSuccess, $"Failed to save location costing override (FIFO): {saveLocationCostingResult.Message}");
 
-            var baseDate = DateTime.Today.AddDays(-2);
+            // Keep the 3-day test window inside a single accounting month so period-based
+            // journal pulls behave consistently even when the suite runs on the 1st/2nd.
+            var today = DateTime.Today;
+            var baseDate = today.Day >= 3
+                ? today.AddDays(-2)
+                : new DateTime(today.AddMonths(-1).Year, today.AddMonths(-1).Month, 15);
 
             stockInTxA = await CreateAndPostStockTransactionAsync(
                 service,

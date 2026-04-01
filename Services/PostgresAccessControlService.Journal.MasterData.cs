@@ -46,7 +46,9 @@ SELECT a.id,
         a.is_active,
        COALESCE(a.requires_department, FALSE) AS requires_department,
        COALESCE(a.requires_project, FALSE) AS requires_project,
-       COALESCE(a.requires_cost_center, FALSE) AS requires_cost_center
+       COALESCE(a.requires_cost_center, FALSE) AS requires_cost_center,
+       COALESCE(a.requires_partner, FALSE) AS requires_subledger,
+       COALESCE(a.allowed_subledger_type, '') AS allowed_subledger_type
 FROM gl_accounts a
 LEFT JOIN gl_accounts p ON p.id = a.parent_account_id
 WHERE a.company_id = @company_id
@@ -64,7 +66,7 @@ ORDER BY a.account_code;", connection);
                 CompanyId = reader.GetInt64(1),
                 Code = reader.GetString(2),
                 Name = reader.GetString(3),
-                AccountType = NormalizeAccountType(reader.GetString(4), reader.GetString(2)),
+                AccountType = NormalizeAccountType(reader.GetString(4)),
                 ParentAccountId = reader.IsDBNull(5) ? null : reader.GetInt64(5),
                 ParentAccountCode = reader.GetString(6),
                 HierarchyLevel = reader.GetInt32(7),
@@ -72,7 +74,9 @@ ORDER BY a.account_code;", connection);
                 IsActive = !reader.IsDBNull(9) && reader.GetBoolean(9),
                 RequiresDepartment = !reader.IsDBNull(10) && reader.GetBoolean(10),
                 RequiresProject = !reader.IsDBNull(11) && reader.GetBoolean(11),
-                RequiresCostCenter = !reader.IsDBNull(12) && reader.GetBoolean(12)
+                RequiresCostCenter = !reader.IsDBNull(12) && reader.GetBoolean(12),
+                RequiresSubledger = !reader.IsDBNull(13) && reader.GetBoolean(13),
+                AllowedSubledgerType = reader.IsDBNull(14) ? string.Empty : NormalizeSubledgerType(reader.GetString(14))
             });
         }
 
@@ -170,7 +174,9 @@ SELECT a.id,
        a.is_active,
        COALESCE(a.requires_department, FALSE) AS requires_department,
        COALESCE(a.requires_project, FALSE) AS requires_project,
-       COALESCE(a.requires_cost_center, FALSE) AS requires_cost_center
+       COALESCE(a.requires_cost_center, FALSE) AS requires_cost_center,
+       COALESCE(a.requires_partner, FALSE) AS requires_subledger,
+       COALESCE(a.allowed_subledger_type, '') AS allowed_subledger_type
 FROM gl_accounts a
 LEFT JOIN gl_accounts p ON p.id = a.parent_account_id
 WHERE a.company_id = @company_id
@@ -197,7 +203,7 @@ LIMIT @limit OFFSET @offset;", connection))
                     CompanyId = reader.GetInt64(1),
                     Code = reader.GetString(2),
                     Name = reader.GetString(3),
-                    AccountType = NormalizeAccountType(reader.GetString(4), reader.GetString(2)),
+                    AccountType = NormalizeAccountType(reader.GetString(4)),
                     ParentAccountId = reader.IsDBNull(5) ? null : reader.GetInt64(5),
                     ParentAccountCode = reader.GetString(6),
                     HierarchyLevel = reader.GetInt32(7),
@@ -205,7 +211,9 @@ LIMIT @limit OFFSET @offset;", connection))
                     IsActive = !reader.IsDBNull(9) && reader.GetBoolean(9),
                     RequiresDepartment = !reader.IsDBNull(10) && reader.GetBoolean(10),
                     RequiresProject = !reader.IsDBNull(11) && reader.GetBoolean(11),
-                    RequiresCostCenter = !reader.IsDBNull(12) && reader.GetBoolean(12)
+                    RequiresCostCenter = !reader.IsDBNull(12) && reader.GetBoolean(12),
+                    RequiresSubledger = !reader.IsDBNull(13) && reader.GetBoolean(13),
+                    AllowedSubledgerType = reader.IsDBNull(14) ? string.Empty : NormalizeSubledgerType(reader.GetString(14))
                 });
             }
         }
@@ -244,15 +252,6 @@ LIMIT @limit OFFSET @offset;", connection))
             await connection.OpenAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-            var normalizedCode = account.Code.Trim().ToUpperInvariant();
-            var normalizedName = account.Name.Trim();
-            if (!IsSegmentedAccountCode(normalizedCode))
-            {
-                return new AccessOperationResult(false, "Format kode akun harus XX.XXXXX.XXX.");
-            }
-
-            var normalizedType = NormalizeAccountType(account.AccountType, normalizedCode);
-            var normalBalance = normalizedType is "LIABILITY" or "EQUITY" or "REVENUE" ? "C" : "D";
             var actor = NormalizeActor(actorUsername);
             var permissionFailure = await EnsurePermissionAsync(
                 connection,
@@ -270,6 +269,17 @@ LIMIT @limit OFFSET @offset;", connection))
                 return permissionFailure;
             }
 
+            var normalizedCode = account.Code.Trim().ToUpperInvariant();
+            var normalizedName = account.Name.Trim();
+            if (!IsSegmentedAccountCode(normalizedCode))
+            {
+                return new AccessOperationResult(false, "Format kode akun harus XX.99999.999.");
+            }
+
+            var normalizedType = NormalizeAccountType(account.AccountType);
+            var normalizedSubledgerType = NormalizeSubledgerType(account.AllowedSubledgerType);
+            var requiresSubledger = account.RequiresSubledger || !string.IsNullOrWhiteSpace(normalizedSubledgerType);
+
             long? parentAccountId = account.ParentAccountId is > 0 ? account.ParentAccountId : null;
             var parentAccountCode = string.Empty;
 
@@ -284,7 +294,8 @@ LIMIT @limit OFFSET @offset;", connection))
 SELECT id,
        account_code,
        parent_account_id,
-       is_active
+       is_active,
+       account_type
 FROM gl_accounts
 WHERE id = @id
   AND company_id = @company_id;", connection, transaction);
@@ -298,6 +309,7 @@ WHERE id = @id
 
                 var parentHasParent = !parentReader.IsDBNull(2);
                 var parentIsActive = !parentReader.IsDBNull(3) && parentReader.GetBoolean(3);
+                var parentAccountType = NormalizeAccountType(parentReader.IsDBNull(4) ? null : parentReader.GetString(4));
                 if (parentHasParent)
                 {
                     return new AccessOperationResult(false, "Parent akun harus akun level 1 (summary).");
@@ -309,10 +321,27 @@ WHERE id = @id
                 }
 
                 parentAccountCode = parentReader.GetString(1);
+                if (string.IsNullOrWhiteSpace(parentAccountType))
+                {
+                    return new AccessOperationResult(false, "Parent akun memiliki tipe akun tidak valid.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(normalizedType) &&
+                    !string.Equals(normalizedType, parentAccountType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new AccessOperationResult(false, "Tipe akun child harus sama dengan parent.");
+                }
+
+                normalizedType = parentAccountType;
+            }
+            else if (string.IsNullOrWhiteSpace(normalizedType))
+            {
+                return new AccessOperationResult(false, "Tipe akun wajib dipilih.");
             }
 
             var isPosting = parentAccountId.HasValue;
             var hierarchyLevel = isPosting ? 2 : 1;
+            var normalBalance = normalizedType is "LIABILITY" or "EQUITY" or "REVENUE" ? "C" : "D";
 
             long accountId;
             if (account.Id <= 0)
@@ -331,6 +360,8 @@ INSERT INTO gl_accounts (
     requires_department,
     requires_project,
     requires_cost_center,
+    requires_partner,
+    allowed_subledger_type,
     created_by,
     created_at,
     updated_by,
@@ -348,6 +379,8 @@ VALUES (
     @requires_department,
     @requires_project,
     @requires_cost_center,
+    @requires_partner,
+    @allowed_subledger_type,
     @actor,
     NOW(),
     @actor,
@@ -365,6 +398,8 @@ RETURNING id;", connection, transaction);
                 insertCommand.Parameters.AddWithValue("requires_department", account.RequiresDepartment);
                 insertCommand.Parameters.AddWithValue("requires_project", account.RequiresProject);
                 insertCommand.Parameters.AddWithValue("requires_cost_center", account.RequiresCostCenter);
+                insertCommand.Parameters.AddWithValue("requires_partner", requiresSubledger);
+                insertCommand.Parameters.AddWithValue("allowed_subledger_type", normalizedSubledgerType);
                 insertCommand.Parameters.AddWithValue("actor", actor);
                 accountId = Convert.ToInt64(await insertCommand.ExecuteScalarAsync(cancellationToken));
             }
@@ -383,6 +418,8 @@ SET account_code = @account_code,
     requires_department = @requires_department,
     requires_project = @requires_project,
     requires_cost_center = @requires_cost_center,
+    requires_partner = @requires_partner,
+    allowed_subledger_type = @allowed_subledger_type,
     updated_by = @actor,
     updated_at = NOW()
 WHERE id = @id
@@ -400,6 +437,8 @@ WHERE id = @id
                 updateCommand.Parameters.AddWithValue("requires_department", account.RequiresDepartment);
                 updateCommand.Parameters.AddWithValue("requires_project", account.RequiresProject);
                 updateCommand.Parameters.AddWithValue("requires_cost_center", account.RequiresCostCenter);
+                updateCommand.Parameters.AddWithValue("requires_partner", requiresSubledger);
+                updateCommand.Parameters.AddWithValue("allowed_subledger_type", normalizedSubledgerType);
                 updateCommand.Parameters.AddWithValue("actor", actor);
                 var affected = await updateCommand.ExecuteNonQueryAsync(cancellationToken);
                 if (affected <= 0)
@@ -418,7 +457,7 @@ WHERE id = @id
                 accountId,
                 account.Id <= 0 ? "CREATE_OR_UPDATE" : "UPDATE",
                 actor,
-                $"company={companyId};code={normalizedCode};name={normalizedName};type={normalizedType};normal_balance={normalBalance};active={account.IsActive};parent={parentAccountCode};requires_department={account.RequiresDepartment};requires_project={account.RequiresProject};requires_cost_center={account.RequiresCostCenter}",
+                $"company={companyId};code={normalizedCode};name={normalizedName};type={normalizedType};normal_balance={normalBalance};active={account.IsActive};parent={parentAccountCode};requires_department={account.RequiresDepartment};requires_project={account.RequiresProject};requires_cost_center={account.RequiresCostCenter};requires_subledger={requiresSubledger};allowed_subledger_type={normalizedSubledgerType}",
                 cancellationToken);
 
             await RebuildAccountHierarchyInternalAsync(
@@ -740,6 +779,94 @@ ORDER BY estate_code, division_code, block_code, cost_center_code;", connection)
                 Level = reader.GetString(12),
                 IsPosting = !reader.IsDBNull(13) && reader.GetBoolean(13),
                 IsActive = !reader.IsDBNull(14) && reader.GetBoolean(14)
+            });
+        }
+
+        return output;
+    }
+
+    public async Task<List<ManagedCostCenter>> GetBlockCostCentersAsync(
+        long companyId,
+        long locationId,
+        bool includeInactive = false,
+        string actorUsername = "",
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureSchemaAsync(cancellationToken);
+        await EnsureJournalSchemaAsync(cancellationToken);
+
+        var output = new List<ManagedCostCenter>();
+        if (companyId <= 0 || locationId <= 0)
+        {
+            return output;
+        }
+
+        await using var connection = new NpgsqlConnection(_options.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        if (!await HasScopeAccessAsync(
+                connection,
+                transaction: null,
+                NormalizeActor(actorUsername),
+                companyId,
+                locationId,
+                cancellationToken))
+        {
+            return output;
+        }
+
+        await using var command = new NpgsqlCommand(@"
+SELECT b.id,
+       e.company_id,
+       e.location_id,
+       upper(btrim(e.code)) AS estate_code,
+       btrim(coalesce(e.name, '')) AS estate_name,
+       upper(btrim(d.code)) AS division_code,
+       btrim(coalesce(d.name, '')) AS division_name,
+       upper(btrim(b.code)) AS block_code,
+       btrim(coalesce(b.name, '')) AS block_name,
+       upper(btrim(e.code)) || '-' || upper(btrim(d.code)) || '-' || upper(btrim(b.code)) AS cost_center_code,
+       coalesce(nullif(btrim(b.name), ''), upper(btrim(e.code)) || '-' || upper(btrim(d.code)) || '-' || upper(btrim(b.code))) AS cost_center_name,
+       coalesce(e.is_active, FALSE) AND coalesce(d.is_active, FALSE) AND coalesce(b.is_active, FALSE) AS is_active
+FROM blocks b
+JOIN divisions d ON d.id = b.division_id
+JOIN estates e ON e.id = d.estate_id
+WHERE e.company_id = @company_id
+  AND e.location_id = @location_id
+  AND btrim(coalesce(e.code, '')) <> ''
+  AND btrim(coalesce(d.code, '')) <> ''
+  AND btrim(coalesce(b.code, '')) <> ''
+  AND (@include_inactive = TRUE OR (coalesce(e.is_active, FALSE) AND coalesce(d.is_active, FALSE) AND coalesce(b.is_active, FALSE)))
+ORDER BY upper(btrim(e.code)),
+         upper(btrim(d.code)),
+         upper(btrim(b.code));", connection);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+        command.Parameters.AddWithValue("include_inactive", includeInactive);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            output.Add(new ManagedCostCenter
+            {
+                Id = reader.GetInt64(0),
+                BlockId = reader.GetInt64(0),
+                CompanyId = reader.GetInt64(1),
+                LocationId = reader.GetInt64(2),
+                ParentId = null,
+                EstateCode = reader.GetString(3),
+                EstateName = reader.GetString(4),
+                DivisionCode = reader.GetString(5),
+                DivisionName = reader.GetString(6),
+                BlockCode = reader.GetString(7),
+                BlockName = reader.GetString(8),
+                CostCenterCode = reader.GetString(9),
+                CostCenterName = reader.GetString(10),
+                Level = "BLOCK",
+                IsPosting = true,
+                IsActive = !reader.IsDBNull(11) && reader.GetBoolean(11),
+                IsDirectBlockSource = true,
+                SourceTable = "BLOCKS"
             });
         }
 
@@ -1529,7 +1656,9 @@ SELECT id,
        is_active,
        COALESCE(requires_department, FALSE),
        COALESCE(requires_project, FALSE),
-       COALESCE(requires_cost_center, FALSE)
+       COALESCE(requires_cost_center, FALSE),
+       COALESCE(requires_partner, FALSE),
+       COALESCE(allowed_subledger_type, '')
 FROM gl_accounts
 WHERE company_id = @company_id
   AND is_active = TRUE
@@ -1546,61 +1675,41 @@ ORDER BY account_code;", connection))
                     CompanyId = reader.GetInt64(1),
                     Code = reader.GetString(2),
                     Name = reader.GetString(3),
-                    AccountType = NormalizeAccountType(reader.GetString(4), reader.GetString(2)),
+                    AccountType = NormalizeAccountType(reader.GetString(4)),
                     IsActive = !reader.IsDBNull(5) && reader.GetBoolean(5),
                     RequiresDepartment = !reader.IsDBNull(6) && reader.GetBoolean(6),
                     RequiresProject = !reader.IsDBNull(7) && reader.GetBoolean(7),
-                    RequiresCostCenter = !reader.IsDBNull(8) && reader.GetBoolean(8)
+                    RequiresCostCenter = !reader.IsDBNull(8) && reader.GetBoolean(8),
+                    RequiresSubledger = !reader.IsDBNull(9) && reader.GetBoolean(9),
+                    AllowedSubledgerType = reader.IsDBNull(10) ? string.Empty : NormalizeSubledgerType(reader.GetString(10))
                 });
             }
         }
 
-        await using (var costCenterCommand = new NpgsqlCommand(@"
-SELECT id,
-       company_id,
-       location_id,
-       parent_id,
-       cost_center_code,
-       COALESCE(cost_center_name, ''),
-       estate_code,
-       COALESCE(estate_name, ''),
-       division_code,
-       COALESCE(division_name, ''),
-       block_code,
-       COALESCE(block_name, ''),
-       level,
-       is_posting,
-       is_active
-FROM gl_cost_centers
-WHERE company_id = @company_id
-  AND location_id = @location_id
-  AND is_active = TRUE
-ORDER BY estate_code, division_code, block_code, cost_center_code;", connection))
+        var estateHierarchy = await GetEstateHierarchyAsync(
+            companyId,
+            locationId,
+            includeInactive: false,
+            actorUsername,
+            cancellationToken);
+        foreach (var costCenter in BuildJournalBlockReferences(estateHierarchy))
         {
-            costCenterCommand.Parameters.AddWithValue("company_id", companyId);
-            costCenterCommand.Parameters.AddWithValue("location_id", locationId);
-            await using var reader = await costCenterCommand.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                data.CostCenters.Add(new ManagedCostCenter
-                {
-                    Id = reader.GetInt64(0),
-                    CompanyId = reader.GetInt64(1),
-                    LocationId = reader.GetInt64(2),
-                    ParentId = reader.IsDBNull(3) ? null : reader.GetInt64(3),
-                    CostCenterCode = reader.GetString(4),
-                    CostCenterName = reader.GetString(5),
-                    EstateCode = reader.GetString(6),
-                    EstateName = reader.GetString(7),
-                    DivisionCode = reader.GetString(8),
-                    DivisionName = reader.GetString(9),
-                    BlockCode = reader.GetString(10),
-                    BlockName = reader.GetString(11),
-                    Level = reader.GetString(12),
-                    IsPosting = !reader.IsDBNull(13) && reader.GetBoolean(13),
-                    IsActive = !reader.IsDBNull(14) && reader.GetBoolean(14)
-                });
-            }
+            data.CostCenters.Add(costCenter);
+        }
+
+        foreach (var vendor in await GetVendorsAsync(companyId, includeInactive: false, actorUsername: actorUsername, cancellationToken: cancellationToken))
+        {
+            data.Vendors.Add(vendor);
+        }
+
+        foreach (var customer in await GetCustomersAsync(companyId, includeInactive: false, actorUsername: actorUsername, cancellationToken: cancellationToken))
+        {
+            data.Customers.Add(customer);
+        }
+
+        foreach (var employee in await GetEmployeesAsync(companyId, includeInactive: false, actorUsername: actorUsername, cancellationToken: cancellationToken))
+        {
+            data.Employees.Add(employee);
         }
 
         await using (var listCommand = new NpgsqlCommand(@"
@@ -1633,6 +1742,40 @@ LIMIT 300;", connection))
         }
 
         return data;
+    }
+
+    private static IEnumerable<ManagedCostCenter> BuildJournalBlockReferences(EstateHierarchyWorkspace workspace)
+    {
+        foreach (var estate in workspace.Estates.OrderBy(x => x.Code, StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var division in estate.Divisions.OrderBy(x => x.Code, StringComparer.OrdinalIgnoreCase))
+            {
+                foreach (var block in division.Blocks.OrderBy(x => x.Code, StringComparer.OrdinalIgnoreCase))
+                {
+                    yield return new ManagedCostCenter
+                    {
+                        Id = block.Id,
+                        BlockId = block.Id,
+                        CompanyId = block.CompanyId,
+                        LocationId = block.LocationId,
+                        ParentId = division.Id,
+                        CostCenterCode = block.CostCenterCode,
+                        CostCenterName = block.Name,
+                        EstateCode = block.EstateCode,
+                        EstateName = block.EstateName,
+                        DivisionCode = block.DivisionCode,
+                        DivisionName = block.DivisionName,
+                        BlockCode = block.Code,
+                        BlockName = block.Name,
+                        Level = "BLOCK",
+                        IsPosting = true,
+                        IsActive = block.IsActive,
+                        IsDirectBlockSource = true,
+                        SourceTable = "BLOCKS"
+                    };
+                }
+            }
+        }
     }
 
     private static string NormalizeDimensionCode(string? code)

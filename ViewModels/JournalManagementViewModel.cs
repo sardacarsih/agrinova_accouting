@@ -47,6 +47,8 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private readonly RelayCommand _exportPeriodCommand;
     private readonly RelayCommand _previousSearchPeriodCommand;
     private readonly RelayCommand _nextSearchPeriodCommand;
+    private readonly RelayCommand _openBlockPickerCommand;
+    private readonly RelayCommand _openSubledgerPickerCommand;
 
     private bool _isLoaded;
     private bool _isBusy;
@@ -98,6 +100,7 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     private List<JournalImportBundleResult> _stagedImportBundles = new();
     private readonly Dictionary<string, ManagedAccount> _accountLookupByCode = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ManagedCostCenter> _costCenterLookupByCode = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ManagedSubledgerReference> _subledgerLookupByKey = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<JournalLineEditor> _accountSyncInProgress = new();
     private readonly Dictionary<string, bool> _periodOpenByMonthKey = new(StringComparer.OrdinalIgnoreCase);
     private JournalAccountingPeriodOption? _selectedJournalAccountingPeriodOption;
@@ -135,6 +138,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         _lineValidationService = new JournalLineValidationService();
 
         Accounts = new ObservableCollection<ManagedAccount>();
+        BlockCostCenters = new ObservableCollection<ManagedCostCenter>();
+        Vendors = new ObservableCollection<ManagedSubledgerReference>();
+        Customers = new ObservableCollection<ManagedSubledgerReference>();
+        Employees = new ObservableCollection<ManagedSubledgerReference>();
         InputLines = new ObservableCollection<JournalLineEditor>();
         JournalList = new ObservableCollection<ManagedJournalSummary>();
         SearchResults = new ObservableCollection<ManagedJournalSummary>();
@@ -207,12 +214,24 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
         _exportPeriodCommand = new RelayCommand(() => _ = ExportPeriodAsync(), () => CanExportPeriod);
         ExportPeriodCommand = _exportPeriodCommand;
         OpenAccountPickerCommand = new RelayCommand(OpenAccountPicker);
+        _openBlockPickerCommand = new RelayCommand(OpenBlockPicker);
+        OpenBlockPickerCommand = _openBlockPickerCommand;
+        _openSubledgerPickerCommand = new RelayCommand(OpenSubledgerPicker);
+        OpenSubledgerPickerCommand = _openSubledgerPickerCommand;
 
         NavigateToJournalScenario("jurnal_umum");
         NewJournal();
     }
 
     public ObservableCollection<ManagedAccount> Accounts { get; }
+
+    public ObservableCollection<ManagedCostCenter> BlockCostCenters { get; }
+
+    public ObservableCollection<ManagedSubledgerReference> Vendors { get; }
+
+    public ObservableCollection<ManagedSubledgerReference> Customers { get; }
+
+    public ObservableCollection<ManagedSubledgerReference> Employees { get; }
 
     public ObservableCollection<JournalLineEditor> InputLines { get; }
 
@@ -287,6 +306,10 @@ public sealed partial class JournalManagementViewModel : ViewModelBase
     public ICommand ExportPeriodCommand { get; }
 
     public ICommand OpenAccountPickerCommand { get; }
+
+    public ICommand OpenBlockPickerCommand { get; }
+
+    public ICommand OpenSubledgerPickerCommand { get; }
 
     public bool IsBusy
     {

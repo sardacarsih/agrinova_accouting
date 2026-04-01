@@ -133,6 +133,9 @@
                                     <DataGridTextColumn Header="Nama Akun" Binding="{Binding AccountName}" Width="170" />
                                     <DataGridTextColumn Header="Departemen" Binding="{Binding DepartmentCode}" Width="110" />
                                     <DataGridTextColumn Header="Project" Binding="{Binding ProjectCode}" Width="110" />
+                                    <DataGridTextColumn Header="Tipe BB" Binding="{Binding SubledgerType}" Width="90" />
+                                    <DataGridTextColumn Header="Kode BB" Binding="{Binding SubledgerCode}" Width="110" />
+                                    <DataGridTextColumn Header="Nama BB" Binding="{Binding SubledgerName}" Width="180" />
                                     <DataGridTextColumn Header="Cost Center" Binding="{Binding CostCenterCode}" Width="110" />
                                     <DataGridTextColumn Header="Keterangan Baris" Binding="{Binding LineDescription}" Width="220" />
                                     <DataGridTextColumn Header="Debit" Binding="{Binding Debit, StringFormat=N2}" Width="110" />
@@ -161,6 +164,9 @@
                                     <DataGridTextColumn Header="Keterangan Jurnal" Binding="{Binding JournalDescription}" Width="220" />
                                     <DataGridTextColumn Header="Kode Akun" Binding="{Binding AccountCode}" Width="110" />
                                     <DataGridTextColumn Header="Nama Akun" Binding="{Binding AccountName}" Width="180" />
+                                    <DataGridTextColumn Header="Tipe BB" Binding="{Binding SubledgerType}" Width="90" />
+                                    <DataGridTextColumn Header="Kode BB" Binding="{Binding SubledgerCode}" Width="110" />
+                                    <DataGridTextColumn Header="Nama BB" Binding="{Binding SubledgerName}" Width="180" />
                                     <DataGridTextColumn Header="Keterangan Baris" Binding="{Binding LineDescription}" Width="220" />
                                     <DataGridTextColumn Header="Debit" Binding="{Binding Debit, StringFormat=N2}" Width="110" />
                                     <DataGridTextColumn Header="Kredit" Binding="{Binding Credit, StringFormat=N2}" Width="110" />

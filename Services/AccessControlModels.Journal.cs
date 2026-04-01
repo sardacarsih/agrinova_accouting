@@ -28,6 +28,10 @@ public sealed class ManagedAccount
 
     public bool RequiresCostCenter { get; set; }
 
+    public bool RequiresSubledger { get; set; }
+
+    public string AllowedSubledgerType { get; set; } = string.Empty;
+
     public override string ToString()
     {
         if (string.IsNullOrWhiteSpace(Code))
@@ -37,6 +41,28 @@ public sealed class ManagedAccount
 
         return string.IsNullOrWhiteSpace(Name) ? Code : $"{Code} - {Name}";
     }
+}
+
+public sealed class ManagedSubledgerReference
+{
+    public long Id { get; set; }
+
+    public long CompanyId { get; set; }
+
+    public string SubledgerType { get; set; } = string.Empty;
+
+    public string Code { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public bool IsActive { get; set; } = true;
+
+    public string DisplayLabel =>
+        string.IsNullOrWhiteSpace(Name)
+            ? Code
+            : $"{Code} - {Name}";
+
+    public override string ToString() => DisplayLabel;
 }
 
 public sealed class AccountSearchFilter
@@ -84,6 +110,8 @@ public sealed class ManagedCostCenter
 {
     public long Id { get; set; }
 
+    public long? BlockId { get; set; }
+
     public long CompanyId { get; set; }
 
     public long LocationId { get; set; }
@@ -111,6 +139,10 @@ public sealed class ManagedCostCenter
     public bool IsPosting { get; set; } = true;
 
     public bool IsActive { get; set; } = true;
+
+    public bool IsDirectBlockSource { get; set; }
+
+    public string SourceTable { get; set; } = string.Empty;
 
     public override string ToString()
     {
@@ -159,7 +191,17 @@ public sealed class ManagedJournalLine
 
     public string ProjectCode { get; set; } = string.Empty;
 
+    public string SubledgerType { get; set; } = string.Empty;
+
+    public long? SubledgerId { get; set; }
+
+    public string SubledgerCode { get; set; } = string.Empty;
+
+    public string SubledgerName { get; set; } = string.Empty;
+
     public long? CostCenterId { get; set; }
+
+    public long? BlockId { get; set; }
 
     public string CostCenterCode { get; set; } = string.Empty;
 }
@@ -242,6 +284,12 @@ public sealed class ManagedGeneralLedgerRow
 
     public string AccountName { get; set; } = string.Empty;
 
+    public string SubledgerType { get; set; } = string.Empty;
+
+    public string SubledgerCode { get; set; } = string.Empty;
+
+    public string SubledgerName { get; set; } = string.Empty;
+
     public string LineDescription { get; set; } = string.Empty;
 
     public decimal Debit { get; set; }
@@ -269,7 +317,17 @@ public sealed class ManagedSubLedgerRow
 
     public string ProjectCode { get; set; } = string.Empty;
 
+    public string SubledgerType { get; set; } = string.Empty;
+
+    public long? SubledgerId { get; set; }
+
+    public string SubledgerCode { get; set; } = string.Empty;
+
+    public string SubledgerName { get; set; } = string.Empty;
+
     public long? CostCenterId { get; set; }
+
+    public long? BlockId { get; set; }
 
     public string CostCenterCode { get; set; } = string.Empty;
 
@@ -337,6 +395,12 @@ public sealed class JournalWorkspaceData
 
     public List<ManagedCostCenter> CostCenters { get; init; } = new();
 
+    public List<ManagedSubledgerReference> Vendors { get; init; } = new();
+
+    public List<ManagedSubledgerReference> Customers { get; init; } = new();
+
+    public List<ManagedSubledgerReference> Employees { get; init; } = new();
+
     public List<ManagedJournalSummary> Journals { get; init; } = new();
 }
 
@@ -374,6 +438,8 @@ public sealed class JournalImportPreviewItem
     public string DepartmentCode { get; init; } = string.Empty;
 
     public string ProjectCode { get; init; } = string.Empty;
+
+    public string SubledgerCode { get; init; } = string.Empty;
 
     public string CostCenterCode { get; init; } = string.Empty;
 

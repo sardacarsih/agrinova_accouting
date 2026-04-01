@@ -14,6 +14,8 @@ This project currently follows a simple keep-a-changelog style format.
 - GitHub-oriented README sections for setup, release process, screenshots, and repository hygiene
 - `appsettings.example.json` as the committed local configuration template
 - `.gitignore` for WPF/.NET build output and local secrets
+- repo-local `NuGet.Config` for offline/local package restore during build and validation
+- `database/allow_alphanumeric_account_prefix.sql` for upgrading existing GL schemas to the `XX.99999.999` account format
 
 ### Changed
 
@@ -23,6 +25,9 @@ This project currently follows a simple keep-a-changelog style format.
 - Integration coverage expanded for RBAC regression scenarios around GL navigation and export/import gating
 - Application branding renamed from `WFP Suite` to `AgrInova Suite`
 - Runtime environment variables renamed from `WFP_*` to `AGRINOVA_*` with no backward-compatibility fallback
+- GL account validation now accepts 2-character alphanumeric prefixes such as `HO` and `KB`
+- Period close retained-earnings posting now resolves the company-prefixed retained earnings account consistently
+- Journal draft validation now distinguishes missing, non-posting, and posting cost center selections from `gl_cost_centers`
 
 ## [2026-03-25]
 

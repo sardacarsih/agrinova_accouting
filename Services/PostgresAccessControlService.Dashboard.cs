@@ -607,7 +607,8 @@ LIMIT 10;", connection);
         await using var command = new NpgsqlCommand(@"
 SELECT CASE
            WHEN upper(COALESCE(a.report_group, '')) IN ('CURRENT_ASSET', 'CURRENT', 'CURRENT ASSET', 'ASET_LANCAR')
-             OR a.account_code LIKE '1.1%'
+             OR a.account_code = '10.00101.000'
+             OR a.account_code LIKE '10.011%'
            THEN 'Current Asset'
            ELSE 'Fixed Asset'
        END AS group_name,
@@ -747,7 +748,8 @@ WHERE le.company_id = @company_id
   AND (
       upper(COALESCE(a.report_group, '')) IN ('CASH_BANK', 'KAS_BANK', 'KAS', 'BANK')
       OR upper(COALESCE(a.cashflow_category, '')) LIKE '%CASH%'
-      OR a.account_code LIKE '1.1%'
+      OR a.account_code = '10.01101.000'
+      OR a.account_code LIKE '10.01101.%'
   )
 GROUP BY a.account_code, a.account_name
 HAVING COALESCE(SUM(le.debit - le.credit), 0) <> 0
@@ -782,7 +784,8 @@ WHERE le.company_id = @company_id
   AND (
       upper(COALESCE(a.report_group, '')) IN ('CASH_BANK', 'KAS_BANK', 'KAS', 'BANK')
       OR upper(COALESCE(a.cashflow_category, '')) LIKE '%CASH%'
-      OR a.account_code LIKE '1.1%'
+      OR a.account_code = '10.01101.000'
+      OR a.account_code LIKE '10.01101.%'
   );", connection))
         {
             dailyCommand.Parameters.AddWithValue("company_id", companyId);
@@ -809,7 +812,8 @@ WHERE le.company_id = @company_id
   AND (
       upper(COALESCE(a.report_group, '')) IN ('CASH_BANK', 'KAS_BANK', 'KAS', 'BANK')
       OR upper(COALESCE(a.cashflow_category, '')) LIKE '%CASH%'
-      OR a.account_code LIKE '1.1%'
+      OR a.account_code = '10.01101.000'
+      OR a.account_code LIKE '10.01101.%'
   );", connection))
         {
             monthlyCommand.Parameters.AddWithValue("company_id", companyId);

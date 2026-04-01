@@ -228,7 +228,7 @@ ORDER BY a.account_code;", connection))
                     Id = accountReader.GetInt64(0),
                     AccountCode = accountReader.GetString(1),
                     AccountName = accountReader.GetString(2),
-                    AccountType = NormalizeAccountType(accountReader.GetString(3), accountReader.GetString(1)),
+                    AccountType = NormalizeAccountType(accountReader.GetString(3)),
                     ParentAccountId = accountReader.IsDBNull(4) ? null : accountReader.GetInt64(4),
                     ParentAccountCode = accountReader.GetString(5),
                     IsPosting = !accountReader.IsDBNull(6) && accountReader.GetBoolean(6)
@@ -435,6 +435,9 @@ SELECT le.journal_date,
        COALESCE(h.description, '') AS journal_description,
        a.account_code,
        a.account_name,
+       COALESCE(le.subledger_type, '') AS subledger_type,
+       COALESCE(le.subledger_code, '') AS subledger_code,
+       COALESCE(le.subledger_name, '') AS subledger_name,
        COALESCE(le.description, '') AS line_description,
        le.debit,
        le.credit,
@@ -462,6 +465,8 @@ WHERE le.company_id = @company_id
       OR COALESCE(h.description, '') ILIKE @keyword_like
       OR COALESCE(le.description, '') ILIKE @keyword_like
       OR a.account_name ILIKE @keyword_like
+      OR COALESCE(le.subledger_code, '') ILIKE @keyword_like
+      OR COALESCE(le.subledger_name, '') ILIKE @keyword_like
   )
 ORDER BY a.account_code, le.journal_date, le.journal_no, le.journal_line_no, le.id;", connection);
         command.Parameters.AddWithValue("company_id", companyId);
@@ -482,10 +487,13 @@ ORDER BY a.account_code, le.journal_date, le.journal_no, le.journal_line_no, le.
                 JournalDescription = reader.GetString(3),
                 AccountCode = reader.GetString(4),
                 AccountName = reader.GetString(5),
-                LineDescription = reader.GetString(6),
-                Debit = reader.GetDecimal(7),
-                Credit = reader.GetDecimal(8),
-                RunningBalance = reader.GetDecimal(9)
+                SubledgerType = reader.GetString(6),
+                SubledgerCode = reader.GetString(7),
+                SubledgerName = reader.GetString(8),
+                LineDescription = reader.GetString(9),
+                Debit = reader.GetDecimal(10),
+                Credit = reader.GetDecimal(11),
+                RunningBalance = reader.GetDecimal(12)
             });
         }
 
@@ -543,14 +551,18 @@ SELECT le.journal_date,
        a.account_name,
        COALESCE(le.department_code, '') AS department_code,
        COALESCE(le.project_code, '') AS project_code,
-       le.cost_center_id,
+       COALESCE(le.subledger_type, '') AS subledger_type,
+       le.subledger_id,
+       COALESCE(le.subledger_code, '') AS subledger_code,
+       COALESCE(le.subledger_name, '') AS subledger_name,
+       le.block_id,
        COALESCE(le.cost_center_code, '') AS cost_center_code,
-       COALESCE(cc.estate_code, '') AS estate_code,
-       COALESCE(cc.estate_name, '') AS estate_name,
-       COALESCE(cc.division_code, '') AS division_code,
-       COALESCE(cc.division_name, '') AS division_name,
-       COALESCE(cc.block_code, '') AS block_code,
-       COALESCE(cc.block_name, '') AS block_name,
+       COALESCE(be.code, '') AS estate_code,
+       COALESCE(be.name, '') AS estate_name,
+       COALESCE(bd.code, '') AS division_code,
+       COALESCE(bd.name, '') AS division_name,
+       COALESCE(bb.code, '') AS block_code,
+       COALESCE(bb.name, '') AS block_name,
        COALESCE(le.description, '') AS line_description,
        le.debit,
        le.credit,
@@ -562,6 +574,8 @@ SELECT le.journal_date,
        ) OVER (
            PARTITION BY
                a.account_code,
+               COALESCE(le.subledger_type, ''),
+               COALESCE(le.subledger_code, ''),
                COALESCE(le.department_code, ''),
                COALESCE(le.project_code, ''),
                COALESCE(le.cost_center_code, '')
@@ -571,7 +585,9 @@ SELECT le.journal_date,
 FROM gl_ledger_entries le
 JOIN gl_accounts a ON a.id = le.account_id
 LEFT JOIN gl_journal_headers h ON h.id = le.journal_id
-LEFT JOIN gl_cost_centers cc ON cc.id = le.cost_center_id
+LEFT JOIN blocks bb ON bb.id = le.block_id
+LEFT JOIN divisions bd ON bd.id = bb.division_id
+LEFT JOIN estates be ON be.id = bd.estate_id
 WHERE le.company_id = @company_id
   AND le.location_id = @location_id
   AND le.period_month = @period_month
@@ -583,15 +599,19 @@ WHERE le.company_id = @company_id
       OR COALESCE(h.description, '') ILIKE @keyword_like
       OR COALESCE(le.description, '') ILIKE @keyword_like
       OR a.account_name ILIKE @keyword_like
+      OR COALESCE(le.subledger_code, '') ILIKE @keyword_like
+      OR COALESCE(le.subledger_name, '') ILIKE @keyword_like
       OR COALESCE(le.department_code, '') ILIKE @keyword_like
       OR COALESCE(le.project_code, '') ILIKE @keyword_like
       OR COALESCE(le.cost_center_code, '') ILIKE @keyword_like
-      OR COALESCE(cc.estate_code, '') ILIKE @keyword_like
-      OR COALESCE(cc.division_code, '') ILIKE @keyword_like
-      OR COALESCE(cc.block_code, '') ILIKE @keyword_like
+      OR COALESCE(be.code, '') ILIKE @keyword_like
+      OR COALESCE(bd.code, '') ILIKE @keyword_like
+      OR COALESCE(bb.code, '') ILIKE @keyword_like
   )
 ORDER BY
     a.account_code,
+    COALESCE(le.subledger_type, ''),
+    COALESCE(le.subledger_code, ''),
     COALESCE(le.department_code, ''),
     COALESCE(le.project_code, ''),
     COALESCE(le.cost_center_code, ''),
@@ -619,18 +639,23 @@ ORDER BY
                 AccountName = reader.GetString(5),
                 DepartmentCode = reader.GetString(6),
                 ProjectCode = reader.GetString(7),
-                CostCenterId = reader.IsDBNull(8) ? null : reader.GetInt64(8),
-                CostCenterCode = reader.GetString(9),
-                EstateCode = reader.GetString(10),
-                EstateName = reader.GetString(11),
-                DivisionCode = reader.GetString(12),
-                DivisionName = reader.GetString(13),
-                BlockCode = reader.GetString(14),
-                BlockName = reader.GetString(15),
-                LineDescription = reader.GetString(16),
-                Debit = reader.GetDecimal(17),
-                Credit = reader.GetDecimal(18),
-                RunningBalance = reader.GetDecimal(19)
+                SubledgerType = reader.GetString(8),
+                SubledgerId = reader.IsDBNull(9) ? null : reader.GetInt64(9),
+                SubledgerCode = reader.GetString(10),
+                SubledgerName = reader.GetString(11),
+                CostCenterId = null,
+                BlockId = reader.IsDBNull(12) ? null : reader.GetInt64(12),
+                CostCenterCode = reader.GetString(13),
+                EstateCode = reader.GetString(14),
+                EstateName = reader.GetString(15),
+                DivisionCode = reader.GetString(16),
+                DivisionName = reader.GetString(17),
+                BlockCode = reader.GetString(18),
+                BlockName = reader.GetString(19),
+                LineDescription = reader.GetString(20),
+                Debit = reader.GetDecimal(21),
+                Credit = reader.GetDecimal(22),
+                RunningBalance = reader.GetDecimal(23)
             });
         }
 
@@ -684,7 +709,8 @@ WITH cash_accounts AS (
       AND (
           upper(COALESCE(a.report_group, '')) IN ('CASH_BANK', 'KAS_BANK', 'KAS', 'BANK')
           OR upper(COALESCE(a.cashflow_category, '')) LIKE '%CASH%'
-          OR a.account_code LIKE '1.1%'
+          OR a.account_code = '10.01101.000'
+          OR a.account_code LIKE '10.01101.%'
       )
 ),
 cash_rollup AS (
@@ -898,6 +924,88 @@ WHERE company_id = @company_id
             companyId,
             locationId,
             cancellationToken);
+        var retainedPrefix = ExtractAccountCodePrefix(retainedEarningsCode);
+        var retainedSummaryCode = string.IsNullOrWhiteSpace(retainedPrefix)
+            ? string.Empty
+            : $"{retainedPrefix}.33000.000";
+        var equityRootCode = string.IsNullOrWhiteSpace(retainedPrefix)
+            ? string.Empty
+            : $"{retainedPrefix}.30000.000";
+
+        long? equityRootId = null;
+        if (!string.IsNullOrWhiteSpace(equityRootCode))
+        {
+            await using var equityRootLookup = new NpgsqlCommand(@"
+SELECT id
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND account_code = @account_code
+LIMIT 1;", connection, transaction);
+            equityRootLookup.Parameters.AddWithValue("company_id", companyId);
+            equityRootLookup.Parameters.AddWithValue("account_code", equityRootCode);
+            var equityRoot = await equityRootLookup.ExecuteScalarAsync(cancellationToken);
+            if (equityRoot is not null && equityRoot != DBNull.Value)
+            {
+                equityRootId = Convert.ToInt64(equityRoot);
+            }
+        }
+
+        long? retainedSummaryId = null;
+        if (!string.IsNullOrWhiteSpace(retainedSummaryCode))
+        {
+            await using var summaryLookup = new NpgsqlCommand(@"
+SELECT id
+FROM gl_accounts
+WHERE company_id = @company_id
+  AND account_code = @account_code
+FOR UPDATE;", connection, transaction);
+            summaryLookup.Parameters.AddWithValue("company_id", companyId);
+            summaryLookup.Parameters.AddWithValue("account_code", retainedSummaryCode);
+            var existingSummary = await summaryLookup.ExecuteScalarAsync(cancellationToken);
+            if (existingSummary is not null && existingSummary != DBNull.Value)
+            {
+                retainedSummaryId = Convert.ToInt64(existingSummary);
+            }
+            else
+            {
+                await using var insertSummary = new NpgsqlCommand(@"
+INSERT INTO gl_accounts (
+    company_id,
+    account_code,
+    account_name,
+    account_type,
+    normal_balance,
+    parent_account_id,
+    is_posting,
+    hierarchy_level,
+    is_active,
+    created_by,
+    created_at,
+    updated_by,
+    updated_at)
+VALUES (
+    @company_id,
+    @account_code,
+    'Retained Earnings',
+    'EQUITY',
+    'C',
+    @parent_account_id,
+    FALSE,
+    @hierarchy_level,
+    TRUE,
+    @actor,
+    NOW(),
+    @actor,
+    NOW())
+RETURNING id;", connection, transaction);
+                insertSummary.Parameters.AddWithValue("company_id", companyId);
+                insertSummary.Parameters.AddWithValue("account_code", retainedSummaryCode);
+                insertSummary.Parameters.AddWithValue("parent_account_id", NpgsqlTypes.NpgsqlDbType.Bigint, equityRootId.HasValue ? equityRootId.Value : DBNull.Value);
+                insertSummary.Parameters.AddWithValue("hierarchy_level", equityRootId.HasValue ? 2 : 1);
+                insertSummary.Parameters.AddWithValue("actor", actor);
+                retainedSummaryId = Convert.ToInt64(await insertSummary.ExecuteScalarAsync(cancellationToken));
+            }
+        }
 
         await using (var lookup = new NpgsqlCommand(@"
 SELECT id
@@ -935,7 +1043,9 @@ INSERT INTO gl_accounts (
     account_name,
     account_type,
     normal_balance,
+    parent_account_id,
     is_posting,
+    hierarchy_level,
     is_active,
     created_by,
     created_at,
@@ -947,7 +1057,9 @@ VALUES (
     @account_name,
     'EQUITY',
     'C',
+    @parent_account_id,
     TRUE,
+    @hierarchy_level,
     TRUE,
     @actor,
     NOW(),
@@ -957,6 +1069,8 @@ RETURNING id;", connection, transaction);
         insert.Parameters.AddWithValue("company_id", companyId);
         insert.Parameters.AddWithValue("account_code", retainedEarningsCode);
         insert.Parameters.AddWithValue("account_name", "Laba Ditahan");
+        insert.Parameters.AddWithValue("parent_account_id", NpgsqlTypes.NpgsqlDbType.Bigint, retainedSummaryId.HasValue ? retainedSummaryId.Value : DBNull.Value);
+        insert.Parameters.AddWithValue("hierarchy_level", retainedSummaryId.HasValue ? 3 : 1);
         insert.Parameters.AddWithValue("actor", actor);
         return Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken));
     }
@@ -986,7 +1100,7 @@ INSERT INTO gl_ledger_entries (
     description,
     department_code,
     project_code,
-    cost_center_id,
+    block_id,
     cost_center_code,
     posted_by,
     posted_at,
@@ -1005,7 +1119,7 @@ SELECT h.company_id,
        COALESCE(d.description, ''),
        COALESCE(d.department_code, ''),
        COALESCE(d.project_code, ''),
-       d.cost_center_id,
+       d.block_id,
        COALESCE(d.cost_center_code, ''),
        @posted_by,
        NOW(),
@@ -1234,7 +1348,7 @@ INSERT INTO gl_journal_details (
     credit,
     department_code,
     project_code,
-    cost_center_id,
+    block_id,
     cost_center_code,
     created_at,
     updated_at)

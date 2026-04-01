@@ -28,10 +28,20 @@ public sealed partial class JournalManagementViewModel
 
             var data = workspaceTask.Result;
             ReplaceCollection(Accounts, data.Accounts.OrderBy(x => x.Code));
+            ReplaceCollection(BlockCostCenters, data.CostCenters.OrderBy(x => x.CostCenterCode));
+            ReplaceCollection(Vendors, data.Vendors.OrderBy(x => x.Code));
+            ReplaceCollection(Customers, data.Customers.OrderBy(x => x.Code));
+            ReplaceCollection(Employees, data.Employees.OrderBy(x => x.Code));
             _costCenterLookupByCode.Clear();
             foreach (var pair in _lineValidationService.BuildCostCenterLookup(data.CostCenters))
             {
                 _costCenterLookupByCode[pair.Key] = pair.Value;
+            }
+            _subledgerLookupByKey.Clear();
+            foreach (var pair in _lineValidationService.BuildSubledgerLookup(
+                         data.Vendors.Concat(data.Customers).Concat(data.Employees)))
+            {
+                _subledgerLookupByKey[pair.Key] = pair.Value;
             }
             RefreshAccountLookup();
             ReplaceCollection(JournalList, data.Journals.OrderByDescending(x => x.JournalDate).ThenByDescending(x => x.Id));
