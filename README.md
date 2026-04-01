@@ -204,10 +204,10 @@ Period close currently includes:
 
 ## Account Code Format
 
-GL account codes use the format `XX.99999.999`.
+GL account codes use the format `99.99999.999`.
 
-- The first segment is a 2-character company or scope prefix such as `HO` or `KB`
-- The second and third segments remain numeric
+- The first segment is a 2-character account type
+- The second and third segments are numeric
 - Existing databases that still enforce the old numeric-only prefix rule should run [`database/allow_alphanumeric_account_prefix.sql`](D:/VSCODE/wpf/database/allow_alphanumeric_account_prefix.sql)
 
 ## Screenshots
