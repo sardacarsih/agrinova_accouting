@@ -8,6 +8,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 
 jobs:
   build:
@@ -23,13 +24,13 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore app
-        run: dotnet restore .\Accounting.csproj
+        run: dotnet restore .\Accounting.csproj --configfile .\NuGet.Config
 
       - name: Build app
         run: dotnet build .\Accounting.csproj -c Release --no-restore -nologo
 
       - name: Restore integration tests
-        run: dotnet restore .\tools\IntegrationTests\IntegrationTests.csproj
+        run: dotnet restore .\tools\IntegrationTests\IntegrationTests.csproj --configfile .\NuGet.Config
 
       - name: Build integration tests
         run: dotnet build .\tools\IntegrationTests\IntegrationTests.csproj -c Release --no-restore -nologo
