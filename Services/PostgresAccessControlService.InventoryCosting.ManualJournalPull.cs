@@ -560,7 +560,6 @@ public sealed partial class PostgresAccessControlService
         }
 
         var referenceNos = new List<string>();
-        var eventDate = DateTime.Today.Date;
         foreach (var locationEntry in valuationDiffByLocation.OrderBy(x => x.Key))
         {
             var locationId = locationEntry.Key;
@@ -588,6 +587,13 @@ public sealed partial class PostgresAccessControlService
                 return InventoryAdjustmentEventSaveResult.Failure(
                     $"Akun COGS '{cogsAccountCode}' tidak ditemukan atau tidak aktif di GL account.");
             }
+
+            var eventDate = await ResolveLatestInventoryActivityDateAsync(
+                connection,
+                transaction,
+                companyId,
+                locationId,
+                cancellationToken);
 
             var sourceRefNo = $"INV-COST-ADJ-{recalcRunId}-{locationId}";
             var hasRows = false;
@@ -666,6 +672,39 @@ SET source_ref_no = EXCLUDED.source_ref_no,
         }
 
         return InventoryAdjustmentEventSaveResult.Success(referenceNos);
+    }
+
+    private static async Task<DateTime> ResolveLatestInventoryActivityDateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long companyId,
+        long locationId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(@"
+SELECT MAX(event_date)
+FROM (
+    SELECT MAX(transaction_date)::date AS event_date
+    FROM inv_stock_transactions
+    WHERE company_id = @company_id
+      AND location_id = @location_id
+      AND status = 'POSTED'
+
+    UNION ALL
+
+    SELECT MAX(opname_date)::date AS event_date
+    FROM inv_stock_opname
+    WHERE company_id = @company_id
+      AND location_id = @location_id
+      AND status = 'POSTED'
+) AS dated_events;", connection, transaction);
+        command.Parameters.AddWithValue("company_id", companyId);
+        command.Parameters.AddWithValue("location_id", locationId);
+
+        var scalar = await command.ExecuteScalarAsync(cancellationToken);
+        return scalar is DateTime eventDate
+            ? eventDate.Date
+            : DateTime.Today.Date;
     }
 
     private async Task<InventoryDraftAutoJournalResult> CreateDraftInventoryAutoJournalAsync(

@@ -9,6 +9,8 @@
     <AssemblyName>Accounting</AssemblyName>
     <RootNamespace>Accounting</RootNamespace>
     <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <!-- DevExpress 24.1 brings an older analyzer package transitively; prefer the SDK analyzers and silence the upgrade warning. -->
+    <_SkipUpgradeNetAnalyzersNuGetWarning>true</_SkipUpgradeNetAnalyzersNuGetWarning>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +19,7 @@
     <PackageReference Include="DevExpress.Wpf.Themes.All" Version="24.1.3" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
     <PackageReference Include="Npgsql" Version="8.0.4" />
+    <PackageReference Include="System.Formats.Asn1" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
