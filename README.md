@@ -14,6 +14,7 @@ This project includes:
 - role-based access control with company and location scoping
 - General Ledger workflows for journal entry, posting, reporting, and period close
 - inventory integration and dedicated inventory import RBAC actions
+- estate hierarchy (Estate > Division > Block) master data with XLSX import/export
 - service-level integration tests against a live PostgreSQL database
 
 ## Highlights
@@ -21,6 +22,7 @@ This project includes:
 - Action-based RBAC with company and location scope
 - Multi-step journal approval and posting workflow
 - Financial report export to XLSX
+- Estate hierarchy management with bulk XLSX import/export
 - PostgreSQL-backed auth, access, and accounting services
 - Integration-test harness for database-backed workflows
 
@@ -46,6 +48,9 @@ This project includes:
   - Cash Flow
   - Account Mutation
 - Accounting period open/close workflow
+- Estate hierarchy master data (Estate > Division > Block)
+- XLSX import/export for estate hierarchy and GL accounts
+- Block and subledger selection dialogs for journal posting
 - Inventory sync/import permission model
 
 ## Prerequisites
@@ -121,6 +126,13 @@ Available database scripts:
 - `verify_inventory_api_inv_import_actions.sql`
 - `lock_gl_inventory_role_policy.sql`
 - `migrate_module_to_scope.sql`
+- `purge_inactive_gl_accounts_safe.sql`
+- `reseed_gl_accounts_20_80_81.sql`
+- `reseed_gl_accounts_master_333_generated.sql`
+- `reseed_gl_accounts_numeric_company.sql`
+- `verify_gl_accounts_numeric_company1.sql`
+- `reset_gl_accounts_palm_oil_sample.sql`
+- `assign_uat_users.sql`
 
 ### 3. Default login
 
@@ -149,6 +161,10 @@ Examples:
 - `accounting.transactions.export`
 - `inventory.api_inv.download_import_template`
 - `inventory.api_inv.import_master_data`
+- `master_data.create`
+- `master_data.update`
+- `master_data.delete`
+- `master_data.import_master_data`
 
 Important behavior:
 

@@ -16,6 +16,12 @@ This project currently follows a simple keep-a-changelog style format.
 - `.gitignore` for WPF/.NET build output and local secrets
 - repo-local `NuGet.Config` for offline/local package restore during build and validation
 - `database/allow_alphanumeric_account_prefix.sql` for upgrading existing GL schemas to the `XX.99999.999` account format
+- Estate hierarchy (Estate > Division > Block) master data management with three-level organizational structure
+- XLSX import/export for estate hierarchy and GL accounts with row-level validation and error reporting
+- Block and subledger selection picker dialogs for journal line posting
+- Master data workspace with tabbed views for accounts, cost centers, periods, and estate hierarchy
+- Database scripts for GL account reseeding and UAT user assignment
+- RBAC actions for master data operations: `master_data.create`, `master_data.update`, `master_data.delete`, `master_data.import_master_data`
 
 ### Changed
 
