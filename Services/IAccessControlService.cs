@@ -421,6 +421,18 @@ public interface IAccessControlService
         string actorUsername,
         CancellationToken cancellationToken = default);
 
+    Task<AccessOperationResult> SaveStorageLocationAsync(
+        long companyId,
+        ManagedStorageLocation storageLocation,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SoftDeleteStorageLocationAsync(
+        long companyId,
+        long storageLocationId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
     Task<AccessOperationResult> SaveStockTransactionDraftAsync(
         ManagedStockTransaction header,
         IReadOnlyCollection<ManagedStockTransactionLine> lines,
@@ -489,6 +501,37 @@ public interface IAccessControlService
         string actorUsername,
         CancellationToken cancellationToken = default);
 
+    Task<AccessOperationResult> SaveStockAdjustmentDraftAsync(
+        ManagedStockAdjustment header,
+        IReadOnlyCollection<ManagedStockAdjustmentLine> lines,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<List<ManagedStockAdjustment>> SearchStockAdjustmentsAsync(
+        long companyId,
+        long locationId,
+        string keyword,
+        CancellationToken cancellationToken = default);
+
+    Task<StockAdjustmentBundle?> GetStockAdjustmentBundleAsync(
+        long adjustmentId,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> SubmitStockAdjustmentAsync(
+        long adjustmentId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> ApproveStockAdjustmentAsync(
+        long adjustmentId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
+    Task<AccessOperationResult> PostStockAdjustmentAsync(
+        long adjustmentId,
+        string actorUsername,
+        CancellationToken cancellationToken = default);
+
     Task<InventoryDashboardData> GetInventoryDashboardDataAsync(
         long companyId,
         long locationId,
@@ -506,6 +549,11 @@ public interface IAccessControlService
         long locationId,
         CancellationToken cancellationToken = default);
 
+    Task<List<ManagedStockEntry>> GetStockPositionReportAsync(
+        long companyId,
+        long locationId,
+        CancellationToken cancellationToken = default);
+
     Task<Dictionary<long, decimal>> GetOutboundAutoUnitCostLookupAsync(
         long companyId,
         long locationId,
@@ -516,6 +564,27 @@ public interface IAccessControlService
         long companyId,
         long locationId,
         decimal threshold,
+        CancellationToken cancellationToken = default);
+
+    Task<List<InventoryTransactionHistoryRow>> GetInventoryTransactionHistoryAsync(
+        long companyId,
+        long locationId,
+        DateTime dateFrom,
+        DateTime dateTo,
+        CancellationToken cancellationToken = default);
+
+    Task<List<InventoryStockCardRow>> GetInventoryStockCardAsync(
+        long companyId,
+        long locationId,
+        DateTime dateFrom,
+        DateTime dateTo,
+        CancellationToken cancellationToken = default);
+
+    Task<List<InventoryStockOpnameReportRow>> GetStockOpnameReportAsync(
+        long companyId,
+        long locationId,
+        DateTime dateFrom,
+        DateTime dateTo,
         CancellationToken cancellationToken = default);
 
     Task<List<InventoryOutboundCompareRow>> GetInventoryOutboundCompareReportAsync(

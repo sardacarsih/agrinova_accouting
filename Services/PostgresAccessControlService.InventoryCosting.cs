@@ -14,4 +14,6 @@ public sealed partial class PostgresAccessControlService
     private const string InventoryCostSourceStockOut = "STOCK_OUT";
     private const string InventoryCostSourceOpnamePlus = "OPNAME_PLUS";
     private const string InventoryCostSourceOpnameMinus = "OPNAME_MINUS";
+    private const string InventoryCostSourceAdjustmentPlus = "ADJUSTMENT_PLUS";
+    private const string InventoryCostSourceAdjustmentMinus = "ADJUSTMENT_MINUS";
 }

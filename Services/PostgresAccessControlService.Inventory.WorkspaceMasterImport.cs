@@ -194,6 +194,43 @@ ORDER BY w.warehouse_code;", connection);
 
         await warehouseReader.CloseAsync();
 
+        // Load storage locations
+        await using var storageLocationCommand = new NpgsqlCommand(@"
+SELECT sl.id,
+       sl.company_id,
+       sl.location_id,
+       COALESCE(l.name, '') AS location_name,
+       sl.warehouse_id,
+       COALESCE(w.warehouse_name, '') AS warehouse_name,
+       sl.storage_code,
+       sl.storage_name,
+       sl.is_active
+FROM inv_storage_locations sl
+LEFT JOIN org_locations l ON l.id = sl.location_id
+LEFT JOIN inv_warehouses w ON w.id = sl.warehouse_id
+WHERE sl.company_id = @company_id
+ORDER BY w.warehouse_name, sl.storage_code;", connection);
+        storageLocationCommand.Parameters.AddWithValue("company_id", companyId);
+
+        await using var storageLocationReader = await storageLocationCommand.ExecuteReaderAsync(cancellationToken);
+        while (await storageLocationReader.ReadAsync(cancellationToken))
+        {
+            data.StorageLocations.Add(new ManagedStorageLocation
+            {
+                Id = storageLocationReader.GetInt64(0),
+                CompanyId = storageLocationReader.GetInt64(1),
+                LocationId = storageLocationReader.IsDBNull(2) ? null : storageLocationReader.GetInt64(2),
+                LocationName = storageLocationReader.GetString(3),
+                WarehouseId = storageLocationReader.GetInt64(4),
+                WarehouseName = storageLocationReader.GetString(5),
+                Code = storageLocationReader.GetString(6),
+                Name = storageLocationReader.GetString(7),
+                IsActive = storageLocationReader.GetBoolean(8)
+            });
+        }
+
+        await storageLocationReader.CloseAsync();
+
         // Load posting accounts for account code picker
         await using var accCommand = new NpgsqlCommand(@"
 SELECT id, company_id, account_code, account_name, account_type,

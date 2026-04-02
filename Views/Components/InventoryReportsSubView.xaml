@@ -13,7 +13,7 @@
         <Border Grid.Row="0" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
             <StackPanel>
                 <TextBlock Text="Laporan Inventori" Style="{StaticResource SettingsSectionTitleTextStyle}" />
-                <TextBlock Text="Analisis pergerakan, valuasi, stok minimum, dan sinkronisasi."
+                <TextBlock Text="Pisahkan inquiry dan laporan inventori, lalu tampilkan atau export hasilnya ke Excel."
                            Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
             </StackPanel>
         </Border>
@@ -26,7 +26,9 @@
                               Margin="0,6,0,0"
                               Style="{StaticResource InputComboBoxStyle}"
                               ItemsSource="{Binding ReportTypes}"
-                              SelectedItem="{Binding SelectedReportType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                              DisplayMemberPath="Label"
+                              SelectedValuePath="Code"
+                              SelectedValue="{Binding SelectedReportType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
                 <StackPanel Margin="0,0,10,0">
                     <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal Dari" />
@@ -60,13 +62,47 @@
                              Style="{StaticResource InputTextBoxStyle}" />
                 </StackPanel>
                 <StackPanel VerticalAlignment="Bottom">
-                    <Button Command="{Binding GenerateReportCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Tampilkan" />
+                    <WrapPanel>
+                        <Button Command="{Binding GenerateReportCommand}" Style="{StaticResource PrimaryButtonStyle}" Content="Tampilkan" />
+                        <Button Margin="8,0,0,0"
+                                Command="{Binding ExportReportCommand}"
+                                IsEnabled="{Binding CanExportReport}"
+                                ToolTip="{Binding ExportReportTooltip}"
+                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                Content="Export Excel" />
+                    </WrapPanel>
                 </StackPanel>
             </WrapPanel>
         </Border>
 
         <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Padding="8" Margin="0,8,0,0">
             <Grid>
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="stock_position">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding StockPositionReportRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Lokasi" Binding="{Binding LocationName}" Width="150" />
+                            <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="160" />
+                            <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N4}" Width="120" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
                 <DockPanel>
                     <DockPanel.Style>
                         <Style TargetType="DockPanel">
@@ -126,6 +162,105 @@
                         <Style TargetType="DockPanel">
                             <Setter Property="Visibility" Value="Collapsed" />
                             <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="transaction_history">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding TransactionHistoryRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tanggal" Binding="{Binding TxDate, StringFormat=yyyy-MM-dd}" Width="110" />
+                            <DataGridTextColumn Header="Dokumen" Binding="{Binding DocumentNo}" Width="130" />
+                            <DataGridTextColumn Header="Tipe" Binding="{Binding DocumentType}" Width="110" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                            <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="160" />
+                            <DataGridTextColumn Header="Gudang Tujuan" Binding="{Binding DestinationWarehouseName}" Width="160" />
+                            <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Effect" Binding="{Binding EffectQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="120" />
+                            <DataGridTextColumn Header="Deskripsi" Binding="{Binding Description}" Width="220" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="stock_card">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding StockCardRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tanggal" Binding="{Binding TxDate, StringFormat=yyyy-MM-dd}" Width="110" />
+                            <DataGridTextColumn Header="Dokumen" Binding="{Binding DocumentNo}" Width="130" />
+                            <DataGridTextColumn Header="Tipe" Binding="{Binding DocumentType}" Width="110" />
+                            <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="160" />
+                            <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Opening" Binding="{Binding OpeningQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Masuk" Binding="{Binding InQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Keluar" Binding="{Binding OutQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Adjust" Binding="{Binding AdjustmentQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Balance" Binding="{Binding BalanceQty, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="120" />
+                            <DataGridTextColumn Header="Deskripsi" Binding="{Binding Description}" Width="220" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedReportType}" Value="stock_opname">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              ItemsSource="{Binding StockOpnameReportRows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tanggal" Binding="{Binding OpnameDate, StringFormat=yyyy-MM-dd}" Width="110" />
+                            <DataGridTextColumn Header="No Opname" Binding="{Binding OpnameNo}" Width="130" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                            <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="160" />
+                            <DataGridTextColumn Header="Kode Item" Binding="{Binding ItemCode}" Width="120" />
+                            <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
+                            <DataGridTextColumn Header="Qty Sistem" Binding="{Binding SystemQty, StringFormat=N2}" Width="110" />
+                            <DataGridTextColumn Header="Qty Aktual" Binding="{Binding ActualQty, StringFormat=N2}" Width="110" />
+                            <DataGridTextColumn Header="Selisih" Binding="{Binding DifferenceQty, StringFormat=N2}" Width="110" />
+                            <DataGridTextColumn Header="Deskripsi" Binding="{Binding Description}" Width="180" />
+                            <DataGridTextColumn Header="Catatan" Binding="{Binding Notes}" Width="220" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
                                 <DataTrigger Binding="{Binding SelectedReportType}" Value="low_stock">
                                     <Setter Property="Visibility" Value="Visible" />
                                 </DataTrigger>
@@ -141,6 +276,7 @@
                             <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="*" />
                             <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="80" />
                             <DataGridTextColumn Header="Lokasi" Binding="{Binding LocationName}" Width="140" />
+                            <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="150" />
                             <DataGridTextColumn Header="Qty" Binding="{Binding Qty, StringFormat=N2}" Width="100" />
                         </DataGrid.Columns>
                     </DataGrid>

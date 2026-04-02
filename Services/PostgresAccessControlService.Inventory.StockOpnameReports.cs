@@ -582,6 +582,13 @@ SELECT
      WHERE company_id = @company_id
        AND location_id = @location_id
        AND is_active = TRUE
+       AND status IN ('DRAFT','SUBMITTED','APPROVED'))
+    +
+    (SELECT COUNT(1)
+     FROM inv_stock_adjustments
+     WHERE company_id = @company_id
+       AND location_id = @location_id
+       AND is_active = TRUE
        AND status IN ('DRAFT','SUBMITTED','APPROVED'));", connection))
         {
             command.Parameters.AddWithValue("company_id", companyId);
@@ -591,40 +598,68 @@ SELECT
 
         var recentTransactions = new List<ManagedStockTransactionSummary>();
         await using (var command = new NpgsqlCommand(@"
-SELECT h.id,
-       h.transaction_no,
-       h.transaction_type,
-       h.transaction_date,
-       COALESCE(warehouse_summary.warehouse_name, '') AS warehouse_name,
-       h.reference_no,
-       h.status,
-       COALESCE(SUM(l.qty), 0) AS total_qty
-FROM inv_stock_transactions h
-LEFT JOIN inv_stock_transaction_lines l ON l.transaction_id = h.id
-LEFT JOIN LATERAL (
-    SELECT CASE
-               WHEN COUNT(DISTINCT x.display_name) > 1 THEN 'Multi Gudang'
-               ELSE COALESCE(MAX(x.display_name), '')
-           END AS warehouse_name
-    FROM (
-        SELECT COALESCE(NULLIF(trim(w.warehouse_name), ''), trim(COALESCE(w.warehouse_code, ''))) AS display_name
-        FROM inv_stock_transaction_lines line
-        LEFT JOIN inv_warehouses w ON w.id = line.warehouse_id
-        WHERE line.transaction_id = h.id
-          AND line.warehouse_id IS NOT NULL
-        UNION
-        SELECT COALESCE(NULLIF(trim(dw.warehouse_name), ''), trim(COALESCE(dw.warehouse_code, ''))) AS display_name
-        FROM inv_stock_transaction_lines line
-        LEFT JOIN inv_warehouses dw ON dw.id = line.destination_warehouse_id
-        WHERE line.transaction_id = h.id
-          AND line.destination_warehouse_id IS NOT NULL
-    ) x
-) warehouse_summary ON TRUE
-WHERE h.company_id = @company_id
-  AND h.location_id = @location_id
-  AND h.is_active = TRUE
-GROUP BY h.id, h.transaction_no, h.transaction_type, h.transaction_date, warehouse_summary.warehouse_name, h.reference_no, h.status
-ORDER BY h.transaction_date DESC, h.id DESC
+SELECT recent.id,
+       recent.transaction_no,
+       recent.transaction_type,
+       recent.transaction_date,
+       recent.warehouse_name,
+       recent.reference_no,
+       recent.status,
+       recent.total_qty
+FROM (
+    SELECT h.id,
+           h.transaction_no,
+           h.transaction_type,
+           h.transaction_date,
+           COALESCE(warehouse_summary.warehouse_name, '') AS warehouse_name,
+           h.reference_no,
+           h.status,
+           COALESCE(SUM(l.qty), 0) AS total_qty
+    FROM inv_stock_transactions h
+    LEFT JOIN inv_stock_transaction_lines l ON l.transaction_id = h.id
+    LEFT JOIN LATERAL (
+        SELECT CASE
+                   WHEN COUNT(DISTINCT x.display_name) > 1 THEN 'Multi Gudang'
+                   ELSE COALESCE(MAX(x.display_name), '')
+               END AS warehouse_name
+        FROM (
+            SELECT COALESCE(NULLIF(trim(w.warehouse_name), ''), trim(COALESCE(w.warehouse_code, ''))) AS display_name
+            FROM inv_stock_transaction_lines line
+            LEFT JOIN inv_warehouses w ON w.id = line.warehouse_id
+            WHERE line.transaction_id = h.id
+              AND line.warehouse_id IS NOT NULL
+            UNION
+            SELECT COALESCE(NULLIF(trim(dw.warehouse_name), ''), trim(COALESCE(dw.warehouse_code, ''))) AS display_name
+            FROM inv_stock_transaction_lines line
+            LEFT JOIN inv_warehouses dw ON dw.id = line.destination_warehouse_id
+            WHERE line.transaction_id = h.id
+              AND line.destination_warehouse_id IS NOT NULL
+        ) x
+    ) warehouse_summary ON TRUE
+    WHERE h.company_id = @company_id
+      AND h.location_id = @location_id
+      AND h.is_active = TRUE
+    GROUP BY h.id, h.transaction_no, h.transaction_type, h.transaction_date, warehouse_summary.warehouse_name, h.reference_no, h.status
+
+    UNION ALL
+
+    SELECT a.id,
+           a.adjustment_no AS transaction_no,
+           'STOCK_ADJUSTMENT' AS transaction_type,
+           a.adjustment_date AS transaction_date,
+           COALESCE(w.warehouse_name, '') AS warehouse_name,
+           a.reference_no,
+           a.status,
+           COALESCE(SUM(ABS(l.qty_adjustment)), 0) AS total_qty
+    FROM inv_stock_adjustments a
+    LEFT JOIN inv_stock_adjustment_lines l ON l.adjustment_id = a.id
+    LEFT JOIN inv_warehouses w ON w.id = a.warehouse_id
+    WHERE a.company_id = @company_id
+      AND a.location_id = @location_id
+      AND a.is_active = TRUE
+    GROUP BY a.id, a.adjustment_no, a.adjustment_date, w.warehouse_name, a.reference_no, a.status
+) recent
+ORDER BY recent.transaction_date DESC, recent.id DESC
 LIMIT 12;", connection))
         {
             command.Parameters.AddWithValue("company_id", companyId);
@@ -734,27 +769,53 @@ op_period AS (
       AND o.status = 'POSTED'
       AND o.opname_date BETWEEN @date_from AND @date_to
     GROUP BY l.item_id
+),
+adj_before AS (
+    SELECT l.item_id,
+           SUM(l.qty_adjustment) AS adjustment_qty
+    FROM inv_stock_adjustments a
+    JOIN inv_stock_adjustment_lines l ON l.adjustment_id = a.id
+    WHERE a.company_id = @company_id
+      AND a.location_id = @location_id
+      AND a.status = 'POSTED'
+      AND a.adjustment_date < @date_from
+    GROUP BY l.item_id
+),
+adj_period AS (
+    SELECT l.item_id,
+           SUM(l.qty_adjustment) AS adjustment_qty
+    FROM inv_stock_adjustments a
+    JOIN inv_stock_adjustment_lines l ON l.adjustment_id = a.id
+    WHERE a.company_id = @company_id
+      AND a.location_id = @location_id
+      AND a.status = 'POSTED'
+      AND a.adjustment_date BETWEEN @date_from AND @date_to
+    GROUP BY l.item_id
 )
 SELECT i.item_code,
        i.item_name,
        i.uom,
-       COALESCE(tb.qty, 0) + COALESCE(ob.adjustment_qty, 0) AS opening_qty,
+       COALESCE(tb.qty, 0) + COALESCE(ob.adjustment_qty, 0) + COALESCE(ab.adjustment_qty, 0) AS opening_qty,
        COALESCE(tp.in_qty, 0) AS in_qty,
        COALESCE(tp.out_qty, 0) AS out_qty,
-       COALESCE(op.adjustment_qty, 0) AS adjustment_qty,
-       (COALESCE(tb.qty, 0) + COALESCE(ob.adjustment_qty, 0) + COALESCE(tp.in_qty, 0) - COALESCE(tp.out_qty, 0) + COALESCE(op.adjustment_qty, 0)) AS closing_qty
+       COALESCE(op.adjustment_qty, 0) + COALESCE(ap.adjustment_qty, 0) AS adjustment_qty,
+       (COALESCE(tb.qty, 0) + COALESCE(ob.adjustment_qty, 0) + COALESCE(ab.adjustment_qty, 0) + COALESCE(tp.in_qty, 0) - COALESCE(tp.out_qty, 0) + COALESCE(op.adjustment_qty, 0) + COALESCE(ap.adjustment_qty, 0)) AS closing_qty
 FROM inv_items i
 LEFT JOIN tx_before tb ON tb.item_id = i.id
 LEFT JOIN tx_period tp ON tp.item_id = i.id
 LEFT JOIN op_before ob ON ob.item_id = i.id
 LEFT JOIN op_period op ON op.item_id = i.id
+LEFT JOIN adj_before ab ON ab.item_id = i.id
+LEFT JOIN adj_period ap ON ap.item_id = i.id
 WHERE i.is_active = TRUE
   AND (
       COALESCE(tb.qty, 0) <> 0
       OR COALESCE(ob.adjustment_qty, 0) <> 0
+      OR COALESCE(ab.adjustment_qty, 0) <> 0
       OR COALESCE(tp.in_qty, 0) <> 0
       OR COALESCE(tp.out_qty, 0) <> 0
       OR COALESCE(op.adjustment_qty, 0) <> 0
+      OR COALESCE(ap.adjustment_qty, 0) <> 0
   )
 ORDER BY i.item_code;", connection);
         command.Parameters.AddWithValue("company_id", companyId);

@@ -115,6 +115,21 @@ CREATE TABLE IF NOT EXISTS inv_warehouses (
     CONSTRAINT uq_inv_warehouses_company_code UNIQUE (company_id, warehouse_code)
 );
 
+CREATE TABLE IF NOT EXISTS inv_storage_locations (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
+    location_id BIGINT REFERENCES org_locations(id) ON DELETE SET NULL,
+    warehouse_id BIGINT NOT NULL REFERENCES inv_warehouses(id) ON DELETE RESTRICT,
+    storage_code VARCHAR(80) NOT NULL,
+    storage_name VARCHAR(200) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_inv_storage_locations_company_warehouse_code UNIQUE (company_id, warehouse_id, storage_code)
+);
+
 CREATE TABLE IF NOT EXISTS inv_stock_transactions (
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
@@ -156,6 +171,7 @@ CREATE TABLE IF NOT EXISTS inv_stock_opname (
     description TEXT NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','SUBMITTED','APPROVED','POSTED')),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    cogs_journal_id BIGINT NULL,
     created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
     updated_by VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -171,6 +187,36 @@ CREATE TABLE IF NOT EXISTS inv_stock_opname_lines (
     system_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
     actual_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
     difference_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS inv_stock_adjustments (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
+    location_id BIGINT NOT NULL REFERENCES org_locations(id) ON DELETE RESTRICT,
+    adjustment_no VARCHAR(80) NOT NULL,
+    adjustment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT,
+    reference_no VARCHAR(200) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','SUBMITTED','APPROVED','POSTED')),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    cogs_journal_id BIGINT NULL,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_inv_stock_adjustments_company_no UNIQUE (company_id, adjustment_no)
+);
+
+CREATE TABLE IF NOT EXISTS inv_stock_adjustment_lines (
+    id BIGSERIAL PRIMARY KEY,
+    adjustment_id BIGINT NOT NULL REFERENCES inv_stock_adjustments(id) ON DELETE CASCADE,
+    line_no INT NOT NULL DEFAULT 1,
+    item_id BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE RESTRICT,
+    qty_adjustment NUMERIC(18,4) NOT NULL DEFAULT 0,
+    unit_cost NUMERIC(18,4) NOT NULL DEFAULT 0,
     notes TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

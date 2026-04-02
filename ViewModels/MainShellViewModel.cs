@@ -717,6 +717,7 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
             var canViewStockOut = accessContext.HasSubmodule("inventory", "stock_out");
             var canViewTransfer = accessContext.HasSubmodule("inventory", "transfer");
             var canViewStockOpname = accessContext.HasSubmodule("inventory", "stock_opname");
+            var canViewStockAdjustment = accessContext.HasSubmodule("inventory", "stock_adjustment");
             var canViewReports = accessContext.HasSubmodule("inventory", "reports");
             var canViewApiInv = accessContext.HasSubmodule("inventory", "api_inv");
             var canViewInventoryDashboard = accessContext.HasSubmodule("inventory", "dashboard");
@@ -776,6 +777,11 @@ public sealed class MainShellViewModel : ViewModelBase, IDisposable
             if (canViewStockOpname)
             {
                 transaksiChildren.Add(new MainShellNavigationItem("inventory", "Stok Opname", "\uE9D5", subCode: "stock_opname"));
+            }
+
+            if (canViewStockAdjustment)
+            {
+                transaksiChildren.Add(new MainShellNavigationItem("inventory", "Stock Adjustment", "\uE945", subCode: "stock_adjustment"));
             }
 
             if (transaksiChildren.Count > 0)

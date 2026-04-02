@@ -313,6 +313,49 @@ internal static partial class Program
         }
     }
 
+    private static async Task TestMainShellViewModel_InventoryStockAdjustmentNavigationRequiresDedicatedViewAsync()
+    {
+        var service = CreateService();
+
+        var opnameOnlyContext = await BuildTestAccessContextAsync("inventory.stock_opname.view");
+        var opnameOnlyNavigation = BuildMainShellNavigation(opnameOnlyContext);
+        Assert(
+            ContainsNavigationLabel(opnameOnlyNavigation, "Inventori"),
+            "Inventory root navigation should remain visible when inventory stock opname view exists.");
+        Assert(
+            ContainsNavigationLabel(opnameOnlyNavigation, "Stok Opname"),
+            "Stock opname navigation should be visible when stock_opname.view exists.");
+        Assert(
+            !ContainsNavigationLabel(opnameOnlyNavigation, "Stock Adjustment"),
+            "Stock adjustment navigation must stay hidden without stock_adjustment.view.");
+
+        var adjustmentOnlyContext = await BuildTestAccessContextAsync("inventory.stock_adjustment.view");
+        var adjustmentOnlyNavigation = BuildMainShellNavigation(adjustmentOnlyContext);
+        Assert(
+            ContainsNavigationLabel(adjustmentOnlyNavigation, "Inventori"),
+            "Inventory root navigation should be visible when stock_adjustment.view exists.");
+        Assert(
+            ContainsNavigationLabel(adjustmentOnlyNavigation, "Stock Adjustment"),
+            "Stock adjustment navigation should be visible when stock_adjustment.view exists.");
+        Assert(
+            !ContainsNavigationLabel(adjustmentOnlyNavigation, "Stok Opname"),
+            "Stock opname navigation should stay hidden when only stock_adjustment.view exists.");
+
+        var adjustmentOnlyShell = CreateMainShellViewModel(adjustmentOnlyContext, service);
+        try
+        {
+            Assert(
+                string.Equals(adjustmentOnlyShell.SelectedNavigationItem?.Label, "Stock Adjustment", StringComparison.Ordinal),
+                $"Stock Adjustment should be the default selected leaf, actual={adjustmentOnlyShell.SelectedNavigationItem?.Label ?? "<null>"}.");
+            Assert(adjustmentOnlyShell.IsInventorySelected, "Stock Adjustment leaf should activate inventory workspace.");
+            Assert(!adjustmentOnlyShell.IsScopePlaceholderSelected, "Stock Adjustment leaf should not activate placeholder workspace.");
+        }
+        finally
+        {
+            adjustmentOnlyShell.Dispose();
+        }
+    }
+
     private static async Task TestJournalManagementViewModel_ImportExportRequireDedicatedActionsAsync()
     {
         var service = CreateService();
@@ -742,7 +785,12 @@ internal static partial class Program
             "inventory.stock_opname.update",
             "inventory.stock_opname.submit",
             "inventory.stock_opname.approve",
-            "inventory.stock_opname.post");
+            "inventory.stock_opname.post",
+            "inventory.stock_adjustment.create",
+            "inventory.stock_adjustment.update",
+            "inventory.stock_adjustment.submit",
+            "inventory.stock_adjustment.approve",
+            "inventory.stock_adjustment.post");
         var viewModel = new InventoryViewModel(service, accessContext);
         viewModel.ApplyCurrentAccountingPeriodState(DateTime.Today, isOpen: true);
 
@@ -833,6 +881,46 @@ internal static partial class Program
         Assert(
             viewModel.GenerateStockOpnameLinesTooltip.Contains("berstatus DRAFT", StringComparison.OrdinalIgnoreCase),
             $"Unexpected stock opname generate tooltip: {viewModel.GenerateStockOpnameLinesTooltip}");
+
+        viewModel.StockAdjustmentHeader = new ManagedStockAdjustment
+        {
+            Id = 406,
+            CompanyId = accessContext.SelectedCompanyId,
+            LocationId = accessContext.SelectedLocationId,
+            WarehouseId = 56,
+            WarehouseName = "Warehouse Adjustment",
+            AdjustmentDate = DateTime.Today,
+            Status = "SUBMITTED"
+        };
+        Assert(viewModel.CanApproveStockAdjustment, "Stock adjustment approve should be enabled for SUBMITTED status.");
+        Assert(!viewModel.CanPostStockAdjustment, "Stock adjustment post should be disabled before APPROVED status.");
+        Assert(
+            viewModel.PostStockAdjustmentTooltip.Contains("berstatus APPROVED", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected stock adjustment post tooltip: {viewModel.PostStockAdjustmentTooltip}");
+
+        var adjustmentDeniedAccessContext = await BuildTestAccessContextAsync(
+            "inventory.stock_opname.create",
+            "inventory.stock_opname.update",
+            "inventory.stock_opname.submit",
+            "inventory.stock_opname.approve",
+            "inventory.stock_opname.post");
+        var adjustmentDeniedViewModel = new InventoryViewModel(service, adjustmentDeniedAccessContext);
+        adjustmentDeniedViewModel.ApplyCurrentAccountingPeriodState(DateTime.Today, isOpen: true);
+        adjustmentDeniedViewModel.StockAdjustmentHeader = new ManagedStockAdjustment
+        {
+            Id = 407,
+            CompanyId = adjustmentDeniedAccessContext.SelectedCompanyId,
+            LocationId = adjustmentDeniedAccessContext.SelectedLocationId,
+            WarehouseId = 57,
+            WarehouseName = "Warehouse No Adj Permission",
+            AdjustmentDate = DateTime.Today,
+            Status = "DRAFT"
+        };
+        Assert(!adjustmentDeniedViewModel.CanSaveStockAdjustmentDraft, "Stock adjustment save should remain disabled without dedicated adjustment permission.");
+        Assert(
+            adjustmentDeniedViewModel.SaveStockAdjustmentDraftTooltip.Contains("izin", StringComparison.OrdinalIgnoreCase) &&
+            adjustmentDeniedViewModel.SaveStockAdjustmentDraftTooltip.Contains("stock adjustment", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected stock adjustment save tooltip without dedicated permission: {adjustmentDeniedViewModel.SaveStockAdjustmentDraftTooltip}");
     }
 
     private static async Task TestInventoryViewModel_TransactionActionsReflectClosedPeriodAsync()
@@ -858,7 +946,12 @@ internal static partial class Program
             "inventory.stock_opname.update",
             "inventory.stock_opname.submit",
             "inventory.stock_opname.approve",
-            "inventory.stock_opname.post");
+            "inventory.stock_opname.post",
+            "inventory.stock_adjustment.create",
+            "inventory.stock_adjustment.update",
+            "inventory.stock_adjustment.submit",
+            "inventory.stock_adjustment.approve",
+            "inventory.stock_adjustment.post");
         var viewModel = new InventoryViewModel(service, accessContext);
 
         viewModel.StockInHeader = new ManagedStockTransaction
@@ -898,6 +991,16 @@ internal static partial class Program
             OpnameDate = DateTime.Today,
             Status = "DRAFT"
         };
+        viewModel.StockAdjustmentHeader = new ManagedStockAdjustment
+        {
+            Id = 505,
+            CompanyId = accessContext.SelectedCompanyId,
+            LocationId = accessContext.SelectedLocationId,
+            WarehouseId = 78,
+            WarehouseName = "Warehouse Adjustment Closed Period",
+            AdjustmentDate = DateTime.Today,
+            Status = "APPROVED"
+        };
 
         viewModel.ApplyCurrentAccountingPeriodState(DateTime.Today, isOpen: false);
 
@@ -928,6 +1031,11 @@ internal static partial class Program
         Assert(
             viewModel.SubmitStockOpnameTooltip.Contains("CLOSED", StringComparison.OrdinalIgnoreCase),
             $"Unexpected stock opname submit tooltip in closed period: {viewModel.SubmitStockOpnameTooltip}");
+
+        Assert(!viewModel.CanPostStockAdjustment, "Stock adjustment post must be disabled when period is closed.");
+        Assert(
+            viewModel.PostStockAdjustmentTooltip.Contains("CLOSED", StringComparison.OrdinalIgnoreCase),
+            $"Unexpected stock adjustment post tooltip in closed period: {viewModel.PostStockAdjustmentTooltip}");
     }
 
     private static async Task<UserAccessContext> BuildTestAccessContextAsync(params string[] actionCodes)

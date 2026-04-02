@@ -258,6 +258,60 @@ FROM (
       AND (@location_id IS NULL OR o.location_id = @location_id)
       AND o.status = 'POSTED'
       AND l.difference_qty < 0
+
+    UNION ALL
+
+    SELECT 'ADJUSTMENT_PLUS'::VARCHAR AS source_type,
+           a.id AS source_id,
+           l.id AS source_line_id,
+           l.line_no,
+           a.location_id,
+           l.item_id,
+           i.item_code,
+           a.adjustment_date AS event_date,
+           l.qty_adjustment AS qty,
+           COALESCE(l.unit_cost, 0) AS unit_cost,
+           COALESCE(NULLIF(trim(c.account_code), ''), '') AS inventory_account_code,
+           COALESCE(NULLIF(trim(ls.cogs_account_code), ''), NULLIF(trim(cs.cogs_account_code), ''), '') AS cogs_account_code,
+           a.cogs_journal_id AS cogs_journal_id,
+           5 AS sort_order
+    FROM inv_stock_adjustments a
+    JOIN inv_stock_adjustment_lines l ON l.adjustment_id = a.id
+    JOIN inv_items i ON i.id = l.item_id
+    LEFT JOIN inv_categories c ON c.id = i.category_id
+    LEFT JOIN inv_location_costing_settings ls ON ls.company_id = a.company_id AND ls.location_id = a.location_id
+    LEFT JOIN inv_company_settings cs ON cs.company_id = a.company_id
+    WHERE a.company_id = @company_id
+      AND (@location_id IS NULL OR a.location_id = @location_id)
+      AND a.status = 'POSTED'
+      AND l.qty_adjustment > 0
+
+    UNION ALL
+
+    SELECT 'ADJUSTMENT_MINUS'::VARCHAR AS source_type,
+           a.id AS source_id,
+           l.id AS source_line_id,
+           l.line_no,
+           a.location_id,
+           l.item_id,
+           i.item_code,
+           a.adjustment_date AS event_date,
+           ABS(l.qty_adjustment) AS qty,
+           0::NUMERIC AS unit_cost,
+           COALESCE(NULLIF(trim(c.account_code), ''), '') AS inventory_account_code,
+           COALESCE(NULLIF(trim(ls.cogs_account_code), ''), NULLIF(trim(cs.cogs_account_code), ''), '') AS cogs_account_code,
+           a.cogs_journal_id AS cogs_journal_id,
+           6 AS sort_order
+    FROM inv_stock_adjustments a
+    JOIN inv_stock_adjustment_lines l ON l.adjustment_id = a.id
+    JOIN inv_items i ON i.id = l.item_id
+    LEFT JOIN inv_categories c ON c.id = i.category_id
+    LEFT JOIN inv_location_costing_settings ls ON ls.company_id = a.company_id AND ls.location_id = a.location_id
+    LEFT JOIN inv_company_settings cs ON cs.company_id = a.company_id
+    WHERE a.company_id = @company_id
+      AND (@location_id IS NULL OR a.location_id = @location_id)
+      AND a.status = 'POSTED'
+      AND l.qty_adjustment < 0
 ) e
 ORDER BY e.event_date, e.sort_order, e.source_id, e.line_no;", connection, transaction))
         {
@@ -301,10 +355,13 @@ ORDER BY e.event_date, e.sort_order, e.source_id, e.line_no;", connection, trans
                 ? locationMethod
                 : defaultMethod;
             if (string.Equals(evt.SourceType, InventoryCostSourceStockIn, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(evt.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase))
+                string.Equals(evt.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(evt.SourceType, InventoryCostSourceAdjustmentPlus, StringComparison.OrdinalIgnoreCase))
             {
                 var inboundCost = RoundCost(evt.UnitCost);
-                if (string.Equals(evt.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase) || inboundCost <= 0)
+                if (string.Equals(evt.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(evt.SourceType, InventoryCostSourceAdjustmentPlus, StringComparison.OrdinalIgnoreCase) ||
+                    inboundCost <= 0)
                 {
                     inboundCost = await GetCurrentAverageCostFromLayersAsync(
                         connection,
@@ -343,7 +400,8 @@ ORDER BY e.event_date, e.sort_order, e.source_id, e.line_no;", connection, trans
                 }
 
                 if (string.Equals(evt.SourceType, InventoryCostSourceStockIn, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(evt.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase))
+                    string.Equals(evt.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(evt.SourceType, InventoryCostSourceAdjustmentPlus, StringComparison.OrdinalIgnoreCase))
                 {
                     await InsertOutboundCostEventAsync(
                         connection,

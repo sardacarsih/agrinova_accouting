@@ -20,6 +20,7 @@ public sealed partial class PostgresAccessControlService
     private const string InventorySubmoduleStockOut = "stock_out";
     private const string InventorySubmoduleTransfer = "transfer";
     private const string InventorySubmoduleStockOpname = "stock_opname";
+    private const string InventorySubmoduleStockAdjustment = "stock_adjustment";
     private const string InventorySubmoduleApiInv = "api_inv";
 
     private const string PermissionActionCreate = "create";

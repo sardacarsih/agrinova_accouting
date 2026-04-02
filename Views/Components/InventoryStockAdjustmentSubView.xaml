@@ -1,0 +1,288 @@
+<UserControl x:Class="Accounting.Views.Components.InventoryStockAdjustmentSubView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Grid Margin="10">
+        <TabControl SelectedIndex="{Binding SelectedStockAdjustmentTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+            <TabItem Header="Daftar">
+                <DockPanel Margin="0,8,0,0">
+                    <Border DockPanel.Dock="Top" Style="{StaticResource AdminWorkspaceHeaderCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Stock Adjustment" Style="{StaticResource SettingsSectionTitleTextStyle}" />
+                            <TextBlock Text="Kelola penyesuaian stok manual per gudang dengan qty plus maupun minus."
+                                       Style="{StaticResource SettingsSectionSubtitleTextStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+                        <WrapPanel>
+                            <Button Command="{Binding NewStockAdjustmentCommand}"
+                                    IsEnabled="{Binding CanCreateStockAdjustment}"
+                                    ToolTip="{Binding NewStockAdjustmentTooltip}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Adjustment Baru" />
+                        </WrapPanel>
+                    </Border>
+                    <Border DockPanel.Dock="Top" Margin="0,8,0,0" Style="{StaticResource AdminToolbarCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding StockAdjustmentSearchKeyword, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                            <Button Grid.Column="2"
+                                    Command="{Binding SearchStockAdjustmentCommand}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Cari" />
+                        </Grid>
+                    </Border>
+                    <DataGrid Style="{StaticResource EnterpriseDataGridStyle}"
+                              Margin="0,8,0,0"
+                              ItemsSource="{Binding StockAdjustmentList}"
+                              AutoGenerateColumns="False"
+                              MinHeight="220"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No." Binding="{Binding AdjustmentNo}" Width="130" />
+                            <DataGridTextColumn Header="Tanggal" Binding="{Binding AdjustmentDate, StringFormat=dd/MM/yyyy}" Width="100" />
+                            <DataGridTextColumn Header="Gudang" Binding="{Binding WarehouseName}" Width="140" />
+                            <DataGridTextColumn Header="Referensi" Binding="{Binding ReferenceNo}" Width="150" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                            <DataGridTemplateColumn Header="Aksi" Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding DataContext.LoadStockAdjustmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                                Content="Muat" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="Input">
+                <Grid Margin="0,8,0,0"
+                      IsEnabled="{Binding CanOperateCurrentPeriodTransactions}"
+                      ToolTip="{Binding InventoryPeriodActionTooltip}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Style="{StaticResource AdminToolbarCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Editor Stock Adjustment"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextPrimary}" />
+                                <TextBlock Margin="0,4,0,0"
+                                           Foreground="{DynamicResource Brush.TextMuted}"
+                                           Text="Gunakan qty positif untuk penambahan dan qty negatif untuk pengurangan stok." />
+                            </StackPanel>
+                            <Border Grid.Column="1" Style="{StaticResource InlineMetricBadgeStyle}">
+                                <TextBlock Foreground="{DynamicResource Brush.TextSecondary}"
+                                           Text="{Binding StockAdjustmentHeader.Status}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="No. Adjustment" />
+                                <TextBox Margin="0,6,0,0"
+                                         Text="{Binding StockAdjustmentHeader.AdjustmentNo, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource InputTextBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Tanggal" />
+                                <DatePicker Margin="0,6,0,0"
+                                            SelectedDate="{Binding StockAdjustmentHeader.AdjustmentDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Height="38" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Gudang" />
+                            <ComboBox Margin="0,6,0,0"
+                                      Style="{StaticResource InputComboBoxStyle}"
+                                      ItemsSource="{Binding Warehouses}"
+                                      SelectedValuePath="Id"
+                                      DisplayMemberPath="Name"
+                                      SelectedValue="{Binding StockAdjustmentHeader.WarehouseId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Referensi" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding StockAdjustmentHeader.ReferenceNo, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Style="{StaticResource FieldLabelTextStyle}" Text="Keterangan" />
+                            <TextBox Margin="0,6,0,0"
+                                     Text="{Binding StockAdjustmentHeader.Description, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource InputTextBoxStyle}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <DataGrid Grid.Row="3"
+                              Style="{StaticResource JournalLikeDataGridStyle}"
+                              Margin="0,8,0,0"
+                              ItemsSource="{Binding StockAdjustmentLines}"
+                              AutoGenerateColumns="False"
+                              MinHeight="220"
+                              CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No" Binding="{Binding LineNo}" Width="50" IsReadOnly="True" />
+                            <DataGridTemplateColumn Header="Kode Item" Width="170">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <TextBox x:Name="ItemLookupTextBox"
+                                                     Text="{Binding ItemLookupText, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource JournalLikeDataGridEditingTextBoxStyle}"
+                                                     VerticalAlignment="Center"
+                                                     PreviewKeyDown="LookupTextBox_OnPreviewKeyDown"
+                                                     PreviewLostKeyboardFocus="LookupTextBox_OnPreviewLostKeyboardFocus"
+                                                     Tag="ItemLookup" />
+                                            <Popup IsOpen="{Binding IsItemLookupPopupOpen, Mode=TwoWay}"
+                                                   Placement="Bottom"
+                                                   PlacementTarget="{Binding ElementName=ItemLookupTextBox}"
+                                                   AllowsTransparency="True"
+                                                   StaysOpen="False"
+                                                   PopupAnimation="Fade">
+                                                <Border Style="{StaticResource InventoryLookupPopupBorderStyle}"
+                                                        MinWidth="{Binding ElementName=ItemLookupTextBox, Path=ActualWidth}"
+                                                        MaxWidth="360"
+                                                        MaxHeight="240">
+                                                    <ListBox ItemsSource="{Binding ItemLookupSuggestions}"
+                                                             SelectedItem="{Binding SelectedItemLookupSuggestion, Mode=TwoWay}"
+                                                             Style="{StaticResource InventoryLookupListBoxStyle}"
+                                                             ItemContainerStyle="{StaticResource InventoryLookupListBoxItemStyle}"
+                                                             PreviewKeyDown="LookupListBox_OnPreviewKeyDown"
+                                                             MouseLeftButtonUp="LookupListBox_OnMouseLeftButtonUp"
+                                                             MouseDoubleClick="LookupListBox_OnMouseDoubleClick"
+                                                             Tag="ItemLookup">
+                                                        <ListBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="120" />
+                                                                        <ColumnDefinition Width="8" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0"
+                                                                               FontWeight="SemiBold"
+                                                                               Foreground="{DynamicResource Brush.TextPrimary}"
+                                                                               Text="{Binding Code}" />
+                                                                    <TextBlock Grid.Column="2"
+                                                                               Foreground="{DynamicResource Brush.TextSecondary}"
+                                                                               Text="{Binding Name}" />
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ListBox.ItemTemplate>
+                                                    </ListBox>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Nama Item" Binding="{Binding ItemName}" Width="*" IsReadOnly="True" />
+                            <DataGridTextColumn Header="UoM" Binding="{Binding Uom}" Width="70" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Qty Adj"
+                                                Binding="{Binding Qty, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}"
+                                                Width="90"
+                                                ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                                EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                            <DataGridTextColumn Header="Unit Cost"
+                                                Binding="{Binding UnitCost, UpdateSourceTrigger=PropertyChanged, StringFormat=N2}"
+                                                Width="100"
+                                                ElementStyle="{StaticResource JournalLikeDataGridNumericTextStyle}"
+                                                EditingElementStyle="{StaticResource JournalLikeDataGridNumericEditingTextBoxStyle}" />
+                            <DataGridTextColumn Header="Catatan"
+                                                Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="160"
+                                                EditingElementStyle="{StaticResource JournalLikeDataGridEditingTextBoxStyle}" />
+                            <DataGridTemplateColumn Header="Aksi" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding DataContext.RemoveStockAdjustmentLineCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource SecondaryPillButtonStyle}"
+                                                Content="Hapus" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="4" Margin="0,10,0,0" Style="{StaticResource StickyActionBarStyle}">
+                        <WrapPanel>
+                            <Button Command="{Binding AddStockAdjustmentLineCommand}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Tambah Baris" />
+                            <Button Margin="8,0,0,0"
+                                    Command="{Binding SaveStockAdjustmentDraftCommand}"
+                                    IsEnabled="{Binding CanSaveStockAdjustmentDraft}"
+                                    ToolTip="{Binding SaveStockAdjustmentDraftTooltip}"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Content="Simpan Draft" />
+                            <Button Margin="8,0,0,0"
+                                    Command="{Binding SubmitStockAdjustmentCommand}"
+                                    IsEnabled="{Binding CanSubmitStockAdjustment}"
+                                    ToolTip="{Binding SubmitStockAdjustmentTooltip}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Ajukan" />
+                            <Button Margin="8,0,0,0"
+                                    Command="{Binding ApproveStockAdjustmentCommand}"
+                                    IsEnabled="{Binding CanApproveStockAdjustment}"
+                                    ToolTip="{Binding ApproveStockAdjustmentTooltip}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Setujui" />
+                            <Button Margin="8,0,0,0"
+                                    Command="{Binding PostStockAdjustmentCommand}"
+                                    IsEnabled="{Binding CanPostStockAdjustment}"
+                                    ToolTip="{Binding PostStockAdjustmentTooltip}"
+                                    Style="{StaticResource SecondaryPillButtonStyle}"
+                                    Content="Posting" />
+                        </WrapPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

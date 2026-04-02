@@ -214,6 +214,11 @@ WHERE user_id = @user_id
             ("inventory", "stock_opname", "submit"),
             ("inventory", "stock_opname", "approve"),
             ("inventory", "stock_opname", "post"),
+            ("inventory", "stock_adjustment", "create"),
+            ("inventory", "stock_adjustment", "update"),
+            ("inventory", "stock_adjustment", "submit"),
+            ("inventory", "stock_adjustment", "approve"),
+            ("inventory", "stock_adjustment", "post"),
             ("inventory", "api_inv", "manage_master_company"),
             ("inventory", "api_inv", "update_settings"),
             ("inventory", "api_inv", "sync_upload"),
@@ -582,13 +587,10 @@ WHERE lower(mo.module_code) = lower(@module_code)
         var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
             ?? accessOptions.Locations[0].Id;
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
         await SetAccountingPeriodStateAsync(companyId, locationId, DateTime.Today, isOpen: true, note: "ITEST_OPEN");
 
-        var debitAccount = workspace.Accounts[0];
-        var creditAccount = workspace.Accounts[1];
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var (debitAccountCode, creditAccountCode, createdAccountCodes) = await EnsureSimpleJournalAccountCodesAsync(companyId, stamp, "admin");
         var journalNo = $"ITEST-JRN-{stamp}";
 
         var header = new ManagedJournalHeader
@@ -604,28 +606,8 @@ WHERE lower(mo.module_code) = lower(@module_code)
 
         var lines = new[]
         {
-            new ManagedJournalLine
-            {
-                LineNo = 1,
-                AccountCode = debitAccount.Code,
-                Description = "Debit line",
-                Debit = 100000m,
-                Credit = 0m,
-                DepartmentCode = "FIN",
-                ProjectCode = "PRJ01",
-                CostCenterCode = "CC01"
-            },
-            new ManagedJournalLine
-            {
-                LineNo = 2,
-                AccountCode = creditAccount.Code,
-                Description = "Credit line",
-                Debit = 0m,
-                Credit = 100000m,
-                DepartmentCode = "FIN",
-                ProjectCode = "PRJ01",
-                CostCenterCode = "CC01"
-            }
+            CreateJournalLine(1, debitAccountCode, "Debit line", 100000m, 0m),
+            CreateJournalLine(2, creditAccountCode, "Credit line", 0m, 100000m)
         };
 
         long? journalId = null;
@@ -676,10 +658,10 @@ WHERE journal_id = @journal_id;",
             }
 
             var trialBalance = await service.GetTrialBalanceAsync(companyId, locationId, DateTime.Today, "admin");
-            var debitRow = trialBalance.FirstOrDefault(x => x.AccountCode == debitAccount.Code);
-            var creditRow = trialBalance.FirstOrDefault(x => x.AccountCode == creditAccount.Code);
-            Assert(debitRow is not null, $"Trial balance should include account {debitAccount.Code}.");
-            Assert(creditRow is not null, $"Trial balance should include account {creditAccount.Code}.");
+            var debitRow = trialBalance.FirstOrDefault(x => x.AccountCode == debitAccountCode);
+            var creditRow = trialBalance.FirstOrDefault(x => x.AccountCode == creditAccountCode);
+            Assert(debitRow is not null, $"Trial balance should include account {debitAccountCode}.");
+            Assert(creditRow is not null, $"Trial balance should include account {creditAccountCode}.");
             Assert(debitRow!.TotalDebit >= 100000m, "Trial balance debit account should include posted amount.");
             Assert(creditRow!.TotalCredit >= 100000m, "Trial balance credit account should include posted amount.");
 
@@ -689,12 +671,12 @@ WHERE journal_id = @journal_id;",
             var balanceSheet = await service.GetBalanceSheetAsync(companyId, locationId, DateTime.Today, "admin") ?? new List<ManagedBalanceSheetRow>();
             Assert(balanceSheet is not null, "Balance sheet result should not be null.");
 
-            var debitPrefix = debitAccount.Code.Length > 0 ? debitAccount.Code[0] : '0';
+            var debitPrefix = debitAccountCode.Length > 0 ? debitAccountCode[0] : '0';
             if (debitPrefix is '1' or '2' or '3')
             {
                 Assert(
-                    (balanceSheet ?? new List<ManagedBalanceSheetRow>()).Any(x => x.AccountCode == debitAccount.Code),
-                    $"Balance sheet should include account {debitAccount.Code}.");
+                    (balanceSheet ?? new List<ManagedBalanceSheetRow>()).Any(x => x.AccountCode == debitAccountCode),
+                    $"Balance sheet should include account {debitAccountCode}.");
             }
 
             var updateAfterPostResult = await service.SaveJournalDraftAsync(
@@ -718,9 +700,9 @@ WHERE journal_id = @journal_id;",
         }
         finally
         {
+            await using var connection = await OpenConnectionAsync();
             if (journalId.HasValue)
             {
-                await using var connection = await OpenConnectionAsync();
                 await using var deleteCommand = new NpgsqlCommand(
                     "DELETE FROM gl_journal_headers WHERE id = @id;",
                     connection);
@@ -732,6 +714,11 @@ WHERE journal_id = @journal_id;",
                     connection);
                 deleteAudit.Parameters.AddWithValue("id", journalId.Value);
                 await deleteAudit.ExecuteNonQueryAsync();
+            }
+
+            if (createdAccountCodes.Count > 0)
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, createdAccountCodes);
             }
         }
     }
@@ -749,8 +736,6 @@ WHERE journal_id = @journal_id;",
         var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
             ?? accessOptions.Locations[0].Id;
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
         await SetAccountingPeriodStateAsync(companyId, locationId, DateTime.Today, isOpen: true, note: "ITEST_OPEN_APPROVE_MODULE");
 
         var roleStamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -773,32 +758,11 @@ WHERE journal_id = @journal_id;",
         long? journalId = null;
         var journalNo = $"ITEST-NO-APPROVE-{roleStamp}";
 
-        var debitAccount = workspace.Accounts[0];
-        var creditAccount = workspace.Accounts[1];
+        var (debitAccountCode, creditAccountCode, createdAccountCodes) = await EnsureSimpleJournalAccountCodesAsync(companyId, roleStamp, "admin");
         var lines = new[]
         {
-            new ManagedJournalLine
-            {
-                LineNo = 1,
-                AccountCode = debitAccount.Code,
-                Description = "Debit line",
-                Debit = 150000m,
-                Credit = 0m,
-                DepartmentCode = "FIN",
-                ProjectCode = "PRJ01",
-                CostCenterCode = "CC01"
-            },
-            new ManagedJournalLine
-            {
-                LineNo = 2,
-                AccountCode = creditAccount.Code,
-                Description = "Credit line",
-                Debit = 0m,
-                Credit = 150000m,
-                DepartmentCode = "FIN",
-                ProjectCode = "PRJ01",
-                CostCenterCode = "CC01"
-            }
+            CreateJournalLine(1, debitAccountCode, "Debit line", 150000m, 0m),
+            CreateJournalLine(2, creditAccountCode, "Credit line", 0m, 150000m)
         };
 
         try
@@ -890,6 +854,11 @@ WHERE journal_id = @journal_id;",
                 }
             }
 
+            if (createdAccountCodes.Count > 0)
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, createdAccountCodes);
+            }
+
             if (userId.HasValue)
             {
                 await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
@@ -926,12 +895,8 @@ WHERE journal_id = @journal_id;",
         var journalDate = DateTime.Today;
         var periodMonth = new DateTime(journalDate.Year, journalDate.Month, 1);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
-
-        var debitAccount = workspace.Accounts[0];
-        var creditAccount = workspace.Accounts[1];
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var (debitAccountCode, creditAccountCode, createdAccountCodes) = await EnsureSimpleJournalAccountCodesAsync(companyId, stamp, "admin");
         var header = new ManagedJournalHeader
         {
             Id = 0,
@@ -945,22 +910,8 @@ WHERE journal_id = @journal_id;",
 
         var lines = new[]
         {
-            new ManagedJournalLine
-            {
-                LineNo = 1,
-                AccountCode = debitAccount.Code,
-                Description = "Debit line",
-                Debit = 50000m,
-                Credit = 0m
-            },
-            new ManagedJournalLine
-            {
-                LineNo = 2,
-                AccountCode = creditAccount.Code,
-                Description = "Credit line",
-                Debit = 0m,
-                Credit = 50000m
-            }
+            CreateJournalLine(1, debitAccountCode, "Debit line", 50000m, 0m),
+            CreateJournalLine(2, creditAccountCode, "Credit line", 0m, 50000m)
         };
 
         var previous = await GetAccountingPeriodStateAsync(companyId, locationId, periodMonth);
@@ -995,6 +946,12 @@ WHERE company_id = @company_id
                 deleteCommand.Parameters.AddWithValue("period_month", periodMonth);
                 await deleteCommand.ExecuteNonQueryAsync();
             }
+
+            if (createdAccountCodes.Count > 0)
+            {
+                await using var cleanupConnection = await OpenConnectionAsync();
+                await CleanupAccountsByCodesAsync(cleanupConnection, companyId, createdAccountCodes);
+            }
         }
     }
 
@@ -1011,12 +968,8 @@ WHERE company_id = @company_id
             ?? accessOptions.Locations[0].Id;
         var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for submit/approve close test.");
-
-        var debitAccount = workspace.Accounts[0];
-        var creditAccount = workspace.Accounts[1];
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var (debitAccountCode, creditAccountCode, createdAccountCodes) = await EnsureSimpleJournalAccountCodesAsync(companyId, stamp, "admin");
         var journalNo = $"ITEST-SUBMIT-CLOSED-{stamp}";
         long? journalId = null;
 
@@ -1036,22 +989,8 @@ WHERE company_id = @company_id
                     Description = "Submit/approve closed period regression"
                 },
                 [
-                    new ManagedJournalLine
-                    {
-                        LineNo = 1,
-                        AccountCode = debitAccount.Code,
-                        Description = "Debit line",
-                        Debit = 2500m,
-                        Credit = 0m
-                    },
-                    new ManagedJournalLine
-                    {
-                        LineNo = 2,
-                        AccountCode = creditAccount.Code,
-                        Description = "Credit line",
-                        Debit = 0m,
-                        Credit = 2500m
-                    }
+                    CreateJournalLine(1, debitAccountCode, "Debit line", 2500m, 0m),
+                    CreateJournalLine(2, creditAccountCode, "Credit line", 0m, 2500m)
                 ],
                 "admin");
             Assert(saveResult.IsSuccess && saveResult.EntityId.HasValue, $"Failed to save journal draft: {saveResult.Message}");
@@ -1104,6 +1043,11 @@ WHERE entity_type = 'JOURNAL'
                 }
             }
 
+            if (createdAccountCodes.Count > 0)
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, createdAccountCodes);
+            }
+
             if (previousPeriod.Exists)
             {
                 await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, previousPeriod.IsOpen, "ITEST_RESTORE_SUBMIT_APPROVE");
@@ -1141,30 +1085,15 @@ WHERE company_id = @company_id
         var previousCurrent = await GetAccountingPeriodStateAsync(companyId, locationId, currentMonth);
         var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        Assert(workspace.Accounts.Count >= 2, "At least two active accounts are required for journal test.");
-
-        var debitAccount = workspace.Accounts[0];
-        var creditAccount = workspace.Accounts[1];
         var sharedJournalNo = $"ITEST-PERIOD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        var (debitAccountCode, creditAccountCode, createdAccountCodes) = await EnsureSimpleJournalAccountCodesAsync(
+            companyId,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            "admin");
         var lines = new[]
         {
-            new ManagedJournalLine
-            {
-                LineNo = 1,
-                AccountCode = debitAccount.Code,
-                Description = "Debit line",
-                Debit = 25000m,
-                Credit = 0m
-            },
-            new ManagedJournalLine
-            {
-                LineNo = 2,
-                AccountCode = creditAccount.Code,
-                Description = "Credit line",
-                Debit = 0m,
-                Credit = 25000m
-            }
+            CreateJournalLine(1, debitAccountCode, "Debit line", 25000m, 0m),
+            CreateJournalLine(2, creditAccountCode, "Credit line", 0m, 25000m)
         };
 
         long? currentJournalId = null;
@@ -1244,6 +1173,11 @@ WHERE company_id = @company_id
                         await deleteHeader.ExecuteNonQueryAsync();
                     }
                 }
+            }
+
+            if (createdAccountCodes.Count > 0)
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, createdAccountCodes);
             }
 
             if (previousCurrent.Exists)
@@ -1385,24 +1319,46 @@ WHERE company_id = @company_id
         var previous = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
         var previousNext = await GetAccountingPeriodStateAsync(companyId, locationId, nextMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        var accounts = workspace.Accounts;
-        var asset = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
-        var revenue = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "REVENUE", StringComparison.OrdinalIgnoreCase));
-        var expense = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase));
-        Assert(asset is not null, "Asset account is required for close-period test.");
-        Assert(revenue is not null, "Revenue account is required for close-period test.");
-        Assert(expense is not null, "Expense account is required for close-period test.");
-
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var revenueJournalNo = $"ITEST-CLOSEFLOW-R-{stamp}";
         var expenseJournalNo = $"ITEST-CLOSEFLOW-E-{stamp}";
         var closingJournalNo = $"CLS-{targetMonth:yyyyMM}-{companyId}-{locationId}";
+        var createdAccountCodes = new List<string>();
         long? revenueJournalId = null;
         long? expenseJournalId = null;
 
         try
         {
+            var (assetAccountCode, createdAssetId) = await EnsurePostingAccountOfTypeAsync(companyId, "ASSET", stamp, "admin");
+            if (createdAssetId.HasValue)
+            {
+                createdAccountCodes.Add(assetAccountCode);
+            }
+
+            var (revenueAccountCode, createdRevenueId) = await EnsurePostingAccountOfTypeAsync(companyId, "REVENUE", stamp + 1, "admin");
+            if (createdRevenueId.HasValue)
+            {
+                createdAccountCodes.Add(revenueAccountCode);
+            }
+
+            var (expenseAccountCode, createdExpenseId) = await EnsurePostingAccountOfTypeAsync(companyId, "EXPENSE", stamp + 2, "admin");
+            if (createdExpenseId.HasValue)
+            {
+                createdAccountCodes.Add(expenseAccountCode);
+            }
+
+            var (retainedEarningsCode, createdRetainedId) = await EnsurePostingAccountOfTypeAsync(
+                companyId,
+                "EQUITY",
+                stamp + 3,
+                "admin",
+                preferredCode: "30.33000.001",
+                preferredName: "Laba Ditahan");
+            if (createdRetainedId.HasValue)
+            {
+                createdAccountCodes.Add(retainedEarningsCode);
+            }
+
             await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_CLOSEFLOW_OPEN");
 
             var revenueSave = await service.SaveJournalDraftAsync(
@@ -1421,7 +1377,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 1,
-                        AccountCode = asset!.Code,
+                        AccountCode = assetAccountCode,
                         Description = "Revenue cash in",
                         Debit = 1000m,
                         Credit = 0m
@@ -1429,7 +1385,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 2,
-                        AccountCode = revenue!.Code,
+                        AccountCode = revenueAccountCode,
                         Description = "Revenue recognition",
                         Debit = 0m,
                         Credit = 1000m
@@ -1462,7 +1418,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 1,
-                        AccountCode = expense!.Code,
+                        AccountCode = expenseAccountCode,
                         Description = "Expense recognition",
                         Debit = 300m,
                         Credit = 0m
@@ -1470,7 +1426,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 2,
-                        AccountCode = asset!.Code,
+                        AccountCode = assetAccountCode,
                         Description = "Expense cash out",
                         Debit = 0m,
                         Credit = 300m
@@ -1572,6 +1528,11 @@ WHERE company_id = @company_id
                 await deleteHeaders.ExecuteNonQueryAsync();
             }
 
+            if (createdAccountCodes.Count > 0)
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, createdAccountCodes);
+            }
+
             await using (var deletePeriodAudit = new NpgsqlCommand(
                 @"DELETE FROM sec_audit_logs
 WHERE entity_type = 'ACCOUNTING_PERIOD'
@@ -1638,19 +1599,37 @@ WHERE company_id = @company_id
         var previousTarget = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
         var previousPrior = await GetAccountingPeriodStateAsync(companyId, locationId, priorMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        var accounts = workspace.Accounts;
-        var asset = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
-        var revenue = accounts.FirstOrDefault(x => string.Equals(x.AccountType, "REVENUE", StringComparison.OrdinalIgnoreCase));
-        Assert(asset is not null, "Asset account is required for equation-balance close test.");
-        Assert(revenue is not null, "Revenue account is required for equation-balance close test.");
-
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var journalNo = $"ITEST-EQN-CLOSE-{stamp}";
+        var createdAccountCodes = new List<string>();
         long? journalId = null;
 
         try
         {
+            var (assetAccountCode, createdAssetId) = await EnsurePostingAccountOfTypeAsync(companyId, "ASSET", stamp, "admin");
+            if (createdAssetId.HasValue)
+            {
+                createdAccountCodes.Add(assetAccountCode);
+            }
+
+            var (revenueAccountCode, createdRevenueId) = await EnsurePostingAccountOfTypeAsync(companyId, "REVENUE", stamp + 1, "admin");
+            if (createdRevenueId.HasValue)
+            {
+                createdAccountCodes.Add(revenueAccountCode);
+            }
+
+            var (retainedEarningsCode, createdRetainedId) = await EnsurePostingAccountOfTypeAsync(
+                companyId,
+                "EQUITY",
+                stamp + 2,
+                "admin",
+                preferredCode: "30.33000.001",
+                preferredName: "Laba Ditahan");
+            if (createdRetainedId.HasValue)
+            {
+                createdAccountCodes.Add(retainedEarningsCode);
+            }
+
             await SetAccountingPeriodStateAsync(companyId, locationId, priorMonth, isOpen: true, note: "ITEST_EQN_PREV_OPEN");
             await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_EQN_TARGET_OPEN");
 
@@ -1670,7 +1649,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 1,
-                        AccountCode = asset!.Code,
+                        AccountCode = assetAccountCode,
                         Description = "Asset increase",
                         Debit = 1234m,
                         Credit = 0m
@@ -1678,7 +1657,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 2,
-                        AccountCode = revenue!.Code,
+                        AccountCode = revenueAccountCode,
                         Description = "Revenue increase",
                         Debit = 0m,
                         Credit = 1234m
@@ -1772,6 +1751,11 @@ WHERE entity_type = 'JOURNAL'
                     deleteJournal.Parameters.AddWithValue("id", journalId.Value);
                     await deleteJournal.ExecuteNonQueryAsync();
                 }
+            }
+
+            if (createdAccountCodes.Count > 0)
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, createdAccountCodes);
             }
 
             await using (var deletePeriodAudit = new NpgsqlCommand(
@@ -2074,12 +2058,28 @@ WHERE company_id = @company_id
         string originalReportGroup = string.Empty;
         string originalCashflowCategory = string.Empty;
         string revenueAccountCode = string.Empty;
+        string? createdCashAccountCode = null;
+        string? createdRevenueAccountCode = null;
         long? journalId = null;
 
         try
         {
             _ = await service.GetCashFlowAsync(companyId, locationId, targetMonth, "admin");
             await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_CASHFLOW_OPEN");
+
+            var (resolvedCashAccountCode, createdCashId) = await EnsurePostingAccountOfTypeAsync(companyId, "ASSET", stamp + 1, "admin");
+            cashAccountCode = resolvedCashAccountCode;
+            if (createdCashId.HasValue)
+            {
+                createdCashAccountCode = cashAccountCode;
+            }
+
+            var (resolvedRevenueAccountCode, createdRevenueId) = await EnsurePostingAccountOfTypeAsync(companyId, "REVENUE", stamp, "admin");
+            revenueAccountCode = resolvedRevenueAccountCode;
+            if (createdRevenueId.HasValue)
+            {
+                createdRevenueAccountCode = revenueAccountCode;
+            }
 
             await using (var connection = await OpenConnectionAsync())
             {
@@ -2090,40 +2090,18 @@ WHERE company_id = @company_id
        COALESCE(cashflow_category, '')
 FROM gl_accounts
 WHERE company_id = @company_id
-  AND is_active = TRUE
-  AND is_posting = TRUE
-  AND upper(account_type) = 'ASSET'
-  AND account_code NOT LIKE '%11100%'
-  AND account_name NOT ILIKE '%kas%'
-  AND account_name NOT ILIKE '%bank%'
-ORDER BY account_code
+  AND account_code = @account_code
 LIMIT 1;",
                     connection))
                 {
                     accountCommand.Parameters.AddWithValue("company_id", companyId);
+                    accountCommand.Parameters.AddWithValue("account_code", cashAccountCode);
                     await using var reader = await accountCommand.ExecuteReaderAsync();
-                    Assert(await reader.ReadAsync(), "A non-cash heuristic asset account is required for cash-flow metadata test.");
+                    Assert(await reader.ReadAsync(), "Cash-flow metadata test account should be loadable.");
                     cashAccountId = reader.GetInt64(0);
                     cashAccountCode = reader.GetString(1);
                     originalReportGroup = reader.GetString(2);
                     originalCashflowCategory = reader.GetString(3);
-                }
-
-                await using (var revenueCommand = new NpgsqlCommand(
-                    @"SELECT account_code
-FROM gl_accounts
-WHERE company_id = @company_id
-  AND is_active = TRUE
-  AND is_posting = TRUE
-  AND upper(account_type) = 'REVENUE'
-ORDER BY account_code
-LIMIT 1;",
-                    connection))
-                {
-                    revenueCommand.Parameters.AddWithValue("company_id", companyId);
-                    var scalar = await revenueCommand.ExecuteScalarAsync();
-                    Assert(scalar is not null && scalar is not DBNull, "A revenue account is required for cash-flow metadata test.");
-                    revenueAccountCode = Convert.ToString(scalar) ?? string.Empty;
                 }
 
                 await using var updateMetadata = new NpgsqlCommand(
@@ -2223,6 +2201,16 @@ WHERE entity_type = 'JOURNAL'
                     deleteJournal.Parameters.AddWithValue("id", journalId.Value);
                     await deleteJournal.ExecuteNonQueryAsync();
                 }
+            }
+
+            if (!string.IsNullOrWhiteSpace(createdRevenueAccountCode))
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, [createdRevenueAccountCode]);
+            }
+
+            if (!string.IsNullOrWhiteSpace(createdCashAccountCode))
+            {
+                await CleanupAccountsByCodesAsync(connection, companyId, [createdCashAccountCode]);
             }
 
             if (previousPeriod.Exists)
@@ -3101,8 +3089,8 @@ WHERE company_id = @company_id
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
         var childSuffix = (int)(Math.Abs(stamp % 999) + 1);
-        var rootCode = $"HO.3{middleSegment:0000}.000";
-        var childCode = $"HO.3{middleSegment:0000}.{childSuffix:000}";
+        var rootCode = BuildTestAccountCode("ASSET", stamp, isPosting: false);
+        var childCode = BuildTestAccountCode("ASSET", stamp, isPosting: true);
         var exportPath = Path.Combine(Path.GetTempPath(), $"agrinova-account-import-roundtrip-{stamp}.xlsx");
         var xlsxService = new AccountImportExportXlsxService();
 
@@ -3197,8 +3185,8 @@ WHERE company_id = @company_id
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
         var childSuffix = (int)(Math.Abs(stamp % 999) + 1);
-        var rootCode = $"HO.4{middleSegment:0000}.000";
-        var childCode = $"HO.4{middleSegment:0000}.{childSuffix:000}";
+        var rootCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: false, variant: 2);
+        var childCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 2);
 
         try
         {
@@ -3302,49 +3290,61 @@ WHERE company_id = @company_id
 
         var companyId = accessOptions.Companies[0].Id;
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var activeRootCode = $"HO.1{Math.Abs((stamp / 1000) % 10000):0000}.000";
-        var inactiveRootCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.000";
-        var missingParentChildCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs(stamp % 997) + 1):000}";
-        var inactiveParentChildCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs((stamp + 1) % 997) + 1):000}";
-        var mismatchedChildCode = $"HO.1{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs((stamp + 2) % 997) + 1):000}";
+        var activeRootCode = BuildTestAccountCode("ASSET", stamp, isPosting: false, variant: 4);
+        var activeRootSupportChildCode = BuildTestAccountCode("ASSET", stamp, isPosting: true, variant: 7);
+        var inactiveRootCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: false, variant: 4);
+        var missingParentCode = BuildTestAccountCode("EXPENSE", stamp + 100, isPosting: false, variant: 5);
+        var missingParentChildCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 4);
+        var inactiveParentChildCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 5);
+        var mismatchedChildCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 6);
         long? inactiveRootId = null;
 
         try
         {
-            var activeRootSave = await service.SaveAccountAsync(
+            var importParentsResult = await service.ImportAccountMasterDataAsync(
                 companyId,
-                new ManagedAccount
+                new AccountImportBundle
                 {
-                    Id = 0,
-                    CompanyId = companyId,
-                    Code = activeRootCode,
-                    Name = $"Active Parent {stamp}",
-                    AccountType = "ASSET",
-                    HierarchyLevel = 1,
-                    IsPosting = false,
-                    IsActive = true
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = activeRootCode,
+                            Name = $"Active Parent {stamp}",
+                            AccountType = "ASSET",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = activeRootSupportChildCode,
+                            Name = $"Active Parent Support {stamp}",
+                            AccountType = "ASSET",
+                            ParentAccountCode = activeRootCode,
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 4,
+                            Code = inactiveRootCode,
+                            Name = $"Inactive Parent {stamp}",
+                            AccountType = "EXPENSE",
+                            IsActive = true
+                        }
+                    ]
                 },
                 "admin");
-            Assert(activeRootSave.IsSuccess, $"Failed to create active parent account: {activeRootSave.Message}");
+            Assert(importParentsResult.IsSuccess, $"Failed to create import parent accounts: {importParentsResult.Message}");
 
-            var inactiveRootSave = await service.SaveAccountAsync(
-                companyId,
-                new ManagedAccount
-                {
-                    Id = 0,
-                    CompanyId = companyId,
-                    Code = inactiveRootCode,
-                    Name = $"Inactive Parent {stamp}",
-                    AccountType = "EXPENSE",
-                    HierarchyLevel = 1,
-                    IsPosting = false,
-                    IsActive = true
-                },
-                "admin");
-            Assert(inactiveRootSave.IsSuccess && inactiveRootSave.EntityId.HasValue, $"Failed to create inactive parent account: {inactiveRootSave.Message}");
-            inactiveRootId = inactiveRootSave.EntityId!.Value;
+            var importedParents = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
+            inactiveRootId = importedParents
+                .FirstOrDefault(x => string.Equals(x.Code, inactiveRootCode, StringComparison.OrdinalIgnoreCase))
+                ?.Id;
+            Assert(inactiveRootId.HasValue, "Inactive parent account should exist after import.");
+            var inactiveRootIdValue = inactiveRootId.GetValueOrDefault();
 
-            var deactivateInactiveRoot = await service.SoftDeleteAccountAsync(companyId, inactiveRootId.Value, "admin");
+            var deactivateInactiveRoot = await service.SoftDeleteAccountAsync(companyId, inactiveRootIdValue, "admin");
             Assert(deactivateInactiveRoot.IsSuccess, $"Failed to deactivate parent account: {deactivateInactiveRoot.Message}");
 
             var importResult = await service.ImportAccountMasterDataAsync(
@@ -3359,7 +3359,7 @@ WHERE company_id = @company_id
                             Code = missingParentChildCode,
                             Name = $"Missing Parent {stamp}",
                             AccountType = "EXPENSE",
-                            ParentAccountCode = "HO.59999.999",
+                            ParentAccountCode = missingParentCode,
                             IsActive = true
                         },
                         new AccountImportRow
@@ -3399,7 +3399,7 @@ WHERE company_id = @company_id
             Assert(
                 importResult.Errors.Any(error =>
                     error.RowNumber == 4 &&
-                    error.Message.Contains("Tipe akun child", StringComparison.OrdinalIgnoreCase)),
+                    error.Message.Contains("tipe akun", StringComparison.OrdinalIgnoreCase)),
                 "Type mismatch row should return a child-account-type validation error.");
 
             var importedAccounts = await service.GetAccountsAsync(companyId, includeInactive: true, actorUsername: "admin");
@@ -3416,7 +3416,7 @@ WHERE company_id = @company_id
             await CleanupAccountsByCodesAsync(
                 connection,
                 companyId,
-                [mismatchedChildCode, inactiveParentChildCode, missingParentChildCode, inactiveRootCode, activeRootCode]);
+                [mismatchedChildCode, inactiveParentChildCode, missingParentChildCode, inactiveRootCode, activeRootSupportChildCode, activeRootCode]);
         }
     }
 
@@ -3434,7 +3434,7 @@ WHERE company_id = @company_id
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var roleCode = $"ITEST_NO_ACC_IMPORT_{stamp}";
         var username = $"itest_noaccimport_{stamp}";
-        var rootCode = $"HO.6{Math.Abs(stamp % 10000):0000}.000";
+        var rootCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: false, variant: 7);
 
         long? roleId = null;
         long? userId = null;
@@ -3540,9 +3540,7 @@ WHERE company_id = @company_id
 
         var companyId = accessOptions.Companies[0].Id;
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var middleSegment = (int)(Math.Abs(stamp / 1000) % 10000);
-        var suffixSegment = (int)(Math.Abs(stamp) % 1000);
-        var code = $"HO.5{middleSegment:0000}.{suffixSegment:000}";
+        var code = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 8);
         long? accountId = null;
 
         try
@@ -3619,7 +3617,7 @@ WHERE company_id = @company_id
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var roleCode = $"ITEST_NO_ACC_WRITE_{stamp}";
         var username = $"itest_noaccwrite_{stamp}";
-        var accountCode = $"HO.51998.{Math.Abs(stamp % 1000):000}";
+        var accountCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 9);
 
         long? roleId = null;
         long? userId = null;
@@ -3715,28 +3713,17 @@ WHERE company_id = @company_id
         var targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(18);
         var previousPeriod = await GetAccountingPeriodStateAsync(companyId, locationId, targetMonth);
 
-        var workspace = await service.GetJournalWorkspaceDataAsync(companyId, locationId, "admin");
-        var assetAccount = workspace.Accounts.FirstOrDefault(x =>
-            x.IsPosting &&
-            string.Equals(x.AccountType, "ASSET", StringComparison.OrdinalIgnoreCase));
-        Assert(assetAccount is not null, "Posting asset account is required for block journal test.");
-
-        var allAccounts = await service.GetAccountsAsync(companyId, includeInactive: false, actorUsername: "admin");
-        var expenseParent = allAccounts.FirstOrDefault(x =>
-            !x.IsPosting &&
-            x.IsActive &&
-            string.Equals(x.AccountType, "EXPENSE", StringComparison.OrdinalIgnoreCase));
-        Assert(expenseParent is not null, "Expense parent account is required for block journal test.");
-
         var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var estateCode = $"E{Math.Abs((stamp / 100) % 100000):00000}";
         var divisionCode = $"D{Math.Abs((stamp / 10) % 100):00}";
         var blockCode = $"B{Math.Abs(stamp % 100):00}";
         var expectedBlockCode = $"{estateCode}-{divisionCode}-{blockCode}";
-        var accountCode = $"HO.5{Math.Abs((stamp / 1000) % 10000):0000}.{(int)(Math.Abs(stamp % 997) + 1):000}";
+        var expenseParentCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: false, variant: 10);
+        var accountCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 10);
         var journalNo = $"ITEST-BLOCK-{stamp}";
 
-        long? accountId = null;
+        string assetAccountCode = string.Empty;
+        string createdAssetAccountCode = string.Empty;
         long? estateId = null;
         long? divisionId = null;
         long? blockId = null;
@@ -3744,23 +3731,42 @@ WHERE company_id = @company_id
 
         try
         {
+            var (resolvedAssetAccountCode, createdAssetId) = await EnsurePostingAccountOfTypeAsync(companyId, "ASSET", stamp, "admin");
+            assetAccountCode = resolvedAssetAccountCode;
+            if (createdAssetId.HasValue)
+            {
+                createdAssetAccountCode = assetAccountCode;
+            }
             await SetAccountingPeriodStateAsync(companyId, locationId, targetMonth, isOpen: true, note: "ITEST_BLOCK_REQUIRED_OPEN");
 
-            var saveAccountResult = await service.SaveAccountAsync(
+            var importAccountResult = await service.ImportAccountMasterDataAsync(
                 companyId,
-                new ManagedAccount
+                new AccountImportBundle
                 {
-                    Id = 0,
-                    Code = accountCode,
-                    Name = $"Block Required Account {stamp}",
-                    AccountType = "EXPENSE",
-                    ParentAccountId = expenseParent!.Id,
-                    RequiresCostCenter = true,
-                    IsActive = true
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = expenseParentCode,
+                            Name = $"Block Parent Account {stamp}",
+                            AccountType = "EXPENSE",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = accountCode,
+                            Name = $"Block Required Account {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = expenseParentCode,
+                            RequiresCostCenter = true,
+                            IsActive = true
+                        }
+                    ]
                 },
                 "admin");
-            Assert(saveAccountResult.IsSuccess && saveAccountResult.EntityId.HasValue, $"Failed to create block-required account: {saveAccountResult.Message}");
-            accountId = saveAccountResult.EntityId!.Value;
+            Assert(importAccountResult.IsSuccess, $"Failed to create block-required account hierarchy: {importAccountResult.Message}");
 
             var estateSave = await service.SaveEstateAsync(
                 companyId,
@@ -3837,7 +3843,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 2,
-                        AccountCode = assetAccount!.Code,
+                        AccountCode = assetAccountCode,
                         Description = "Balancing asset",
                         Debit = 0m,
                         Credit = 100m
@@ -3874,7 +3880,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 2,
-                        AccountCode = assetAccount.Code,
+                        AccountCode = assetAccountCode,
                         Description = "Balancing asset",
                         Debit = 0m,
                         Credit = 100m
@@ -3911,7 +3917,7 @@ WHERE company_id = @company_id
                     new ManagedJournalLine
                     {
                         LineNo = 2,
-                        AccountCode = assetAccount.Code,
+                        AccountCode = assetAccountCode,
                         Description = "Balancing asset",
                         Debit = 0m,
                         Credit = 250m
@@ -3972,20 +3978,12 @@ WHERE entity_type = 'JOURNAL'
                 await deleteJournalAudit.ExecuteNonQueryAsync();
             }
 
-            if (accountId.HasValue)
+            var accountCodesToCleanup = new List<string> { accountCode, expenseParentCode };
+            if (!string.IsNullOrWhiteSpace(createdAssetAccountCode))
             {
-                await using (var deleteAccountAudit = new NpgsqlCommand("DELETE FROM sec_audit_logs WHERE entity_type = 'ACCOUNT' AND entity_id = @entity_id;", connection))
-                {
-                    deleteAccountAudit.Parameters.AddWithValue("entity_id", accountId.Value);
-                    await deleteAccountAudit.ExecuteNonQueryAsync();
-                }
-
-                await using (var deleteAccount = new NpgsqlCommand("DELETE FROM gl_accounts WHERE id = @id;", connection))
-                {
-                    deleteAccount.Parameters.AddWithValue("id", accountId.Value);
-                    await deleteAccount.ExecuteNonQueryAsync();
-                }
+                accountCodesToCleanup.Add(createdAssetAccountCode);
             }
+            await CleanupAccountsByCodesAsync(connection, companyId, accountCodesToCleanup);
 
             await CleanupEstateHierarchyByCodesAsync(connection, companyId, locationId, estateCode, divisionCode, blockCode);
 

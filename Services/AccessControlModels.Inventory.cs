@@ -124,6 +124,37 @@ public sealed class ManagedWarehouse
     }
 }
 
+public sealed class ManagedStorageLocation
+{
+    public long Id { get; set; }
+
+    public long CompanyId { get; set; }
+
+    public long? LocationId { get; set; }
+
+    public string LocationName { get; set; } = string.Empty;
+
+    public long WarehouseId { get; set; }
+
+    public string WarehouseName { get; set; } = string.Empty;
+
+    public string Code { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public bool IsActive { get; set; }
+
+    public override string ToString()
+    {
+        if (string.IsNullOrWhiteSpace(Code))
+        {
+            return Name;
+        }
+
+        return string.IsNullOrWhiteSpace(Name) ? Code : $"{Code} - {Name}";
+    }
+}
+
 public sealed class ManagedStockTransaction
 {
     public long Id { get; set; }
@@ -217,6 +248,13 @@ public sealed class StockOpnameBundle
     public ManagedStockOpname Header { get; init; } = new();
 
     public List<ManagedStockOpnameLine> Lines { get; init; } = new();
+}
+
+public sealed class StockAdjustmentBundle
+{
+    public ManagedStockAdjustment Header { get; init; } = new();
+
+    public List<ManagedStockAdjustmentLine> Lines { get; init; } = new();
 }
 
 public sealed class ManagedStockOpname
@@ -314,6 +352,148 @@ public sealed class StockValuationRow
     public decimal TotalValue { get; set; }
 }
 
+public sealed class InventoryTransactionHistoryRow
+{
+    public DateTime TxDate { get; set; }
+
+    public string DocumentNo { get; set; } = string.Empty;
+
+    public string DocumentType { get; set; } = string.Empty;
+
+    public string Status { get; set; } = string.Empty;
+
+    public string WarehouseName { get; set; } = string.Empty;
+
+    public string DestinationWarehouseName { get; set; } = string.Empty;
+
+    public string ItemCode { get; set; } = string.Empty;
+
+    public string ItemName { get; set; } = string.Empty;
+
+    public string Uom { get; set; } = string.Empty;
+
+    public decimal Qty { get; set; }
+
+    public decimal EffectQty { get; set; }
+
+    public string ReferenceNo { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+}
+
+public sealed class InventoryStockCardRow
+{
+    public DateTime TxDate { get; set; }
+
+    public string DocumentNo { get; set; } = string.Empty;
+
+    public string DocumentType { get; set; } = string.Empty;
+
+    public string WarehouseName { get; set; } = string.Empty;
+
+    public string ItemCode { get; set; } = string.Empty;
+
+    public string ItemName { get; set; } = string.Empty;
+
+    public string Uom { get; set; } = string.Empty;
+
+    public decimal OpeningQty { get; set; }
+
+    public decimal InQty { get; set; }
+
+    public decimal OutQty { get; set; }
+
+    public decimal AdjustmentQty { get; set; }
+
+    public decimal BalanceQty { get; set; }
+
+    public string ReferenceNo { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+}
+
+public sealed class InventoryStockOpnameReportRow
+{
+    public DateTime OpnameDate { get; set; }
+
+    public string OpnameNo { get; set; } = string.Empty;
+
+    public string Status { get; set; } = string.Empty;
+
+    public string WarehouseName { get; set; } = string.Empty;
+
+    public string ItemCode { get; set; } = string.Empty;
+
+    public string ItemName { get; set; } = string.Empty;
+
+    public string Uom { get; set; } = string.Empty;
+
+    public decimal SystemQty { get; set; }
+
+    public decimal ActualQty { get; set; }
+
+    public decimal DifferenceQty { get; set; }
+
+    public string Description { get; set; } = string.Empty;
+
+    public string Notes { get; set; } = string.Empty;
+}
+
+public sealed class ManagedStockAdjustment
+{
+    public long Id { get; set; }
+
+    public long CompanyId { get; set; }
+
+    public long LocationId { get; set; }
+
+    public string AdjustmentNo { get; set; } = string.Empty;
+
+    public DateTime AdjustmentDate { get; set; } = DateTime.Today;
+
+    public long? WarehouseId { get; set; }
+
+    public string WarehouseName { get; set; } = string.Empty;
+
+    public string ReferenceNo { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+
+    public string Status { get; set; } = "DRAFT";
+}
+
+public sealed class ManagedStockAdjustmentLine
+{
+    public long Id { get; set; }
+
+    public long AdjustmentId { get; set; }
+
+    public int LineNo { get; set; }
+
+    public long ItemId { get; set; }
+
+    public string ItemCode { get; set; } = string.Empty;
+
+    public string ItemName { get; set; } = string.Empty;
+
+    public string Uom { get; set; } = string.Empty;
+
+    public decimal QtyAdjustment { get; set; }
+
+    public decimal UnitCost { get; set; }
+
+    public string Notes { get; set; } = string.Empty;
+}
+
+public sealed class InventoryReportOption
+{
+    public string Code { get; init; } = string.Empty;
+
+    public string Label { get; init; } = string.Empty;
+
+    public override string ToString() => Label;
+}
+
 public sealed class InventoryOutboundCompareRow
 {
     public DateTime TxDate { get; set; }
@@ -389,6 +569,8 @@ public sealed class InventoryWorkspaceData
     public List<ManagedInventoryUnit> Units { get; init; } = new();
 
     public List<ManagedWarehouse> Warehouses { get; init; } = new();
+
+    public List<ManagedStorageLocation> StorageLocations { get; init; } = new();
 }
 
 public sealed class InventoryCostingSettings

@@ -25,10 +25,12 @@
             <comp:InventoryCategoriesTabControl Visibility="{Binding IsInventoryCategorySelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryUnitsTabControl Visibility="{Binding IsInventoryUnitSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryWarehousesTabControl Visibility="{Binding IsInventoryWarehouseSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <comp:InventoryStorageLocationsTabControl Visibility="{Binding IsInventoryStorageLocationSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryStockInSubView Visibility="{Binding IsInventoryStockInSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryStockOutSubView Visibility="{Binding IsInventoryStockOutSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryTransferSubView Visibility="{Binding IsInventoryTransferSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryStockOpnameSubView Visibility="{Binding IsInventoryStockOpnameSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+            <comp:InventoryStockAdjustmentSubView Visibility="{Binding IsInventoryStockAdjustmentSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryStockTabControl Visibility="{Binding IsInventoryStockPositionSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <comp:InventoryReportsSubView Visibility="{Binding IsInventoryReportsSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
             <Border Padding="14"

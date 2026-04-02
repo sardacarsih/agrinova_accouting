@@ -213,13 +213,16 @@ public sealed partial class PostgresAccessControlService
                 var lines = new List<InventoryAutoJournalLine>();
                 var isInboundDocument =
                     string.Equals(doc.SourceType, InventoryCostSourceStockIn, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(doc.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase);
+                    string.Equals(doc.SourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(doc.SourceType, InventoryCostSourceAdjustmentPlus, StringComparison.OrdinalIgnoreCase);
                 var lineDescription = doc.SourceType switch
                 {
                     InventoryCostSourceStockIn => $"PENERIMAAN BARANG {doc.DocumentNo}",
                     InventoryCostSourceOpnamePlus => $"STOK OPNAME PLUS {doc.DocumentNo}",
+                    InventoryCostSourceAdjustmentPlus => $"STOCK ADJUSTMENT PLUS {doc.DocumentNo}",
                     InventoryCostSourceStockOut => $"PENGELUARAN BARANG {doc.DocumentNo}",
                     InventoryCostSourceOpnameMinus => $"STOK OPNAME MINUS {doc.DocumentNo}",
+                    InventoryCostSourceAdjustmentMinus => $"STOCK ADJUSTMENT MINUS {doc.DocumentNo}",
                     _ => $"COGS {doc.SourceType} {doc.DocumentNo}"
                 };
                 decimal totalCredit = 0;
@@ -697,6 +700,14 @@ FROM (
     WHERE company_id = @company_id
       AND location_id = @location_id
       AND status = 'POSTED'
+
+    UNION ALL
+
+    SELECT MAX(adjustment_date)::date AS event_date
+    FROM inv_stock_adjustments
+    WHERE company_id = @company_id
+      AND location_id = @location_id
+      AND status = 'POSTED'
 ) AS dated_events;", connection, transaction);
         command.Parameters.AddWithValue("company_id", companyId);
         command.Parameters.AddWithValue("location_id", locationId);
@@ -913,6 +924,7 @@ SELECT e.location_id,
            MAX(CASE
                WHEN e.source_type IN ('STOCK_IN', 'STOCK_OUT') THEN COALESCE(NULLIF(trim(t.reference_no), ''), NULLIF(trim(t.transaction_no), ''))
                WHEN e.source_type IN ('OPNAME_PLUS', 'OPNAME_MINUS') THEN o.opname_no
+               WHEN e.source_type IN ('ADJUSTMENT_PLUS', 'ADJUSTMENT_MINUS') THEN a.adjustment_no
                ELSE NULL
            END),
            CONCAT(e.source_type, '-', e.source_id::TEXT)
@@ -926,9 +938,13 @@ LEFT JOIN inv_stock_opname o
     ON e.source_type IN ('OPNAME_PLUS', 'OPNAME_MINUS')
    AND o.id = e.source_id
    AND o.company_id = e.company_id
+LEFT JOIN inv_stock_adjustments a
+    ON e.source_type IN ('ADJUSTMENT_PLUS', 'ADJUSTMENT_MINUS')
+   AND a.id = e.source_id
+   AND a.company_id = e.company_id
 WHERE e.company_id = @company_id
   AND e.cogs_journal_id IS NULL
-  AND e.source_type IN ('STOCK_IN', 'STOCK_OUT', 'OPNAME_PLUS', 'OPNAME_MINUS')
+  AND e.source_type IN ('STOCK_IN', 'STOCK_OUT', 'OPNAME_PLUS', 'OPNAME_MINUS', 'ADJUSTMENT_PLUS', 'ADJUSTMENT_MINUS')
   AND e.event_date >= @period_start
   AND e.event_date < @period_next
   AND (@location_id IS NULL OR e.location_id = @location_id)
@@ -1036,22 +1052,38 @@ WHERE company_id = @company_id
             return;
         }
 
-        if (!string.Equals(sourceType, InventoryCostSourceOpnameMinus, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(sourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sourceType, InventoryCostSourceOpnameMinus, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(sourceType, InventoryCostSourceOpnamePlus, StringComparison.OrdinalIgnoreCase))
         {
-            return;
-        }
-
-        await using var updateOpname = new NpgsqlCommand(@"
+            await using var updateOpname = new NpgsqlCommand(@"
 UPDATE inv_stock_opname
 SET cogs_journal_id = @cogs_journal_id
 WHERE company_id = @company_id
   AND id = @id
   AND cogs_journal_id IS NULL;", connection, transaction);
-        updateOpname.Parameters.AddWithValue("cogs_journal_id", journalId);
-        updateOpname.Parameters.AddWithValue("company_id", companyId);
-        updateOpname.Parameters.AddWithValue("id", sourceId);
-        await updateOpname.ExecuteNonQueryAsync(cancellationToken);
+            updateOpname.Parameters.AddWithValue("cogs_journal_id", journalId);
+            updateOpname.Parameters.AddWithValue("company_id", companyId);
+            updateOpname.Parameters.AddWithValue("id", sourceId);
+            await updateOpname.ExecuteNonQueryAsync(cancellationToken);
+            return;
+        }
+
+        if (!string.Equals(sourceType, InventoryCostSourceAdjustmentMinus, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(sourceType, InventoryCostSourceAdjustmentPlus, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await using var updateAdjustment = new NpgsqlCommand(@"
+UPDATE inv_stock_adjustments
+SET cogs_journal_id = @cogs_journal_id
+WHERE company_id = @company_id
+  AND id = @id
+  AND cogs_journal_id IS NULL;", connection, transaction);
+        updateAdjustment.Parameters.AddWithValue("cogs_journal_id", journalId);
+        updateAdjustment.Parameters.AddWithValue("company_id", companyId);
+        updateAdjustment.Parameters.AddWithValue("id", sourceId);
+        await updateAdjustment.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<List<InventoryPendingAdjustmentDocument>> LoadPendingAdjustmentDocumentsAsync(

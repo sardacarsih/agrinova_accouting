@@ -209,6 +209,18 @@ BEGIN
         FROM tmp_inv_item_remap r
         WHERE l.item_id = r.source_item_id;
 
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'inv_stock_adjustment_lines'
+        ) THEN
+            UPDATE inv_stock_adjustment_lines l
+            SET item_id = r.canonical_item_id
+            FROM tmp_inv_item_remap r
+            WHERE l.item_id = r.source_item_id;
+        END IF;
+
         UPDATE inv_cost_layers l
         SET item_id = r.canonical_item_id
         FROM tmp_inv_item_remap r
@@ -322,6 +334,21 @@ CREATE TABLE IF NOT EXISTS inv_warehouses (
     CONSTRAINT uq_inv_warehouses_company_code UNIQUE (company_id, warehouse_code)
 );
 
+CREATE TABLE IF NOT EXISTS inv_storage_locations (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
+    location_id BIGINT REFERENCES org_locations(id) ON DELETE SET NULL,
+    warehouse_id BIGINT NOT NULL REFERENCES inv_warehouses(id) ON DELETE RESTRICT,
+    storage_code VARCHAR(80) NOT NULL,
+    storage_name VARCHAR(200) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_inv_storage_locations_company_warehouse_code UNIQUE (company_id, warehouse_id, storage_code)
+);
+
 CREATE TABLE IF NOT EXISTS inv_stock_transactions (
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
@@ -381,6 +408,35 @@ CREATE TABLE IF NOT EXISTS inv_stock_opname_lines (
     system_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
     actual_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
     difference_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS inv_stock_adjustments (
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES org_companies(id) ON DELETE RESTRICT,
+    location_id BIGINT NOT NULL REFERENCES org_locations(id) ON DELETE RESTRICT,
+    adjustment_no VARCHAR(80) NOT NULL,
+    adjustment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT,
+    reference_no VARCHAR(200) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','SUBMITTED','APPROVED','POSTED')),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+    updated_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_inv_stock_adjustments_company_no UNIQUE (company_id, adjustment_no)
+);
+
+CREATE TABLE IF NOT EXISTS inv_stock_adjustment_lines (
+    id BIGSERIAL PRIMARY KEY,
+    adjustment_id BIGINT NOT NULL REFERENCES inv_stock_adjustments(id) ON DELETE CASCADE,
+    line_no INT NOT NULL DEFAULT 1,
+    item_id BIGINT NOT NULL REFERENCES inv_items(id) ON DELETE RESTRICT,
+    qty_adjustment NUMERIC(18,4) NOT NULL DEFAULT 0,
+    unit_cost NUMERIC(18,4) NOT NULL DEFAULT 0,
     notes TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -452,6 +508,7 @@ CREATE INDEX IF NOT EXISTS idx_inv_cost_adjustment_company_date
 ALTER TABLE inv_stock ADD COLUMN IF NOT EXISTS warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE SET NULL;
 ALTER TABLE inv_stock_transactions ADD COLUMN IF NOT EXISTS cogs_journal_id BIGINT NULL;
 ALTER TABLE inv_stock_opname ADD COLUMN IF NOT EXISTS cogs_journal_id BIGINT NULL;
+ALTER TABLE inv_stock_adjustments ADD COLUMN IF NOT EXISTS cogs_journal_id BIGINT NULL;
 ALTER TABLE inv_stock_transaction_lines ADD COLUMN IF NOT EXISTS expense_account_code VARCHAR(80) NOT NULL DEFAULT '';
 ALTER TABLE inv_stock_transaction_lines ADD COLUMN IF NOT EXISTS warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT;
 ALTER TABLE inv_stock_transaction_lines ADD COLUMN IF NOT EXISTS destination_warehouse_id BIGINT REFERENCES inv_warehouses(id) ON DELETE RESTRICT;
@@ -563,6 +620,32 @@ LEFT JOIN inv_company_settings comp
 WHERE e.source_type = 'OPNAME_PLUS'
   AND o.id = e.source_id
   AND o.company_id = e.company_id
+  AND (e.cogs_account_code IS NULL OR btrim(e.cogs_account_code) = '');
+
+UPDATE inv_cost_outbound_events e
+SET cogs_account_code = upper(btrim(COALESCE(NULLIF(loc.cogs_account_code, ''), NULLIF(comp.cogs_account_code, ''), '')))
+FROM inv_stock_adjustments a
+LEFT JOIN inv_location_costing_settings loc
+    ON loc.company_id = a.company_id
+   AND loc.location_id = a.location_id
+LEFT JOIN inv_company_settings comp
+    ON comp.company_id = a.company_id
+WHERE e.source_type = 'ADJUSTMENT_MINUS'
+  AND a.id = e.source_id
+  AND a.company_id = e.company_id
+  AND (e.cogs_account_code IS NULL OR btrim(e.cogs_account_code) = '');
+
+UPDATE inv_cost_outbound_events e
+SET cogs_account_code = upper(btrim(COALESCE(NULLIF(loc.cogs_account_code, ''), NULLIF(comp.cogs_account_code, ''), '')))
+FROM inv_stock_adjustments a
+LEFT JOIN inv_location_costing_settings loc
+    ON loc.company_id = a.company_id
+   AND loc.location_id = a.location_id
+LEFT JOIN inv_company_settings comp
+    ON comp.company_id = a.company_id
+WHERE e.source_type = 'ADJUSTMENT_PLUS'
+  AND a.id = e.source_id
+  AND a.company_id = e.company_id
   AND (e.cogs_account_code IS NULL OR btrim(e.cogs_account_code) = '');
 
 UPDATE inv_stock_transaction_lines

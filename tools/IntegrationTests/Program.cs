@@ -29,6 +29,7 @@ internal static partial class Program
             ("JournalManagementViewModel_BrowseRowsMirrorSearchResults", TestJournalManagementViewModel_BrowseRowsMirrorSearchResultsAsync),
             ("JournalManagementViewModel_BrowseDetailLoadsOnceAndCaches", TestJournalManagementViewModel_BrowseDetailLoadsOnceAndCachesAsync),
             ("MainShellViewModel_GeneralLedgerNavigationRequiresViewActions", TestMainShellViewModel_GeneralLedgerNavigationRequiresViewActionsAsync),
+            ("MainShellViewModel_InventoryStockAdjustmentNavigationRequiresDedicatedView", TestMainShellViewModel_InventoryStockAdjustmentNavigationRequiresDedicatedViewAsync),
             ("JournalManagementViewModel_ImportExportRequireDedicatedActions", TestJournalManagementViewModel_ImportExportRequireDedicatedActionsAsync),
             ("JournalManagementViewModel_SelectedBrowseRowsDriveExportResolution", TestJournalManagementViewModel_SelectedBrowseRowsDriveExportResolutionAsync),
             ("ReportsViewModel_ExportRequiresDedicatedPermission", TestReportsViewModel_ExportRequiresDedicatedPermissionAsync),
@@ -62,6 +63,8 @@ internal static partial class Program
             ("Reports_CashFlowHonorsCashMetadata", TestReportsCashFlowHonorsCashMetadataAsync),
             ("InventoryCategory_CrudReactivationAndValidation", TestInventoryCategoryCrudReactivationAndValidationAsync),
             ("InventoryCategory_RejectsUnauthorizedActor", TestInventoryCategoryRejectsUnauthorizedActorAsync),
+            ("Inventory_StockAdjustment_RejectsStockOpnameOnlyActor", TestInventoryStockAdjustmentRejectsStockOpnameOnlyActorAsync),
+            ("Inventory_StockAdjustment_ExactWorkflowScopes", TestInventoryStockAdjustmentExactWorkflowScopesAsync),
             ("InventoryImport_AllowsDedicatedApiPermission", TestInventoryImportAllowsDedicatedApiPermissionAsync),
             ("InventoryImport_WritesAggregateAuditLog", TestInventoryImportWritesAggregateAuditLogAsync),
             ("Inventory_MasterCompanyPolicy_SyncAndWriteGuard", TestInventoryMasterCompanyPolicySyncAndWriteGuardAsync),
@@ -70,7 +73,12 @@ internal static partial class Program
             ("Inventory_DraftAutoNumbering", TestInventoryDraftAutoNumberingAsync),
             ("Inventory_StockTransaction_RejectsWarehouseLocationMismatch", TestInventoryStockTransactionRejectsWarehouseLocationMismatchAsync),
             ("Inventory_StockTransaction_AllowsGlobalWarehouse", TestInventoryStockTransactionAllowsGlobalWarehouseAsync),
-            ("Inventory_Transfer_MovesWarehouseBuckets", TestInventoryTransferMovesWarehouseBucketsAsync)
+            ("Inventory_Transfer_MovesWarehouseBuckets", TestInventoryTransferMovesWarehouseBucketsAsync),
+            ("Inventory_StockOpname_WorkflowFeedsReports", TestInventoryStockOpnameWorkflowFeedsReportsAsync),
+            ("Inventory_StockAdjustment_WorkflowFeedsReports", TestInventoryStockAdjustmentWorkflowFeedsReportsAsync),
+            ("Inventory_StockCardAndTransactionHistory_Reports", TestInventoryStockCardAndTransactionHistoryReportsAsync),
+            ("Inventory_ReportExport_WritesExpectedWorkbook", TestInventoryReportExportWritesExpectedWorkbookAsync),
+            ("Inventory_StorageLocation_CrudAndValidation", TestInventoryStorageLocationCrudAndValidationAsync)
         };
 
         var failed = 0;

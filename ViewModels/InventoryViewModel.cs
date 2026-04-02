@@ -14,28 +14,25 @@ public sealed partial class InventoryViewModel : ViewModelBase
     private static readonly HashSet<string> ReportBackedTabs = new(StringComparer.OrdinalIgnoreCase)
     {
         "reports",
+        "transaction_history",
+        "stock_card",
         "inquiry_mutation",
         "lk_outbound_compare",
         "report_stock",
         "report_mutation",
         "report_valuation",
+        "report_stock_opname",
         "low_stock",
         "sync_runs",
         "sync_items"
     };
 
-    private static readonly HashSet<string> PlaceholderTabs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "lokasi_penyimpanan",
-        "stock_adjustment",
-        "transaction_history",
-        "stock_card",
-        "report_stock_opname"
-    };
+    private static readonly HashSet<string> PlaceholderTabs = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IAccessControlService _accessControlService;
     private readonly InventoryImportXlsxService _inventoryImportXlsxService = new();
     private readonly InventoryOpeningBalanceXlsxService _inventoryOpeningBalanceXlsxService = new();
+    private readonly InventoryReportXlsxService _inventoryReportXlsxService = new();
     private readonly string _actorUsername;
     private readonly long _companyId;
     private readonly long _locationId;
@@ -51,6 +48,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
     private int _selectedStockOutTabIndex;
     private int _selectedTransferTabIndex;
     private int _selectedStockOpnameTabIndex;
+    private int _selectedStockAdjustmentTabIndex;
     private long? _masterCompanyId;
     private string _masterCompanyLabel = string.Empty;
     private bool _canMaintainMasterInventoryData;
@@ -91,6 +89,12 @@ public sealed partial class InventoryViewModel : ViewModelBase
     private readonly bool _canSubmitStockOpname;
     private readonly bool _canApproveStockOpname;
     private readonly bool _canPostStockOpname;
+    private readonly bool _canCreateStockAdjustment;
+    private readonly bool _canUpdateStockAdjustment;
+    private readonly bool _canSubmitStockAdjustment;
+    private readonly bool _canApproveStockAdjustment;
+    private readonly bool _canPostStockAdjustment;
+    private readonly bool _canExportReports;
     private string _itemSearchKeyword = string.Empty;
     private int _itemSearchPage = 1;
     private int _itemSearchTotalCount;
@@ -147,6 +151,12 @@ public sealed partial class InventoryViewModel : ViewModelBase
         _canSubmitStockOpname = accessContext.HasAction("inventory", "stock_opname", "submit");
         _canApproveStockOpname = accessContext.HasAction("inventory", "stock_opname", "approve");
         _canPostStockOpname = accessContext.HasAction("inventory", "stock_opname", "post");
+        _canCreateStockAdjustment = accessContext.HasAction("inventory", "stock_adjustment", "create");
+        _canUpdateStockAdjustment = accessContext.HasAction("inventory", "stock_adjustment", "update");
+        _canSubmitStockAdjustment = accessContext.HasAction("inventory", "stock_adjustment", "submit");
+        _canApproveStockAdjustment = accessContext.HasAction("inventory", "stock_adjustment", "approve");
+        _canPostStockAdjustment = accessContext.HasAction("inventory", "stock_adjustment", "post");
+        _canExportReports = accessContext.HasAction("inventory", "reports", "export");
 
         Categories = new ObservableCollection<ManagedInventoryCategory>();
         ActiveCategories = new ObservableCollection<ManagedInventoryCategory>();
@@ -158,6 +168,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
         StockOutExpenseAccountOptions = new ObservableCollection<ManagedAccount>();
         Units = new ObservableCollection<ManagedInventoryUnit>();
         Warehouses = new ObservableCollection<ManagedWarehouse>();
+        StorageLocations = new ObservableCollection<ManagedStorageLocation>();
         MasterImportErrorPanel = new InventoryImportErrorPanelState("Error Import Master Inventory");
         OpeningBalanceImportErrorPanel = new InventoryImportErrorPanelState("Error Import Saldo Awal");
         UomOptions = new ObservableCollection<string> { "PCS", "KG", "LTR", "TON", "SET", "BOX" };
@@ -190,11 +201,13 @@ public sealed partial class InventoryViewModel : ViewModelBase
         NewWarehouseCommand = new RelayCommand(NewWarehouse);
         SaveWarehouseCommand = new RelayCommand(() => _ = SaveWarehouseAsync());
         DeactivateWarehouseCommand = new RelayCommand(() => _ = DeactivateWarehouseAsync());
+        InitializeStorageLocationCommands();
 
         InitializeStockInCommands();
         InitializeStockOutCommands();
         InitializeTransferCommands();
         InitializeStockOpnameCommands();
+        InitializeStockAdjustmentCommands();
         InitializeDashboardCommands();
         InitializeReportsCommands();
     }
@@ -288,10 +301,12 @@ public sealed partial class InventoryViewModel : ViewModelBase
             OnPropertyChanged(nameof(IsInventoryCategorySelected));
             OnPropertyChanged(nameof(IsInventoryUnitSelected));
             OnPropertyChanged(nameof(IsInventoryWarehouseSelected));
+            OnPropertyChanged(nameof(IsInventoryStorageLocationSelected));
             OnPropertyChanged(nameof(IsInventoryStockInSelected));
             OnPropertyChanged(nameof(IsInventoryStockOutSelected));
             OnPropertyChanged(nameof(IsInventoryTransferSelected));
             OnPropertyChanged(nameof(IsInventoryStockOpnameSelected));
+            OnPropertyChanged(nameof(IsInventoryStockAdjustmentSelected));
             OnPropertyChanged(nameof(IsInventoryStockPositionSelected));
             OnPropertyChanged(nameof(IsInventoryReportsSelected));
             OnPropertyChanged(nameof(IsInventoryPlaceholderSelected));
@@ -312,6 +327,8 @@ public sealed partial class InventoryViewModel : ViewModelBase
 
     public bool IsInventoryWarehouseSelected => SelectedInventoryTab == "gudang";
 
+    public bool IsInventoryStorageLocationSelected => SelectedInventoryTab == "lokasi_penyimpanan";
+
     public bool IsInventoryStockInSelected => SelectedInventoryTab == "stock_in";
 
     public bool IsInventoryStockOutSelected => SelectedInventoryTab == "stock_out";
@@ -319,6 +336,8 @@ public sealed partial class InventoryViewModel : ViewModelBase
     public bool IsInventoryTransferSelected => SelectedInventoryTab == "transfer";
 
     public bool IsInventoryStockOpnameSelected => SelectedInventoryTab == "stock_opname";
+
+    public bool IsInventoryStockAdjustmentSelected => SelectedInventoryTab == "stock_adjustment";
 
     public bool IsInventoryStockPositionSelected => SelectedInventoryTab == "stock_position";
 
@@ -350,23 +369,19 @@ public sealed partial class InventoryViewModel : ViewModelBase
         set => SetProperty(ref _selectedStockOpnameTabIndex, Math.Clamp(value, 0, 1));
     }
 
+    public int SelectedStockAdjustmentTabIndex
+    {
+        get => _selectedStockAdjustmentTabIndex;
+        set => SetProperty(ref _selectedStockAdjustmentTabIndex, Math.Clamp(value, 0, 1));
+    }
+
     public string InventoryPlaceholderTitle => SelectedInventoryTab switch
     {
-        "lokasi_penyimpanan" => "Lokasi Penyimpanan",
-        "stock_adjustment" => "Penyesuaian Stok",
-        "transaction_history" => "Histori Transaksi",
-        "stock_card" => "Kartu Stok",
-        "report_stock_opname" => "Laporan Stok Opname",
         _ => "Fitur Inventori"
     };
 
     public string InventoryPlaceholderDescription => SelectedInventoryTab switch
     {
-        "lokasi_penyimpanan" => "Submenu ini sudah disiapkan. Implementasi manajemen lokasi penyimpanan akan ditambahkan pada iterasi berikutnya.",
-        "stock_adjustment" => "Submenu ini sudah disiapkan. Modul penyesuaian stok terpisah dari stok opname akan ditambahkan pada iterasi berikutnya.",
-        "transaction_history" => "Submenu ini sudah disiapkan. Riwayat transaksi lintas dokumen akan ditambahkan pada iterasi berikutnya.",
-        "stock_card" => "Submenu ini sudah disiapkan. Kartu stok per item/lokasi akan ditambahkan pada iterasi berikutnya.",
-        "report_stock_opname" => "Submenu ini sudah disiapkan. Laporan stok opname khusus akan ditambahkan pada iterasi berikutnya.",
         _ => "Fitur ini belum tersedia."
     };
 
@@ -735,6 +750,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
             RefreshStockOutExpenseAccountOptions();
             ReplaceCollection(Units, data.Units);
             ReplaceCollection(Warehouses, data.Warehouses);
+            ReplaceCollection(StorageLocations, data.StorageLocations);
 
             // Update UomOptions from Units if available
             if (data.Units.Count > 0)
@@ -1037,6 +1053,7 @@ public sealed partial class InventoryViewModel : ViewModelBase
         EnsureStockItemLookupContains(StockInLines.Select(x => x.ItemId));
         EnsureStockItemLookupContains(StockOutLines.Select(x => x.ItemId));
         EnsureStockItemLookupContains(TransferLines.Select(x => x.ItemId));
+        EnsureStockItemLookupContains(StockAdjustmentLines.Select(x => x.ItemId));
     }
 
     private void EnsureStockItemLookupContains(IEnumerable<long> itemIds)
@@ -1338,6 +1355,13 @@ public sealed partial class InventoryViewModel : ViewModelBase
         OnPropertyChanged(nameof(SaveWarehouseTooltip));
         OnPropertyChanged(nameof(DeactivateWarehouseTooltip));
 
+        OnPropertyChanged(nameof(CanCreateStorageLocation));
+        OnPropertyChanged(nameof(CanSaveStorageLocation));
+        OnPropertyChanged(nameof(CanDeactivateStorageLocation));
+        OnPropertyChanged(nameof(NewStorageLocationTooltip));
+        OnPropertyChanged(nameof(SaveStorageLocationTooltip));
+        OnPropertyChanged(nameof(DeactivateStorageLocationTooltip));
+
         OnPropertyChanged(nameof(CanCreateStockIn));
         OnPropertyChanged(nameof(CanSaveStockInDraft));
         OnPropertyChanged(nameof(CanSubmitStockIn));
@@ -1383,6 +1407,20 @@ public sealed partial class InventoryViewModel : ViewModelBase
         OnPropertyChanged(nameof(SubmitStockOpnameTooltip));
         OnPropertyChanged(nameof(ApproveStockOpnameTooltip));
         OnPropertyChanged(nameof(PostStockOpnameTooltip));
+
+        OnPropertyChanged(nameof(CanCreateStockAdjustment));
+        OnPropertyChanged(nameof(CanSaveStockAdjustmentDraft));
+        OnPropertyChanged(nameof(CanSubmitStockAdjustment));
+        OnPropertyChanged(nameof(CanApproveStockAdjustment));
+        OnPropertyChanged(nameof(CanPostStockAdjustment));
+        OnPropertyChanged(nameof(NewStockAdjustmentTooltip));
+        OnPropertyChanged(nameof(SaveStockAdjustmentDraftTooltip));
+        OnPropertyChanged(nameof(SubmitStockAdjustmentTooltip));
+        OnPropertyChanged(nameof(ApproveStockAdjustmentTooltip));
+        OnPropertyChanged(nameof(PostStockAdjustmentTooltip));
+
+        OnPropertyChanged(nameof(CanExportReport));
+        OnPropertyChanged(nameof(ExportReportTooltip));
     }
 
     private bool CanCreateInventoryDocument(bool hasCreatePermission)
@@ -1681,11 +1719,14 @@ public sealed partial class InventoryViewModel : ViewModelBase
 
         var reportPreset = tabCode switch
         {
+            "transaction_history" => "transaction_history",
+            "stock_card" => "stock_card",
             "inquiry_mutation" => "movement",
             "lk_outbound_compare" => "lk_outbound_compare",
-            "report_stock" => "valuation",
+            "report_stock" => "stock_position",
             "report_mutation" => "movement",
             "report_valuation" => "valuation",
+            "report_stock_opname" => "stock_opname",
             "low_stock" => "low_stock",
             "sync_runs" => "sync_runs",
             "sync_items" => "sync_items",
@@ -1720,6 +1761,9 @@ public sealed partial class InventoryViewModel : ViewModelBase
                 break;
             case "stock_opname":
                 SelectedStockOpnameTabIndex = 0;
+                break;
+            case "stock_adjustment":
+                SelectedStockAdjustmentTabIndex = 0;
                 break;
         }
     }

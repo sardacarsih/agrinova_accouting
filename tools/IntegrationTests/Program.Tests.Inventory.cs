@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
+using System.IO;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using Npgsql;
 using Accounting.Services;
 
@@ -323,6 +326,785 @@ GROUP BY action;",
             }
 
             await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+        }
+    }
+
+    private static async Task TestInventoryStockAdjustmentRejectsStockOpnameOnlyActorAsync()
+    {
+        var service = CreateService();
+        var managementData = await service.GetUserManagementDataAsync();
+        var (companyId, locationId, inventoryAccountCode, cogsAccountCode) = await FindInventoryReportReadyContextAsync(service, requireCogsAccount: true);
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var roleCode = $"ITEST_OPONLY_ADJ_{stamp}";
+        var username = $"itest_oponlyadj_{stamp}";
+        var warehouseCode = $"DW{Math.Abs((stamp + 31) % 1000000):000000}";
+        var categoryCode = $"DAC{Math.Abs((stamp + 37) % 1000000):000000}";
+        var itemCode = $"DAI{Math.Abs((stamp + 41) % 1000000):000000}";
+        var adjustmentNo = $"ITEST-ADJ-DENY-{stamp}";
+        var baseDate = DateTime.Today.Day >= 3
+            ? DateTime.Today.AddDays(-2)
+            : new DateTime(DateTime.Today.AddMonths(-1).Year, DateTime.Today.AddMonths(-1).Month, 15);
+
+        var opnameOnlyScopeIds = new[]
+        {
+            RequireAccessScopeId(managementData, "inventory", "stock_opname", "view"),
+            RequireAccessScopeId(managementData, "inventory", "stock_opname", "create"),
+            RequireAccessScopeId(managementData, "inventory", "stock_opname", "update"),
+            RequireAccessScopeId(managementData, "inventory", "stock_opname", "submit"),
+            RequireAccessScopeId(managementData, "inventory", "stock_opname", "approve"),
+            RequireAccessScopeId(managementData, "inventory", "stock_opname", "post")
+        };
+
+        long? roleId = null;
+        long? userId = null;
+        long? warehouseId = null;
+        long? itemId = null;
+        long? draftAdjustmentId = null;
+        InventoryLocationCostingSettings? originalLocationCostingSettings = null;
+
+        try
+        {
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.ToString(), "admin");
+            originalLocationCostingSettings = await service.GetInventoryLocationCostingSettingsAsync(companyId, locationId);
+
+            var saveLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                companyId,
+                new InventoryLocationCostingSettings
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    UseCompanyDefault = false,
+                    ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                        ? originalLocationCostingSettings.ValuationMethod
+                        : "AVERAGE",
+                    CogsAccountCode = cogsAccountCode
+                },
+                "admin");
+            Assert(saveLocationCostingResult.IsSuccess, $"Failed to save temporary location costing for adjustment auth test: {saveLocationCostingResult.Message}");
+
+            var roleSaveResult = await service.SaveRoleAsync(
+                new ManagedRole
+                {
+                    Id = 0,
+                    Code = roleCode,
+                    Name = "Stock Opname Only Role",
+                    IsSuperRole = false,
+                    IsActive = true
+                },
+                opnameOnlyScopeIds,
+                "admin");
+            Assert(roleSaveResult.IsSuccess && roleSaveResult.EntityId.HasValue, "Failed to create stock-opname-only role.");
+            roleId = roleSaveResult.EntityId!.Value;
+
+            var userSaveResult = await service.SaveUserAsync(
+                new ManagedUser
+                {
+                    Id = 0,
+                    Username = username,
+                    FullName = "Stock Opname Only Adjustment Denied User",
+                    Email = $"{username}@local",
+                    IsActive = true,
+                    DefaultCompanyId = companyId,
+                    DefaultLocationId = locationId
+                },
+                "Admin@123",
+                [roleId.Value],
+                [companyId],
+                [locationId],
+                "admin");
+            Assert(userSaveResult.IsSuccess && userSaveResult.EntityId.HasValue, "Failed to create stock-opname-only user.");
+            userId = userSaveResult.EntityId!.Value;
+
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Adjustment Denied Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveCategoryResult = await service.SaveInventoryCategoryAsync(
+                companyId,
+                new ManagedInventoryCategory
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = categoryCode,
+                    Name = $"Adjustment Denied Category {stamp}",
+                    AccountCode = inventoryAccountCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveCategoryResult.IsSuccess && saveCategoryResult.EntityId.HasValue, $"Failed to create adjustment denied category: {saveCategoryResult.Message}");
+            var categoryId = saveCategoryResult.EntityId!.Value;
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    CategoryId = categoryId,
+                    Code = itemCode,
+                    Name = $"Adjustment Denied Item {stamp}",
+                    Uom = "PCS",
+                    Category = categoryCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue, $"Failed to create adjustment denied item: {saveItemResult.Message}");
+            itemId = saveItemResult.EntityId!.Value;
+
+            var seedStockResult = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = baseDate,
+                    ReferenceNo = $"ITEST-DENY-IN-{stamp}",
+                    Description = "Seed stock for stock adjustment auth test"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 10,
+                        UnitCost = 100,
+                        WarehouseId = warehouseId.Value
+                    }
+                },
+                "admin");
+
+            var unauthorizedSaveResult = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = adjustmentNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-DENY-{stamp}",
+                    Description = "Should be denied"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = -1,
+                        UnitCost = 0,
+                        Notes = "Denied save"
+                    }
+                },
+                username);
+            Assert(!unauthorizedSaveResult.IsSuccess, "Stock-opname-only actor should be rejected for stock adjustment save.");
+            Assert(
+                unauthorizedSaveResult.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected unauthorized stock adjustment save message, got: {unauthorizedSaveResult.Message}");
+
+            var saveDraftResult = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = adjustmentNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-DENY-{stamp}",
+                    Description = "Authorized draft for subsequent denial checks"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = -1,
+                        UnitCost = 0,
+                        Notes = "Admin draft"
+                    }
+                },
+                "admin");
+            Assert(saveDraftResult.IsSuccess && saveDraftResult.EntityId.HasValue, $"Admin should be able to save stock adjustment draft: {saveDraftResult.Message}");
+            draftAdjustmentId = saveDraftResult.EntityId!.Value;
+
+            var unauthorizedSubmitResult = await service.SubmitStockAdjustmentAsync(draftAdjustmentId.Value, username);
+            Assert(!unauthorizedSubmitResult.IsSuccess, "Stock-opname-only actor should be rejected for stock adjustment submit.");
+            Assert(
+                unauthorizedSubmitResult.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected unauthorized stock adjustment submit message, got: {unauthorizedSubmitResult.Message}");
+
+            var adminSubmitResult = await service.SubmitStockAdjustmentAsync(draftAdjustmentId.Value, "admin");
+            Assert(adminSubmitResult.IsSuccess, $"Admin submit stock adjustment should succeed: {adminSubmitResult.Message}");
+
+            var unauthorizedApproveResult = await service.ApproveStockAdjustmentAsync(draftAdjustmentId.Value, username);
+            Assert(!unauthorizedApproveResult.IsSuccess, "Stock-opname-only actor should be rejected for stock adjustment approve.");
+            Assert(
+                unauthorizedApproveResult.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected unauthorized stock adjustment approve message, got: {unauthorizedApproveResult.Message}");
+
+            var adminApproveResult = await service.ApproveStockAdjustmentAsync(draftAdjustmentId.Value, "admin");
+            Assert(adminApproveResult.IsSuccess, $"Admin approve stock adjustment should succeed: {adminApproveResult.Message}");
+
+            var unauthorizedPostResult = await service.PostStockAdjustmentAsync(draftAdjustmentId.Value, username);
+            Assert(!unauthorizedPostResult.IsSuccess, "Stock-opname-only actor should be rejected for stock adjustment post.");
+            Assert(
+                unauthorizedPostResult.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected unauthorized stock adjustment post message, got: {unauthorizedPostResult.Message}");
+
+            var adminPostResult = await service.PostStockAdjustmentAsync(draftAdjustmentId.Value, "admin");
+            Assert(adminPostResult.IsSuccess, $"Admin post stock adjustment should succeed: {adminPostResult.Message}");
+
+            var finalStockQty = await GetStockQtyAsync(companyId, locationId, itemId.Value, warehouseId.Value);
+            Assert(Math.Abs(finalStockQty - 9m) < 0.0001m, $"Expected final stock qty 9.0000 after admin post, got {finalStockQty:N4}.");
+
+            await using var connection = await OpenConnectionAsync();
+            await using var adjustmentAuditCommand = new NpgsqlCommand(
+                @"SELECT COUNT(1)
+FROM sec_audit_logs
+WHERE entity_type = 'INV_STOCK_ADJ'
+  AND entity_id = @entity_id;",
+                connection);
+            adjustmentAuditCommand.Parameters.AddWithValue("entity_id", draftAdjustmentId.Value);
+            var adjustmentAuditCount = Convert.ToInt32(await adjustmentAuditCommand.ExecuteScalarAsync());
+            Assert(adjustmentAuditCount >= 4, $"Expected stock adjustment audit trail to exist after admin workflow, actual count={adjustmentAuditCount}.");
+
+            _ = seedStockResult;
+        }
+        finally
+        {
+            try
+            {
+                if (userId.HasValue)
+                {
+                    await using var connection = await OpenConnectionAsync();
+                    await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
+                    {
+                        deleteRoles.Parameters.AddWithValue("id", userId.Value);
+                        await deleteRoles.ExecuteNonQueryAsync();
+                    }
+
+                    await using (var deleteUser = new NpgsqlCommand("DELETE FROM app_users WHERE id = @id;", connection))
+                    {
+                        deleteUser.Parameters.AddWithValue("id", userId.Value);
+                        await deleteUser.ExecuteNonQueryAsync();
+                    }
+                }
+
+                if (itemId.HasValue)
+                {
+                    await using var connection = await OpenConnectionAsync();
+                    await CleanupPostedInventoryArtifactsAsync(
+                        connection,
+                        companyId,
+                        itemId.Value,
+                        Array.Empty<long>(),
+                        Array.Empty<long>(),
+                        [adjustmentNo, $"ITEST-DENY-IN-{stamp}"],
+                        draftAdjustmentId.HasValue ? [draftAdjustmentId.Value] : Array.Empty<long>());
+                    await CleanupInventoryArtifactsByCodesAsync(connection, companyId, [categoryCode], [itemCode]);
+                    await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
+                }
+            }
+            finally
+            {
+                if (roleId.HasValue)
+                {
+                    await service.DeleteRoleAsync(roleId.Value, "admin");
+                }
+
+                if (originalLocationCostingSettings is not null)
+                {
+                    var restoreLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                        companyId,
+                        new InventoryLocationCostingSettings
+                        {
+                            CompanyId = companyId,
+                            LocationId = locationId,
+                            UseCompanyDefault = originalLocationCostingSettings.UseCompanyDefault,
+                            ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                                ? originalLocationCostingSettings.ValuationMethod
+                                : "AVERAGE",
+                            CogsAccountCode = originalLocationCostingSettings.CogsAccountCode ?? string.Empty
+                        },
+                        "admin");
+                    Assert(restoreLocationCostingResult.IsSuccess, $"Failed to restore location costing after stock adjustment auth test: {restoreLocationCostingResult.Message}");
+                }
+
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryStockAdjustmentExactWorkflowScopesAsync()
+    {
+        var service = CreateService();
+        var managementData = await service.GetUserManagementDataAsync();
+        var (companyId, locationId, inventoryAccountCode, cogsAccountCode) = await FindInventoryReportReadyContextAsync(service, requireCogsAccount: true);
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var warehouseCode = $"PXW{Math.Abs((stamp + 11) % 1000000):000000}";
+        var categoryCode = $"PXC{Math.Abs((stamp + 17) % 1000000):000000}";
+        var itemCode = $"PXI{Math.Abs((stamp + 23) % 1000000):000000}";
+        var stockInReferenceNo = $"ITEST-PARTIAL-IN-{stamp}";
+        var createDraftNo = $"ITEST-PARTIAL-CRT-{stamp}";
+        var approveDraftNo = $"ITEST-PARTIAL-APR-{stamp}";
+        var postDraftNo = $"ITEST-PARTIAL-PST-{stamp}";
+        var baseDate = DateTime.Today.Day >= 4
+            ? DateTime.Today.AddDays(-3)
+            : new DateTime(DateTime.Today.AddMonths(-1).Year, DateTime.Today.AddMonths(-1).Month, 15);
+
+        var createScopeId = RequireAccessScopeId(managementData, "inventory", "stock_adjustment", "create");
+        var updateScopeId = RequireAccessScopeId(managementData, "inventory", "stock_adjustment", "update");
+        var submitScopeId = RequireAccessScopeId(managementData, "inventory", "stock_adjustment", "submit");
+        var approveScopeId = RequireAccessScopeId(managementData, "inventory", "stock_adjustment", "approve");
+        var postScopeId = RequireAccessScopeId(managementData, "inventory", "stock_adjustment", "post");
+
+        var roleIds = new List<long>();
+        var userIds = new List<long>();
+        long? warehouseId = null;
+        long? itemId = null;
+        long? stockInTxId = null;
+        long? createOnlyDraftId = null;
+        long? approveOnlyDraftId = null;
+        long? postOnlyDraftId = null;
+        InventoryLocationCostingSettings? originalLocationCostingSettings = null;
+
+        async Task<string> CreateScopedActorAsync(string actorTag, string displayName, params long[] scopeIds)
+        {
+            var normalizedTag = actorTag.Trim().ToLowerInvariant();
+            var roleCode = $"ITEST_ADJ_{actorTag.ToUpperInvariant()}_{stamp}";
+            var username = $"itest_adj_{normalizedTag}_{stamp}";
+
+            var roleSaveResult = await service.SaveRoleAsync(
+                new ManagedRole
+                {
+                    Id = 0,
+                    Code = roleCode,
+                    Name = displayName,
+                    IsSuperRole = false,
+                    IsActive = true
+                },
+                scopeIds,
+                "admin");
+            Assert(roleSaveResult.IsSuccess && roleSaveResult.EntityId.HasValue, $"Failed to create role for {displayName}.");
+            var createdRoleId = roleSaveResult.EntityId ?? throw new InvalidOperationException($"Role id missing for {displayName}.");
+            roleIds.Add(createdRoleId);
+
+            var userSaveResult = await service.SaveUserAsync(
+                new ManagedUser
+                {
+                    Id = 0,
+                    Username = username,
+                    FullName = $"{displayName} User",
+                    Email = $"{username}@local",
+                    IsActive = true,
+                    DefaultCompanyId = companyId,
+                    DefaultLocationId = locationId
+                },
+                "Admin@123",
+                [createdRoleId],
+                [companyId],
+                [locationId],
+                "admin");
+            Assert(userSaveResult.IsSuccess && userSaveResult.EntityId.HasValue, $"Failed to create user for {displayName}.");
+            var createdUserId = userSaveResult.EntityId ?? throw new InvalidOperationException($"User id missing for {displayName}.");
+            userIds.Add(createdUserId);
+            return username;
+        }
+
+        try
+        {
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.ToString(), "admin");
+            originalLocationCostingSettings = await service.GetInventoryLocationCostingSettingsAsync(companyId, locationId);
+
+            var saveLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                companyId,
+                new InventoryLocationCostingSettings
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    UseCompanyDefault = false,
+                    ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                        ? originalLocationCostingSettings.ValuationMethod
+                        : "AVERAGE",
+                    CogsAccountCode = cogsAccountCode
+                },
+                "admin");
+            Assert(saveLocationCostingResult.IsSuccess, $"Failed to save temporary location costing for exact-scope test: {saveLocationCostingResult.Message}");
+
+            var createOnlyUsername = await CreateScopedActorAsync("create", "Stock Adjustment Create Only", createScopeId);
+            var updateOnlyUsername = await CreateScopedActorAsync("update", "Stock Adjustment Update Only", updateScopeId);
+            var submitOnlyUsername = await CreateScopedActorAsync("submit", "Stock Adjustment Submit Only", submitScopeId);
+            var approveOnlyUsername = await CreateScopedActorAsync("approve", "Stock Adjustment Approve Only", approveScopeId);
+            var postOnlyUsername = await CreateScopedActorAsync("post", "Stock Adjustment Post Only", postScopeId);
+
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Partial Scope Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveCategoryResult = await service.SaveInventoryCategoryAsync(
+                companyId,
+                new ManagedInventoryCategory
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = categoryCode,
+                    Name = $"Partial Scope Category {stamp}",
+                    AccountCode = inventoryAccountCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveCategoryResult.IsSuccess && saveCategoryResult.EntityId.HasValue, $"Failed to create partial-scope category: {saveCategoryResult.Message}");
+            var categoryId = saveCategoryResult.EntityId ?? throw new InvalidOperationException("Partial-scope category id missing.");
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    CategoryId = categoryId,
+                    Code = itemCode,
+                    Name = $"Partial Scope Item {stamp}",
+                    Uom = "PCS",
+                    Category = categoryCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue, $"Failed to create partial-scope item: {saveItemResult.Message}");
+            itemId = saveItemResult.EntityId ?? throw new InvalidOperationException("Partial-scope item id missing.");
+
+            stockInTxId = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = baseDate,
+                    ReferenceNo = stockInReferenceNo,
+                    Description = "Seed stock for stock adjustment exact-scope test"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 10,
+                        UnitCost = 100,
+                        WarehouseId = warehouseId.Value
+                    }
+                },
+                "admin");
+
+            var createOnlyDraftResult = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = createDraftNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-CRT-{stamp}",
+                    Description = "Draft created by create-only actor"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = 1,
+                        UnitCost = 115,
+                        Notes = "Create-only positive path"
+                    }
+                },
+                createOnlyUsername);
+            Assert(createOnlyDraftResult.IsSuccess && createOnlyDraftResult.EntityId.HasValue, $"Create-only actor should save new draft: {createOnlyDraftResult.Message}");
+            createOnlyDraftId = createOnlyDraftResult.EntityId ?? throw new InvalidOperationException("Create-only draft id missing.");
+
+            var updateOnlyCreateDenied = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = $"ITEST-PARTIAL-UPD-DENY-{stamp}",
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-UPD-DENY-{stamp}",
+                    Description = "Update-only actor should not create new draft"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = 2,
+                        UnitCost = 120,
+                        Notes = "Should be denied for create"
+                    }
+                },
+                updateOnlyUsername);
+            Assert(!updateOnlyCreateDenied.IsSuccess, "Update-only actor should not be allowed to create new stock adjustment draft.");
+            Assert(
+                updateOnlyCreateDenied.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected create denial for update-only actor, got: {updateOnlyCreateDenied.Message}");
+
+            var createOnlyUpdateDenied = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = createOnlyDraftId.Value,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = createDraftNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-CRT-UPD-{stamp}",
+                    Description = "Create-only actor should not update existing draft"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = 2,
+                        UnitCost = 120,
+                        Notes = "Should be denied for update"
+                    }
+                },
+                createOnlyUsername);
+            Assert(!createOnlyUpdateDenied.IsSuccess, "Create-only actor should not be allowed to update existing stock adjustment draft.");
+            Assert(
+                createOnlyUpdateDenied.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected update denial for create-only actor, got: {createOnlyUpdateDenied.Message}");
+
+            var updateOnlyDraftResult = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = createOnlyDraftId.Value,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = createDraftNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-UPD-OK-{stamp}",
+                    Description = "Draft updated by update-only actor"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = 2,
+                        UnitCost = 125,
+                        Notes = "Update-only positive path"
+                    }
+                },
+                updateOnlyUsername);
+            Assert(updateOnlyDraftResult.IsSuccess, $"Update-only actor should update existing draft: {updateOnlyDraftResult.Message}");
+
+            var submitOnlySaveDenied = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = createOnlyDraftId.Value,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = createDraftNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-SUB-DENY-{stamp}",
+                    Description = "Submit-only actor should not save draft"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = 3,
+                        UnitCost = 130,
+                        Notes = "Should be denied for save"
+                    }
+                },
+                submitOnlyUsername);
+            Assert(!submitOnlySaveDenied.IsSuccess, "Submit-only actor should not be allowed to save draft.");
+            Assert(
+                submitOnlySaveDenied.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected save denial for submit-only actor, got: {submitOnlySaveDenied.Message}");
+
+            var submitOnlySubmitResult = await service.SubmitStockAdjustmentAsync(createOnlyDraftId.Value, submitOnlyUsername);
+            Assert(submitOnlySubmitResult.IsSuccess, $"Submit-only actor should submit draft without update/view scope: {submitOnlySubmitResult.Message}");
+
+            var approveOnlyDraftResult = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = approveDraftNo,
+                    AdjustmentDate = baseDate.AddDays(2),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-APR-{stamp}",
+                    Description = "Draft for approve-only actor checks"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = -2,
+                        UnitCost = 0,
+                        Notes = "Approve-only path"
+                    }
+                },
+                "admin");
+            Assert(approveOnlyDraftResult.IsSuccess && approveOnlyDraftResult.EntityId.HasValue, $"Admin should save draft for approve-only checks: {approveOnlyDraftResult.Message}");
+            approveOnlyDraftId = approveOnlyDraftResult.EntityId ?? throw new InvalidOperationException("Approve-only draft id missing.");
+
+            var approveOnlySubmitDenied = await service.SubmitStockAdjustmentAsync(approveOnlyDraftId.Value, approveOnlyUsername);
+            Assert(!approveOnlySubmitDenied.IsSuccess, "Approve-only actor should not be allowed to submit draft.");
+            Assert(
+                approveOnlySubmitDenied.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected submit denial for approve-only actor, got: {approveOnlySubmitDenied.Message}");
+
+            var adminSubmitForApproveResult = await service.SubmitStockAdjustmentAsync(approveOnlyDraftId.Value, "admin");
+            Assert(adminSubmitForApproveResult.IsSuccess, $"Admin should submit draft for approve-only checks: {adminSubmitForApproveResult.Message}");
+
+            var approveOnlyApproveResult = await service.ApproveStockAdjustmentAsync(approveOnlyDraftId.Value, approveOnlyUsername);
+            Assert(approveOnlyApproveResult.IsSuccess, $"Approve-only actor should approve submitted draft without view scope: {approveOnlyApproveResult.Message}");
+
+            var postOnlyDraftResult = await service.SaveStockAdjustmentDraftAsync(
+                new ManagedStockAdjustment
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = postDraftNo,
+                    AdjustmentDate = baseDate.AddDays(3),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-PST-{stamp}",
+                    Description = "Draft for post-only actor checks"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = -3,
+                        UnitCost = 0,
+                        Notes = "Post-only path"
+                    }
+                },
+                "admin");
+            Assert(postOnlyDraftResult.IsSuccess && postOnlyDraftResult.EntityId.HasValue, $"Admin should save draft for post-only checks: {postOnlyDraftResult.Message}");
+            postOnlyDraftId = postOnlyDraftResult.EntityId ?? throw new InvalidOperationException("Post-only draft id missing.");
+
+            var adminSubmitForPostResult = await service.SubmitStockAdjustmentAsync(postOnlyDraftId.Value, "admin");
+            Assert(adminSubmitForPostResult.IsSuccess, $"Admin should submit draft for post-only checks: {adminSubmitForPostResult.Message}");
+
+            var postOnlyApproveDenied = await service.ApproveStockAdjustmentAsync(postOnlyDraftId.Value, postOnlyUsername);
+            Assert(!postOnlyApproveDenied.IsSuccess, "Post-only actor should not be allowed to approve submitted draft.");
+            Assert(
+                postOnlyApproveDenied.Message.Contains("izin", StringComparison.OrdinalIgnoreCase),
+                $"Expected approve denial for post-only actor, got: {postOnlyApproveDenied.Message}");
+
+            var adminApproveForPostResult = await service.ApproveStockAdjustmentAsync(postOnlyDraftId.Value, "admin");
+            Assert(adminApproveForPostResult.IsSuccess, $"Admin should approve draft for post-only checks: {adminApproveForPostResult.Message}");
+
+            var postOnlyPostResult = await service.PostStockAdjustmentAsync(postOnlyDraftId.Value, postOnlyUsername);
+            Assert(postOnlyPostResult.IsSuccess, $"Post-only actor should post approved draft without view scope: {postOnlyPostResult.Message}");
+
+            var finalStockQty = await GetStockQtyAsync(companyId, locationId, itemId.Value, warehouseId.Value);
+            Assert(Math.Abs(finalStockQty - 7m) < 0.0001m, $"Expected final stock qty 7.0000 after post-only workflow, got {finalStockQty:N4}.");
+        }
+        finally
+        {
+            try
+            {
+                for (var index = userIds.Count - 1; index >= 0; index--)
+                {
+                    await using var connection = await OpenConnectionAsync();
+                    await using (var deleteRoles = new NpgsqlCommand("DELETE FROM sec_user_roles WHERE user_id = @id;", connection))
+                    {
+                        deleteRoles.Parameters.AddWithValue("id", userIds[index]);
+                        await deleteRoles.ExecuteNonQueryAsync();
+                    }
+
+                    await using (var deleteUser = new NpgsqlCommand("DELETE FROM app_users WHERE id = @id;", connection))
+                    {
+                        deleteUser.Parameters.AddWithValue("id", userIds[index]);
+                        await deleteUser.ExecuteNonQueryAsync();
+                    }
+                }
+
+                if (itemId.HasValue)
+                {
+                    await using var connection = await OpenConnectionAsync();
+                    await CleanupPostedInventoryArtifactsAsync(
+                        connection,
+                        companyId,
+                        itemId.Value,
+                        stockInTxId.HasValue ? [stockInTxId.Value] : Array.Empty<long>(),
+                        Array.Empty<long>(),
+                        [stockInReferenceNo, createDraftNo, approveDraftNo, postDraftNo],
+                        new[]
+                        {
+                            createOnlyDraftId.GetValueOrDefault(),
+                            approveOnlyDraftId.GetValueOrDefault(),
+                            postOnlyDraftId.GetValueOrDefault()
+                        }.Where(id => id > 0).ToArray());
+                    await CleanupInventoryArtifactsByCodesAsync(connection, companyId, [categoryCode], [itemCode]);
+                    await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
+                }
+            }
+            finally
+            {
+                for (var index = roleIds.Count - 1; index >= 0; index--)
+                {
+                    await service.DeleteRoleAsync(roleIds[index], "admin");
+                }
+
+                if (originalLocationCostingSettings is not null)
+                {
+                    var restoreLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                        companyId,
+                        new InventoryLocationCostingSettings
+                        {
+                            CompanyId = companyId,
+                            LocationId = locationId,
+                            UseCompanyDefault = originalLocationCostingSettings.UseCompanyDefault,
+                            ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                                ? originalLocationCostingSettings.ValuationMethod
+                                : "AVERAGE",
+                            CogsAccountCode = originalLocationCostingSettings.CogsAccountCode ?? string.Empty
+                        },
+                        "admin");
+                    Assert(restoreLocationCostingResult.IsSuccess, $"Failed to restore location costing after exact-scope test: {restoreLocationCostingResult.Message}");
+                }
+
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
         }
     }
 
@@ -683,75 +1465,55 @@ WHERE details ILIKE @category_code
 
             await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.Value.ToString(), "admin");
 
-            var accountPrefix = tempLocationCodeA.Length >= 2
-                ? tempLocationCodeA[..2].ToUpperInvariant()
-                : "IT";
-            var inventoryParentCode = $"{accountPrefix}.11000.000";
-            var inventoryAccountCode = $"{accountPrefix}.11000.001";
-            var cogsParentCode = $"{accountPrefix}.51000.000";
-            var cogsAccountCode = $"{accountPrefix}.51000.001";
+            var inventoryParentCode = BuildTestAccountCode("ASSET", stamp, isPosting: false);
+            var inventoryAccountCode = BuildTestAccountCode("ASSET", stamp, isPosting: true);
+            var cogsParentCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: false, variant: 1);
+            var cogsAccountCode = BuildTestAccountCode("EXPENSE", stamp, isPosting: true, variant: 1);
 
-            var saveInventoryParentResult = await service.SaveAccountAsync(
+            var importAccountsResult = await service.ImportAccountMasterDataAsync(
                 companyId.Value,
-                new ManagedAccount
+                new AccountImportBundle
                 {
-                    Id = 0,
-                    CompanyId = companyId.Value,
-                    Code = inventoryParentCode,
-                    Name = $"Inventory Asset Parent {stamp}",
-                    AccountType = "ASSET",
-                    IsActive = true
+                    Accounts =
+                    [
+                        new AccountImportRow
+                        {
+                            RowNumber = 2,
+                            Code = inventoryParentCode,
+                            Name = $"Inventory Asset Parent {stamp}",
+                            AccountType = "ASSET",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 3,
+                            Code = inventoryAccountCode,
+                            Name = $"Inventory Asset {stamp}",
+                            AccountType = "ASSET",
+                            ParentAccountCode = inventoryParentCode,
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 4,
+                            Code = cogsParentCode,
+                            Name = $"Inventory COGS Parent {stamp}",
+                            AccountType = "EXPENSE",
+                            IsActive = true
+                        },
+                        new AccountImportRow
+                        {
+                            RowNumber = 5,
+                            Code = cogsAccountCode,
+                            Name = $"Inventory COGS {stamp}",
+                            AccountType = "EXPENSE",
+                            ParentAccountCode = cogsParentCode,
+                            IsActive = true
+                        }
+                    ]
                 },
                 "admin");
-            Assert(
-                saveInventoryParentResult.IsSuccess && saveInventoryParentResult.EntityId.HasValue,
-                $"Failed to create inventory parent account: {saveInventoryParentResult.Message}");
-
-            var saveInventoryAccountResult = await service.SaveAccountAsync(
-                companyId.Value,
-                new ManagedAccount
-                {
-                    Id = 0,
-                    CompanyId = companyId.Value,
-                    Code = inventoryAccountCode,
-                    Name = $"Inventory Asset {stamp}",
-                    ParentAccountId = saveInventoryParentResult.EntityId,
-                    AccountType = "ASSET",
-                    IsActive = true
-                },
-                "admin");
-            Assert(saveInventoryAccountResult.IsSuccess, $"Failed to create inventory account: {saveInventoryAccountResult.Message}");
-
-            var saveCogsParentResult = await service.SaveAccountAsync(
-                companyId.Value,
-                new ManagedAccount
-                {
-                    Id = 0,
-                    CompanyId = companyId.Value,
-                    Code = cogsParentCode,
-                    Name = $"Inventory COGS Parent {stamp}",
-                    AccountType = "EXPENSE",
-                    IsActive = true
-                },
-                "admin");
-            Assert(
-                saveCogsParentResult.IsSuccess && saveCogsParentResult.EntityId.HasValue,
-                $"Failed to create COGS parent account: {saveCogsParentResult.Message}");
-
-            var saveCogsAccountResult = await service.SaveAccountAsync(
-                companyId.Value,
-                new ManagedAccount
-                {
-                    Id = 0,
-                    CompanyId = companyId.Value,
-                    Code = cogsAccountCode,
-                    Name = $"Inventory COGS {stamp}",
-                    ParentAccountId = saveCogsParentResult.EntityId,
-                    AccountType = "EXPENSE",
-                    IsActive = true
-                },
-                "admin");
-            Assert(saveCogsAccountResult.IsSuccess, $"Failed to create COGS account: {saveCogsAccountResult.Message}");
+            Assert(importAccountsResult.IsSuccess, $"Failed to create inventory/cogs account hierarchy: {importAccountsResult.Message}");
 
             var saveCategoryResult = await service.SaveInventoryCategoryAsync(
                 companyId.Value,
@@ -1959,6 +2721,1023 @@ VALUES (@company_id, @location_id, @item_id, @qty, @warehouse_id, NOW());",
             {
                 await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
             }
+        }
+    }
+
+    private static async Task TestInventoryStockOpnameWorkflowFeedsReportsAsync()
+    {
+        var service = CreateService();
+        var (companyId, locationId, inventoryAccountCode, cogsAccountCode) = await FindInventoryReportReadyContextAsync(service, requireCogsAccount: true);
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var warehouseCode = $"OW{Math.Abs((stamp + 17) % 1000000):000000}";
+        var categoryCode = $"OPC{Math.Abs((stamp + 23) % 1000000):000000}";
+        var itemCode = $"OPI{Math.Abs((stamp + 29) % 1000000):000000}";
+        var stockInReferenceNo = $"ITEST-OPNAME-IN-{stamp}";
+        var opnameNo = $"ITEST-OPNAME-{stamp}";
+        var baseDate = DateTime.Today.Day >= 2
+            ? DateTime.Today.AddDays(-1)
+            : new DateTime(DateTime.Today.AddMonths(-1).Year, DateTime.Today.AddMonths(-1).Month, 15);
+
+        long? warehouseId = null;
+        long? itemId = null;
+        long? stockInTxId = null;
+        long? opnameId = null;
+        InventoryLocationCostingSettings? originalLocationCostingSettings = null;
+
+        try
+        {
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.ToString(), "admin");
+            originalLocationCostingSettings = await service.GetInventoryLocationCostingSettingsAsync(companyId, locationId);
+
+            var saveLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                companyId,
+                new InventoryLocationCostingSettings
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    UseCompanyDefault = false,
+                    ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                        ? originalLocationCostingSettings.ValuationMethod
+                        : "AVERAGE",
+                    CogsAccountCode = cogsAccountCode
+                },
+                "admin");
+            Assert(saveLocationCostingResult.IsSuccess, $"Failed to save temporary location costing for opname test: {saveLocationCostingResult.Message}");
+
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Opname Report Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveCategoryResult = await service.SaveInventoryCategoryAsync(
+                companyId,
+                new ManagedInventoryCategory
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = categoryCode,
+                    Name = $"Opname Report Category {stamp}",
+                    AccountCode = inventoryAccountCode!,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveCategoryResult.IsSuccess && saveCategoryResult.EntityId.HasValue,
+                $"Failed to create opname report category: {saveCategoryResult.Message}");
+            var categoryId = saveCategoryResult.EntityId!.Value;
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    CategoryId = categoryId,
+                    Code = itemCode,
+                    Name = $"Opname Report Item {stamp}",
+                    Uom = "PCS",
+                    Category = categoryCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue,
+                $"Failed to create opname report item: {saveItemResult.Message}");
+            itemId = saveItemResult.EntityId!.Value;
+
+            stockInTxId = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = baseDate,
+                    ReferenceNo = stockInReferenceNo,
+                    Description = "Seed stock before opname"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 10,
+                        UnitCost = 120,
+                        WarehouseId = warehouseId.Value
+                    }
+                },
+                "admin");
+
+            var stockBeforeOpname = await GetStockQtyAsync(companyId, locationId, itemId.Value, warehouseId.Value);
+            Assert(Math.Abs(stockBeforeOpname - 10m) < 0.0001m, $"Expected seeded stock 10.0000, got {stockBeforeOpname:N4}.");
+
+            opnameId = await CreateAndPostStockOpnameAsync(
+                service,
+                new ManagedStockOpname
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    OpnameNo = opnameNo,
+                    OpnameDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    Description = "Report coverage opname",
+                    Status = "DRAFT"
+                },
+                new[]
+                {
+                    new ManagedStockOpnameLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        SystemQty = 10,
+                        ActualQty = 7,
+                        DifferenceQty = -3,
+                        Notes = "Shrinkage test"
+                    }
+                },
+                "admin");
+
+            var stockAfterOpname = await GetStockQtyAsync(companyId, locationId, itemId.Value, warehouseId.Value);
+            Assert(Math.Abs(stockAfterOpname - 7m) < 0.0001m, $"Expected stock after opname 7.0000, got {stockAfterOpname:N4}.");
+
+            var opnameReports = await service.GetStockOpnameReportAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(2));
+            var opnameRow = opnameReports.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                row.OpnameDate.Date == baseDate.AddDays(1) &&
+                string.Equals(row.Status, "POSTED", StringComparison.OrdinalIgnoreCase));
+
+            Assert(opnameRow is not null, "Posted stock opname row should appear in opname report.");
+            Assert(opnameRow!.WarehouseName.Contains($"Opname Report Warehouse {stamp}", StringComparison.Ordinal), "Opname report should include selected warehouse.");
+            Assert(Math.Abs(opnameRow.SystemQty - 10m) < 0.0001m, $"Expected report system qty 10.0000, got {opnameRow.SystemQty:N4}.");
+            Assert(Math.Abs(opnameRow.ActualQty - 7m) < 0.0001m, $"Expected report actual qty 7.0000, got {opnameRow.ActualQty:N4}.");
+            Assert(Math.Abs(opnameRow.DifferenceQty - (-3m)) < 0.0001m, $"Expected report difference qty -3.0000, got {opnameRow.DifferenceQty:N4}.");
+
+            var historyRows = await service.GetInventoryTransactionHistoryAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(2));
+            var opnameHistoryRow = historyRows.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(row.DocumentType, "Stock Opname", StringComparison.OrdinalIgnoreCase));
+            Assert(opnameHistoryRow is not null, "Posted stock opname should appear in transaction history.");
+            Assert(Math.Abs(opnameHistoryRow!.EffectQty - (-3m)) < 0.0001m, $"Expected history effect qty -3.0000, got {opnameHistoryRow.EffectQty:N4}.");
+            Assert(
+                string.Equals(opnameHistoryRow.Status, "POSTED", StringComparison.OrdinalIgnoreCase),
+                $"Expected posted opname history status, got {opnameHistoryRow.Status}.");
+        }
+        finally
+        {
+            try
+            {
+                await using var connection = await OpenConnectionAsync();
+                if (itemId.HasValue)
+                {
+                    await CleanupPostedInventoryArtifactsAsync(
+                        connection,
+                        companyId,
+                        itemId.Value,
+                        stockInTxId.HasValue ? [stockInTxId.Value] : Array.Empty<long>(),
+                        opnameId.HasValue ? [opnameId.Value] : Array.Empty<long>(),
+                        [stockInReferenceNo, opnameNo]);
+                }
+
+                await CleanupInventoryArtifactsByCodesAsync(connection, companyId, [categoryCode], [itemCode]);
+                await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
+            }
+            finally
+            {
+                if (originalLocationCostingSettings is not null)
+                {
+                    var restoreLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                        companyId,
+                        new InventoryLocationCostingSettings
+                        {
+                            CompanyId = companyId,
+                            LocationId = locationId,
+                            UseCompanyDefault = originalLocationCostingSettings.UseCompanyDefault,
+                            ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                                ? originalLocationCostingSettings.ValuationMethod
+                                : "AVERAGE",
+                            CogsAccountCode = originalLocationCostingSettings.CogsAccountCode ?? string.Empty
+                        },
+                        "admin");
+                    Assert(restoreLocationCostingResult.IsSuccess, $"Failed to restore location costing after opname test: {restoreLocationCostingResult.Message}");
+                }
+
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryStockAdjustmentWorkflowFeedsReportsAsync()
+    {
+        var service = CreateService();
+        var (companyId, locationId, inventoryAccountCode, cogsAccountCode) = await FindInventoryReportReadyContextAsync(service, requireCogsAccount: true);
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var warehouseCode = $"AW{Math.Abs((stamp + 13) % 1000000):000000}";
+        var categoryCode = $"ADC{Math.Abs((stamp + 17) % 1000000):000000}";
+        var itemCode = $"ADI{Math.Abs((stamp + 19) % 1000000):000000}";
+        var stockInReferenceNo = $"ITEST-ADJ-IN-{stamp}";
+        var adjustmentPlusNo = $"ITEST-ADJ-PLUS-{stamp}";
+        var adjustmentMinusNo = $"ITEST-ADJ-MINUS-{stamp}";
+        var baseDate = DateTime.Today.Day >= 3
+            ? DateTime.Today.AddDays(-2)
+            : new DateTime(DateTime.Today.AddMonths(-1).Year, DateTime.Today.AddMonths(-1).Month, 15);
+
+        long? warehouseId = null;
+        long? itemId = null;
+        long? stockInTxId = null;
+        long? adjustmentPlusId = null;
+        long? adjustmentMinusId = null;
+        InventoryLocationCostingSettings? originalLocationCostingSettings = null;
+
+        try
+        {
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.ToString(), "admin");
+            originalLocationCostingSettings = await service.GetInventoryLocationCostingSettingsAsync(companyId, locationId);
+
+            var saveLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                companyId,
+                new InventoryLocationCostingSettings
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    UseCompanyDefault = false,
+                    ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                        ? originalLocationCostingSettings.ValuationMethod
+                        : "AVERAGE",
+                    CogsAccountCode = cogsAccountCode
+                },
+                "admin");
+            Assert(saveLocationCostingResult.IsSuccess, $"Failed to save temporary location costing for adjustment test: {saveLocationCostingResult.Message}");
+
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Adjustment Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveCategoryResult = await service.SaveInventoryCategoryAsync(
+                companyId,
+                new ManagedInventoryCategory
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = categoryCode,
+                    Name = $"Adjustment Category {stamp}",
+                    AccountCode = inventoryAccountCode!,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveCategoryResult.IsSuccess && saveCategoryResult.EntityId.HasValue, $"Failed to create adjustment category: {saveCategoryResult.Message}");
+            var categoryId = saveCategoryResult.EntityId!.Value;
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    CategoryId = categoryId,
+                    Code = itemCode,
+                    Name = $"Adjustment Item {stamp}",
+                    Uom = "PCS",
+                    Category = categoryCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue, $"Failed to create adjustment item: {saveItemResult.Message}");
+            itemId = saveItemResult.EntityId!.Value;
+
+            stockInTxId = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = baseDate,
+                    ReferenceNo = stockInReferenceNo,
+                    Description = "Seed stock before adjustment"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 10,
+                        UnitCost = 100,
+                        WarehouseId = warehouseId.Value
+                    }
+                },
+                "admin");
+
+            adjustmentPlusId = await CreateAndPostStockAdjustmentAsync(
+                service,
+                new ManagedStockAdjustment
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = adjustmentPlusNo,
+                    AdjustmentDate = baseDate.AddDays(1),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-PLUS-{stamp}",
+                    Description = "Positive stock adjustment"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = 3,
+                        UnitCost = 120,
+                        Notes = "Manual top-up"
+                    }
+                },
+                "admin");
+
+            adjustmentMinusId = await CreateAndPostStockAdjustmentAsync(
+                service,
+                new ManagedStockAdjustment
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    AdjustmentNo = adjustmentMinusNo,
+                    AdjustmentDate = baseDate.AddDays(2),
+                    WarehouseId = warehouseId.Value,
+                    ReferenceNo = $"REF-MINUS-{stamp}",
+                    Description = "Negative stock adjustment"
+                },
+                new[]
+                {
+                    new ManagedStockAdjustmentLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        QtyAdjustment = -5,
+                        UnitCost = 0,
+                        Notes = "Manual write-off"
+                    }
+                },
+                "admin");
+
+            var finalStockQty = await GetStockQtyAsync(companyId, locationId, itemId.Value, warehouseId.Value);
+            Assert(Math.Abs(finalStockQty - 8m) < 0.0001m, $"Expected final stock qty 8.0000, got {finalStockQty:N4}.");
+
+            var movementRows = await service.GetStockMovementReportAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(3));
+            var movementRow = movementRows.FirstOrDefault(row => string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase));
+            Assert(movementRow is not null, "Stock movement report should include adjusted item.");
+            Assert(Math.Abs(movementRow!.OpeningQty) < 0.0001m, $"Expected opening qty 0.0000, got {movementRow.OpeningQty:N4}.");
+            Assert(Math.Abs(movementRow.InQty - 10m) < 0.0001m, $"Expected movement in qty 10.0000, got {movementRow.InQty:N4}.");
+            Assert(Math.Abs(movementRow.AdjustmentQty - (-2m)) < 0.0001m, $"Expected net adjustment qty -2.0000, got {movementRow.AdjustmentQty:N4}.");
+            Assert(Math.Abs(movementRow.ClosingQty - 8m) < 0.0001m, $"Expected closing qty 8.0000, got {movementRow.ClosingQty:N4}.");
+
+            var stockCardRows = await service.GetInventoryStockCardAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(3));
+            var adjustmentCardRows = stockCardRows
+                .Where(row => string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                              string.Equals(row.DocumentType, "Stock Adjustment", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(row => row.TxDate)
+                .ToArray();
+            Assert(adjustmentCardRows.Length == 2, $"Expected 2 stock card adjustment rows, got {adjustmentCardRows.Length}.");
+            Assert(Math.Abs(adjustmentCardRows[0].AdjustmentQty - 3m) < 0.0001m, $"Expected first adjustment qty 3.0000, got {adjustmentCardRows[0].AdjustmentQty:N4}.");
+            Assert(Math.Abs(adjustmentCardRows[1].AdjustmentQty - (-5m)) < 0.0001m, $"Expected second adjustment qty -5.0000, got {adjustmentCardRows[1].AdjustmentQty:N4}.");
+            Assert(Math.Abs(adjustmentCardRows[1].BalanceQty - 8m) < 0.0001m, $"Expected final stock card balance 8.0000, got {adjustmentCardRows[1].BalanceQty:N4}.");
+
+            var historyRows = await service.GetInventoryTransactionHistoryAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(3));
+            var adjustmentHistoryRows = historyRows
+                .Where(row => string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                              string.Equals(row.DocumentType, "Stock Adjustment", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            Assert(adjustmentHistoryRows.Length == 2, $"Expected 2 history adjustment rows, got {adjustmentHistoryRows.Length}.");
+            Assert(adjustmentHistoryRows.Any(row => Math.Abs(row.EffectQty - 3m) < 0.0001m), "Transaction history should include positive adjustment effect.");
+            Assert(adjustmentHistoryRows.Any(row => Math.Abs(row.EffectQty - (-5m)) < 0.0001m), "Transaction history should include negative adjustment effect.");
+        }
+        finally
+        {
+            try
+            {
+                await using var connection = await OpenConnectionAsync();
+                if (itemId.HasValue)
+                {
+                    await CleanupPostedInventoryArtifactsAsync(
+                        connection,
+                        companyId,
+                        itemId.Value,
+                        stockInTxId.HasValue ? [stockInTxId.Value] : Array.Empty<long>(),
+                        Array.Empty<long>(),
+                        [stockInReferenceNo, adjustmentPlusNo, adjustmentMinusNo],
+                        new[] { adjustmentPlusId.GetValueOrDefault(), adjustmentMinusId.GetValueOrDefault() }.Where(id => id > 0).ToArray());
+                }
+
+                await CleanupInventoryArtifactsByCodesAsync(connection, companyId, [categoryCode], [itemCode]);
+                await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
+            }
+            finally
+            {
+                if (originalLocationCostingSettings is not null)
+                {
+                    var restoreLocationCostingResult = await service.SaveInventoryLocationCostingSettingsAsync(
+                        companyId,
+                        new InventoryLocationCostingSettings
+                        {
+                            CompanyId = companyId,
+                            LocationId = locationId,
+                            UseCompanyDefault = originalLocationCostingSettings.UseCompanyDefault,
+                            ValuationMethod = !string.IsNullOrWhiteSpace(originalLocationCostingSettings.ValuationMethod)
+                                ? originalLocationCostingSettings.ValuationMethod
+                                : "AVERAGE",
+                            CogsAccountCode = originalLocationCostingSettings.CogsAccountCode ?? string.Empty
+                        },
+                        "admin");
+                    Assert(restoreLocationCostingResult.IsSuccess, $"Failed to restore location costing after adjustment test: {restoreLocationCostingResult.Message}");
+                }
+
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryStockCardAndTransactionHistoryReportsAsync()
+    {
+        var service = CreateService();
+        var (companyId, locationId, inventoryAccountCode, cogsAccountCode) = await FindInventoryReportReadyContextAsync(service, requireCogsAccount: true);
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var warehouseCode = $"SW{Math.Abs((stamp + 11) % 1000000):000000}";
+        var categoryCode = $"SCC{Math.Abs((stamp + 19) % 1000000):000000}";
+        var itemCode = $"SCI{Math.Abs((stamp + 23) % 1000000):000000}";
+        var stockInReferenceNo = $"ITEST-STOCKCARD-IN-{stamp}";
+        var stockOutReferenceNo = $"ITEST-STOCKCARD-OUT-{stamp}";
+        var baseDate = DateTime.Today.Day >= 2
+            ? DateTime.Today.AddDays(-1)
+            : new DateTime(DateTime.Today.AddMonths(-1).Year, DateTime.Today.AddMonths(-1).Month, 15);
+
+        long? warehouseId = null;
+        long? itemId = null;
+        long? stockInTxId = null;
+        long? stockOutTxId = null;
+
+        try
+        {
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.ToString(), "admin");
+
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Stock Card Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveCategoryResult = await service.SaveInventoryCategoryAsync(
+                companyId,
+                new ManagedInventoryCategory
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = categoryCode,
+                    Name = $"Stock Card Category {stamp}",
+                    AccountCode = inventoryAccountCode!,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveCategoryResult.IsSuccess && saveCategoryResult.EntityId.HasValue,
+                $"Failed to create stock-card category: {saveCategoryResult.Message}");
+            var categoryId = saveCategoryResult.EntityId!.Value;
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    CategoryId = categoryId,
+                    Code = itemCode,
+                    Name = $"Stock Card Item {stamp}",
+                    Uom = "PCS",
+                    Category = categoryCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue,
+                $"Failed to create stock-card item: {saveItemResult.Message}");
+            itemId = saveItemResult.EntityId!.Value;
+
+            stockInTxId = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = baseDate,
+                    ReferenceNo = stockInReferenceNo,
+                    Description = "Stock card inbound"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 10,
+                        UnitCost = 90,
+                        WarehouseId = warehouseId.Value
+                    }
+                },
+                "admin");
+
+            stockOutTxId = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_OUT",
+                    TransactionDate = baseDate.AddDays(1),
+                    ReferenceNo = stockOutReferenceNo,
+                    Description = "Stock card outbound"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 4,
+                        UnitCost = 0,
+                        WarehouseId = warehouseId.Value,
+                        ExpenseAccountCode = cogsAccountCode
+                    }
+                },
+                "admin");
+
+            var currentStockQty = await GetStockQtyAsync(companyId, locationId, itemId.Value, warehouseId.Value);
+            Assert(Math.Abs(currentStockQty - 6m) < 0.0001m, $"Expected stock qty 6.0000, got {currentStockQty:N4}.");
+
+            var stockCardRows = await service.GetInventoryStockCardAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(2));
+            var inboundCardRow = stockCardRows.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(row.DocumentType, "Barang Masuk", StringComparison.OrdinalIgnoreCase));
+            var outboundCardRow = stockCardRows.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(row.DocumentType, "Barang Keluar", StringComparison.OrdinalIgnoreCase));
+
+            Assert(inboundCardRow is not null, "Stock card should include inbound transaction.");
+            Assert(Math.Abs(inboundCardRow!.InQty - 10m) < 0.0001m, $"Expected inbound qty 10.0000, got {inboundCardRow.InQty:N4}.");
+            Assert(Math.Abs(inboundCardRow.BalanceQty - 10m) < 0.0001m, $"Expected inbound balance 10.0000, got {inboundCardRow.BalanceQty:N4}.");
+
+            Assert(outboundCardRow is not null, "Stock card should include outbound transaction.");
+            Assert(Math.Abs(outboundCardRow!.OutQty - 4m) < 0.0001m, $"Expected outbound qty 4.0000, got {outboundCardRow.OutQty:N4}.");
+            Assert(Math.Abs(outboundCardRow.BalanceQty - 6m) < 0.0001m, $"Expected outbound balance 6.0000, got {outboundCardRow.BalanceQty:N4}.");
+
+            var historyRows = await service.GetInventoryTransactionHistoryAsync(
+                companyId,
+                locationId,
+                baseDate.AddDays(-1),
+                baseDate.AddDays(2));
+            var inboundHistoryRow = historyRows.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(row.DocumentType, "Barang Masuk", StringComparison.OrdinalIgnoreCase));
+            var outboundHistoryRow = historyRows.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(row.DocumentType, "Barang Keluar", StringComparison.OrdinalIgnoreCase));
+
+            Assert(inboundHistoryRow is not null, "Transaction history should include inbound row.");
+            Assert(Math.Abs(inboundHistoryRow!.EffectQty - 10m) < 0.0001m, $"Expected inbound effect qty 10.0000, got {inboundHistoryRow.EffectQty:N4}.");
+            Assert(outboundHistoryRow is not null, "Transaction history should include outbound row.");
+            Assert(Math.Abs(outboundHistoryRow!.EffectQty - (-4m)) < 0.0001m, $"Expected outbound effect qty -4.0000, got {outboundHistoryRow.EffectQty:N4}.");
+            Assert(
+                string.Equals(outboundHistoryRow.WarehouseName, $"Stock Card Warehouse {stamp}", StringComparison.Ordinal),
+                "Transaction history should retain warehouse name.");
+        }
+        finally
+        {
+            try
+            {
+                await using var connection = await OpenConnectionAsync();
+                if (itemId.HasValue)
+                {
+                    await CleanupPostedInventoryArtifactsAsync(
+                        connection,
+                        companyId,
+                        itemId.Value,
+                        new[]
+                        {
+                            stockInTxId.GetValueOrDefault(),
+                            stockOutTxId.GetValueOrDefault()
+                        }.Where(id => id > 0).ToArray(),
+                        Array.Empty<long>(),
+                        [stockInReferenceNo, stockOutReferenceNo]);
+                }
+
+                await CleanupInventoryArtifactsByCodesAsync(connection, companyId, [categoryCode], [itemCode]);
+                await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
+            }
+            finally
+            {
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryReportExportWritesExpectedWorkbookAsync()
+    {
+        var service = CreateService();
+        var (companyId, locationId, inventoryAccountCode, _) = await FindInventoryReportReadyContextAsync(service, requireCogsAccount: false);
+        var previousMasterCompanySetting = await GetSystemSettingAsync(InventoryMasterCompanySettingKey);
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var warehouseCode = $"EXW{Math.Abs((stamp + 31) % 1000000):000000}";
+        var categoryCode = $"EXC{Math.Abs((stamp + 37) % 1000000):000000}";
+        var itemCode = $"EXI{Math.Abs((stamp + 41) % 1000000):000000}";
+        var stockInReferenceNo = $"ITEST-EXPORT-IN-{stamp}";
+        var exportPath = Path.Combine(Path.GetTempPath(), $"inventory-report-export-{stamp}.xlsx");
+        var requestedSheetName = "InventoryStockPositionExportCoverage";
+        var expectedSheetName = requestedSheetName[..31];
+
+        long? warehouseId = null;
+        long? itemId = null;
+        long? stockInTxId = null;
+
+        try
+        {
+            await SetSystemSettingAsync(InventoryMasterCompanySettingKey, companyId.ToString(), "admin");
+
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Export Stock Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var saveCategoryResult = await service.SaveInventoryCategoryAsync(
+                companyId,
+                new ManagedInventoryCategory
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    Code = categoryCode,
+                    Name = $"Export Report Category {stamp}",
+                    AccountCode = inventoryAccountCode ?? string.Empty,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveCategoryResult.IsSuccess && saveCategoryResult.EntityId.HasValue,
+                $"Failed to create export-report category: {saveCategoryResult.Message}");
+
+            var saveItemResult = await service.SaveInventoryItemAsync(
+                companyId,
+                new ManagedInventoryItem
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    CategoryId = saveCategoryResult.EntityId!.Value,
+                    Code = itemCode,
+                    Name = $"Export Report Item {stamp}",
+                    Uom = "PCS",
+                    Category = categoryCode,
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                saveItemResult.IsSuccess && saveItemResult.EntityId.HasValue,
+                $"Failed to create export-report item: {saveItemResult.Message}");
+            itemId = saveItemResult.EntityId!.Value;
+
+            stockInTxId = await CreateAndPostStockTransactionAsync(
+                service,
+                new ManagedStockTransaction
+                {
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    TransactionType = "STOCK_IN",
+                    TransactionDate = DateTime.Today,
+                    ReferenceNo = stockInReferenceNo,
+                    Description = "Inventory export coverage seed"
+                },
+                new[]
+                {
+                    new ManagedStockTransactionLine
+                    {
+                        LineNo = 1,
+                        ItemId = itemId.Value,
+                        Qty = 8,
+                        UnitCost = 75,
+                        WarehouseId = warehouseId.Value
+                    }
+                },
+                "admin");
+
+            var stockPositionRows = await service.GetStockPositionReportAsync(companyId, locationId);
+            var exportRow = stockPositionRows.FirstOrDefault(row =>
+                string.Equals(row.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(row.WarehouseName, $"Export Stock Warehouse {stamp}", StringComparison.Ordinal));
+            Assert(exportRow is not null, "Seeded stock row should appear in stock-position report before export.");
+
+            var exporter = new InventoryReportXlsxService();
+            exporter.Export(
+                exportPath,
+                requestedSheetName,
+                new List<IReadOnlyCollection<object?>>
+                {
+                    new object?[] { "Kode Item", "Nama Item", "UoM", "Lokasi", "Gudang", "Qty" },
+                    new object?[]
+                    {
+                        exportRow!.ItemCode,
+                        exportRow.ItemName,
+                        exportRow.Uom,
+                        exportRow.LocationName,
+                        exportRow.WarehouseName,
+                        exportRow.Qty
+                    }
+                });
+
+            Assert(File.Exists(exportPath), "Inventory report export should create an XLSX file.");
+
+            using var archive = ZipFile.OpenRead(exportPath);
+            Assert(archive.GetEntry("[Content_Types].xml") is not null, "Exported XLSX should contain content types entry.");
+            Assert(archive.GetEntry("xl/workbook.xml") is not null, "Exported XLSX should contain workbook entry.");
+            Assert(archive.GetEntry("xl/worksheets/sheet1.xml") is not null, "Exported XLSX should contain worksheet entry.");
+
+            using var workbookStream = archive.GetEntry("xl/workbook.xml")!.Open();
+            var spreadsheetNs = XNamespace.Get("http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+            var workbookDocument = XDocument.Load(workbookStream);
+            var actualSheetName = workbookDocument
+                .Descendants(spreadsheetNs + "sheet")
+                .Select(sheet => sheet.Attribute("name")?.Value)
+                .FirstOrDefault();
+            Assert(
+                string.Equals(actualSheetName, expectedSheetName, StringComparison.Ordinal),
+                $"Expected truncated sheet name '{expectedSheetName}', got '{actualSheetName}'.");
+
+            using var worksheetReader = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+            var worksheetXml = worksheetReader.ReadToEnd();
+            Assert(
+                worksheetXml.Contains(itemCode, StringComparison.OrdinalIgnoreCase),
+                $"Worksheet XML should contain exported item code {itemCode}.");
+            Assert(
+                worksheetXml.Contains($"Export Stock Warehouse {stamp}", StringComparison.Ordinal),
+                "Worksheet XML should contain exported warehouse name.");
+            Assert(
+                worksheetXml.Contains(
+                    $">{exportRow.Qty.ToString(System.Globalization.CultureInfo.InvariantCulture)}<",
+                    StringComparison.Ordinal),
+                $"Worksheet XML should contain exported quantity value {exportRow.Qty.ToString(System.Globalization.CultureInfo.InvariantCulture)}.");
+        }
+        finally
+        {
+            try
+            {
+                await using var connection = await OpenConnectionAsync();
+                if (itemId.HasValue)
+                {
+                    await CleanupPostedInventoryArtifactsAsync(
+                        connection,
+                        companyId,
+                        itemId.Value,
+                        stockInTxId.HasValue ? [stockInTxId.Value] : Array.Empty<long>(),
+                        Array.Empty<long>(),
+                        [stockInReferenceNo]);
+                }
+
+                await CleanupInventoryArtifactsByCodesAsync(connection, companyId, [categoryCode], [itemCode]);
+                await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
+            }
+            finally
+            {
+                if (File.Exists(exportPath))
+                {
+                    File.Delete(exportPath);
+                }
+
+                await SetSystemSettingAsync(InventoryMasterCompanySettingKey, previousMasterCompanySetting, "admin");
+            }
+        }
+    }
+
+    private static async Task TestInventoryStorageLocationCrudAndValidationAsync()
+    {
+        var service = CreateService();
+        var accessOptions = await service.GetLoginAccessOptionsAsync("admin");
+        Assert(accessOptions is not null, "Admin access options must exist.");
+        Assert(accessOptions!.Companies.Count > 0, "At least one company is required.");
+        Assert(accessOptions.Locations.Count > 0, "At least one location is required.");
+
+        var companyId = accessOptions.Companies[0].Id;
+        var locationId = accessOptions.Locations.FirstOrDefault(x => x.CompanyId == companyId)?.Id
+            ?? accessOptions.Locations[0].Id;
+        var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var warehouseCode = $"SLW{Math.Abs(stamp % 1000000):000000}";
+        var storageCode = $"BIN{Math.Abs((stamp + 13) % 1000000):000000}";
+        var updatedStorageCode = $"{storageCode}U";
+        var mismatchLocationId = locationId + 999_999;
+        var missingStorageId = long.MaxValue - 321;
+
+        long? warehouseId = null;
+        long? storageLocationId = null;
+
+        try
+        {
+            warehouseId = await CreateWarehouseAsync(
+                service,
+                companyId,
+                warehouseCode,
+                $"Storage Location Warehouse {stamp}",
+                locationId,
+                "admin");
+
+            var invalidLocationResult = await service.SaveStorageLocationAsync(
+                companyId,
+                new ManagedStorageLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = mismatchLocationId,
+                    WarehouseId = warehouseId.Value,
+                    Code = $"{storageCode}X",
+                    Name = "Mismatched location",
+                    IsActive = true
+                },
+                "admin");
+            Assert(!invalidLocationResult.IsSuccess, "Storage location save should reject location mismatches.");
+            Assert(
+                invalidLocationResult.Message.Contains("mengikuti lokasi gudang", StringComparison.OrdinalIgnoreCase),
+                $"Expected warehouse-location mismatch message, got: {invalidLocationResult.Message}");
+
+            var createResult = await service.SaveStorageLocationAsync(
+                companyId,
+                new ManagedStorageLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    LocationId = locationId,
+                    WarehouseId = warehouseId.Value,
+                    Code = storageCode,
+                    Name = $"Storage Bin {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(
+                createResult.IsSuccess && createResult.EntityId.HasValue,
+                $"Storage location create should succeed: {createResult.Message}");
+            storageLocationId = createResult.EntityId!.Value;
+
+            var duplicateResult = await service.SaveStorageLocationAsync(
+                companyId,
+                new ManagedStorageLocation
+                {
+                    Id = 0,
+                    CompanyId = companyId,
+                    WarehouseId = warehouseId.Value,
+                    Code = storageCode,
+                    Name = $"Duplicate Storage Bin {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(!duplicateResult.IsSuccess, "Duplicate storage code on the same warehouse should fail.");
+            Assert(
+                duplicateResult.Message.Contains("sudah digunakan", StringComparison.OrdinalIgnoreCase),
+                $"Expected duplicate storage-location message, got: {duplicateResult.Message}");
+
+            var updateResult = await service.SaveStorageLocationAsync(
+                companyId,
+                new ManagedStorageLocation
+                {
+                    Id = storageLocationId.Value,
+                    CompanyId = companyId,
+                    WarehouseId = warehouseId.Value,
+                    Code = updatedStorageCode,
+                    Name = $"Storage Bin Updated {stamp}",
+                    IsActive = true
+                },
+                "admin");
+            Assert(updateResult.IsSuccess, $"Storage location update should succeed: {updateResult.Message}");
+
+            var workspace = await service.GetInventoryWorkspaceDataAsync(companyId, locationId);
+            var updatedStorageLocation = workspace.StorageLocations.FirstOrDefault(location => location.Id == storageLocationId.Value);
+            Assert(updatedStorageLocation is not null, "Updated storage location should appear in inventory workspace.");
+            Assert(
+                string.Equals(updatedStorageLocation!.Code, updatedStorageCode, StringComparison.OrdinalIgnoreCase),
+                $"Expected updated storage code {updatedStorageCode}, got {updatedStorageLocation.Code}.");
+            Assert(
+                string.Equals(updatedStorageLocation.Name, $"Storage Bin Updated {stamp}", StringComparison.Ordinal),
+                "Updated storage location should persist the latest name.");
+            Assert(updatedStorageLocation.WarehouseId == warehouseId.Value, "Storage location should stay attached to the selected warehouse.");
+
+            var missingUpdateResult = await service.SaveStorageLocationAsync(
+                companyId,
+                new ManagedStorageLocation
+                {
+                    Id = missingStorageId,
+                    CompanyId = companyId,
+                    WarehouseId = warehouseId.Value,
+                    Code = $"{updatedStorageCode}M",
+                    Name = "Missing storage update",
+                    IsActive = true
+                },
+                "admin");
+            Assert(!missingUpdateResult.IsSuccess, "Updating a missing storage location should fail.");
+            Assert(
+                missingUpdateResult.Message.Contains("tidak ditemukan", StringComparison.OrdinalIgnoreCase),
+                $"Expected missing storage-location update message, got: {missingUpdateResult.Message}");
+
+            var deactivateResult = await service.SoftDeleteStorageLocationAsync(companyId, storageLocationId.Value, "admin");
+            Assert(deactivateResult.IsSuccess, $"Storage location deactivate should succeed: {deactivateResult.Message}");
+
+            var workspaceAfterDeactivate = await service.GetInventoryWorkspaceDataAsync(companyId, locationId);
+            var deactivatedStorageLocation = workspaceAfterDeactivate.StorageLocations.FirstOrDefault(location => location.Id == storageLocationId.Value);
+            Assert(deactivatedStorageLocation is not null, "Deactivated storage location should remain queryable.");
+            Assert(!deactivatedStorageLocation!.IsActive, "Storage location should become inactive after soft delete.");
+
+            var missingDeactivateResult = await service.SoftDeleteStorageLocationAsync(companyId, missingStorageId, "admin");
+            Assert(!missingDeactivateResult.IsSuccess, "Deactivating a missing storage location should fail.");
+            Assert(
+                missingDeactivateResult.Message.Contains("tidak ditemukan", StringComparison.OrdinalIgnoreCase),
+                $"Expected missing storage-location deactivate message, got: {missingDeactivateResult.Message}");
+
+            await using var connection = await OpenConnectionAsync();
+            await using var auditCommand = new NpgsqlCommand(
+                @"SELECT action, COUNT(1)
+FROM sec_audit_logs
+WHERE entity_type = 'INV_STORAGE_LOCATION'
+  AND entity_id = @entity_id
+GROUP BY action;",
+                connection);
+            auditCommand.Parameters.AddWithValue("entity_id", storageLocationId.Value);
+            await using var reader = await auditCommand.ExecuteReaderAsync();
+
+            var actions = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            while (await reader.ReadAsync())
+            {
+                actions[reader.GetString(0)] = reader.GetInt64(1);
+            }
+
+            Assert(actions.ContainsKey("CREATE"), "Storage location audit should contain CREATE action.");
+            Assert(actions.ContainsKey("UPDATE"), "Storage location audit should contain UPDATE action.");
+            Assert(actions.ContainsKey("DEACTIVATE"), "Storage location audit should contain DEACTIVATE action.");
+        }
+        finally
+        {
+            await using var connection = await OpenConnectionAsync();
+
+            if (storageLocationId.HasValue)
+            {
+                await using (var deleteStorageAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'INV_STORAGE_LOCATION' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteStorageAudit.Parameters.AddWithValue("entity_id", storageLocationId.Value);
+                    await deleteStorageAudit.ExecuteNonQueryAsync();
+                }
+            }
+
+            if (warehouseId.HasValue)
+            {
+                await using (var deleteWarehouseAudit = new NpgsqlCommand(
+                    "DELETE FROM sec_audit_logs WHERE entity_type = 'INV_WAREHOUSE' AND entity_id = @entity_id;",
+                    connection))
+                {
+                    deleteWarehouseAudit.Parameters.AddWithValue("entity_id", warehouseId.Value);
+                    await deleteWarehouseAudit.ExecuteNonQueryAsync();
+                }
+            }
+
+            await CleanupWarehousesByCodesAsync(connection, [warehouseCode]);
         }
     }
 
